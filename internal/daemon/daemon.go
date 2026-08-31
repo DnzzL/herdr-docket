@@ -1,0 +1,158 @@
+// Package daemon is the long-running worker started by the plugin's startup
+// hook. Every tick it re-reads the fleet (agents and settings), polls the
+// platform backlog, and runs the most urgent routed task — one at a time.
+// It re-executes itself when the plugin binary is upgraded underneath it.
+//
+// Deciding is pick's job; this package is the part with the side effects.
+package daemon
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/DnzzL/herdr-fleet/internal/backlog"
+	"github.com/DnzzL/herdr-fleet/internal/fleet"
+	"github.com/DnzzL/herdr-fleet/internal/history"
+	"github.com/DnzzL/herdr-fleet/internal/pick"
+	"github.com/DnzzL/herdr-fleet/internal/runner"
+)
+
+// tickInterval is how often the backlog is polled. Short enough that a task
+// you just wrote is picked up while you are still watching the board.
+const tickInterval = 15 * time.Second
+
+func Run() error {
+	log.SetPrefix("[herdr-fleet] ")
+
+	release, err := acquireLock()
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	settings, err := fleet.LoadSettings()
+	if err != nil {
+		return fmt.Errorf("fleet.yaml: %w", err)
+	}
+	if _, err := os.Stat(settings.Dir); err != nil {
+		return fmt.Errorf("fleet dir %s does not exist — run `herdr-fleet init` first", settings.Dir)
+	}
+	log.Printf("daemon starting, fleet=%s", settings.Dir)
+
+	runs := runner.Default(settings.Dir)
+	binary := binaryStamp()
+	reported := map[string]bool{}
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	tick := time.NewTicker(tickInterval)
+	defer tick.Stop()
+
+	evaluate(runs, reported) // don't wait a tick to notice what is already To Do
+
+	for {
+		select {
+		case <-tick.C:
+			if stamp := binaryStamp(); stamp != binary && stamp != "" {
+				restart(release, runs)
+			}
+			evaluate(runs, reported)
+		case s := <-sigs:
+			log.Printf("received %v, shutting down", s)
+			return nil
+		}
+	}
+}
+
+// evaluate polls the backlog and starts at most one run. reported keeps the
+// unknown-assignee noise down to one comment per task per daemon lifetime:
+// re-noting an unfixed typo every 15 seconds would bury the task in comments.
+func evaluate(runs *runner.Runner, reported map[string]bool) {
+	if runs.Busy() {
+		return // strictly one task at a time; the next tick will look again
+	}
+	settings, err := fleet.LoadSettings()
+	if err != nil {
+		log.Printf("fleet.yaml error, skipping this tick: %v", err)
+		return
+	}
+	agents, diags := fleet.LoadAgents(settings.Dir)
+	for _, d := range diags {
+		if !reported[d.String()] {
+			reported[d.String()] = true
+			log.Printf("agent not loaded — %s", d)
+		}
+	}
+
+	board := backlog.New(settings.Dir)
+	tasks, err := board.List()
+	if err != nil {
+		log.Printf("backlog poll failed: %v", err)
+		return
+	}
+
+	res := pick.Next(tasks, agents, settings.DefaultAgent)
+	for _, t := range res.Unknown {
+		key := t.ID + "/" + firstAssignee(t)
+		if reported[key] {
+			continue
+		}
+		reported[key] = true
+		log.Printf("%s: assignee %q is not a fleet agent, leaving it To Do", t.ID, firstAssignee(t))
+		if err := board.AppendNote(t.ID, fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", firstAssignee(t), firstAssignee(t))); err != nil {
+			log.Printf("%s: append note: %v", t.ID, err)
+		}
+	}
+	if res.Task == nil {
+		return
+	}
+
+	t, agent := *res.Task, res.Agent
+	log.Printf("%s: starting (%s, agent %s)", t.ID, t.Title, agent.Name)
+	go func() {
+		if err := runs.Run(t, agent, history.TriggerPoll); err != nil {
+			log.Printf("run %s: %v", t.ID, err)
+		}
+	}()
+}
+
+func firstAssignee(t backlog.Task) string {
+	if len(t.Assignees) > 0 {
+		return t.Assignees[0]
+	}
+	return ""
+}
+
+// restart re-executes the daemon so a plugin upgrade takes effect without
+// waiting for the Herdr server to be restarted.
+func restart(release func(), runs *runner.Runner) {
+	if runs.Busy() {
+		return // let the in-flight run finish; we'll notice again next tick
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		log.Printf("cannot locate the new binary: %v", err)
+		return
+	}
+	log.Printf("binary changed, re-executing %s", exe)
+	release() // the new process takes the lock
+	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+		log.Printf("re-exec failed, continuing with the old build: %v", err)
+	}
+}
+
+func binaryStamp() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	st, err := os.Stat(exe)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d-%d", st.ModTime().UnixNano(), st.Size())
+}
