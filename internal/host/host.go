@@ -48,10 +48,14 @@ type Session struct {
 	PaneID      string
 }
 
-// Host provisions somewhere for a run to happen, and does the work there.
+// Host provisions somewhere for a run to happen, does the work there, and
+// cleans the place up when the work is over.
 type Host interface {
 	Provision(a Spec) (Session, error)
 	Do(s Session, a Spec, timeout time.Duration) error
+	// Close tears the session's workspace down. Called only when the run left
+	// nothing a human still needs to look at.
+	Close(s Session) error
 }
 
 // ErrCancelled means the run's workspace was closed while it was working.
@@ -123,6 +127,11 @@ func (h *live) Provision(a Spec) (Session, error) {
 // Do runs the automation's work in the session and reports whether it worked.
 func (h *live) Do(s Session, a Spec, timeout time.Duration) error {
 	return h.workFor(a).do(s, timeout)
+}
+
+// Close tears the session's workspace down.
+func (h *live) Close(s Session) error {
+	return h.ops.WorkspaceClose(s.WorkspaceID)
 }
 
 // work is one way of getting a task's work done in a session. One adapter

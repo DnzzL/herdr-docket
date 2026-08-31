@@ -143,6 +143,7 @@ func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) err
 
 	err = r.host.Do(session, spec, time.Duration(a.TimeoutMinutes)*time.Minute)
 	final := r.reconcile(t.ID, err)
+	r.cleanup(t.ID, session, final)
 	switch {
 	case errors.Is(err, host.ErrCancelled):
 		rec.record(history.StatusCancelled, session, err.Error())
@@ -189,6 +190,27 @@ func (r *Runner) reconcile(taskID string, runErr error) string {
 		log.Printf("%s: set status %s: %v", taskID, status, err)
 	}
 	return status
+}
+
+// cleanup decides what happens to the run's workspace. A task that ended Done
+// left nothing to look at — the work is in the repo and the notes — so the
+// workspace is torn down. Anything else keeps its workspace open as the place
+// to resume: the board's enter-jump lands there, and the note names it for
+// anyone reading the ticket instead of the board.
+func (r *Runner) cleanup(taskID string, s host.Session, final string) {
+	if s.WorkspaceID == "" {
+		return
+	}
+	if final == backlog.StatusDone {
+		if err := r.host.Close(s); err != nil {
+			log.Printf("%s: close workspace %s: %v", taskID, s.WorkspaceID, err)
+		}
+		return
+	}
+	note := fmt.Sprintf("fleet: the run's workspace %s (pane %s) is left open — jump in to resume.", s.WorkspaceID, s.PaneID)
+	if err := r.board.AppendNote(taskID, note); err != nil {
+		log.Printf("%s: append note: %v", taskID, err)
+	}
 }
 
 // recorder pins one run's identity so every transition is logged the same way.

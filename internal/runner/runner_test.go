@@ -15,6 +15,7 @@ import (
 type fakeHost struct {
 	provisionErr error
 	doErr        error
+	closes       int
 	spec         host.Spec
 	// statusAfterDo lets the fake board change the task status mid-run, the
 	// way a real agent reports back through the CLI.
@@ -25,6 +26,7 @@ func (f *fakeHost) Provision(a host.Spec) (host.Session, error) {
 	f.spec = a
 	return host.Session{WorkspaceID: "ws", PaneID: "p"}, f.provisionErr
 }
+func (f *fakeHost) Close(host.Session) error { f.closes++; return nil }
 func (f *fakeHost) Do(s host.Session, a host.Spec, timeout time.Duration) error {
 	f.spec = a
 	if f.after != nil {
@@ -67,6 +69,9 @@ func TestHappyPathAgentReportsDone(t *testing.T) {
 	if h.spec.Repo != "/w" || h.spec.Workspace != host.WorkspaceRoot || !strings.Contains(h.spec.Prompt, "TASK-1") {
 		t.Fatalf("spec = %+v", h.spec)
 	}
+	if h.closes != 1 {
+		t.Fatalf("a Done run must close its workspace, closes = %d", h.closes)
+	}
 }
 
 func TestAgentSettledWithoutReportingIsAFailure(t *testing.T) {
@@ -94,6 +99,18 @@ func TestCancelledRunGoesBlockedNotFailed(t *testing.T) {
 	}
 	if b.status["TASK-1"] != backlog.StatusBlocked {
 		t.Fatalf("status = %s", b.status["TASK-1"])
+	}
+}
+
+func TestNonDoneRunsKeepTheirWorkspaceAndNoteIt(t *testing.T) {
+	b := newBoard(backlog.StatusToDo)
+	h := &fakeHost{doErr: errors.New("boom")}
+	_ = run(t, h, b)
+	if h.closes != 0 {
+		t.Fatal("a Failed run must keep its workspace open")
+	}
+	if !strings.Contains(strings.Join(b.notes, " "), "workspace ws (pane p) is left open") {
+		t.Fatalf("notes = %v", b.notes)
 	}
 }
 

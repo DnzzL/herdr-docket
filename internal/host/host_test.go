@@ -21,6 +21,8 @@ type fakeOps struct {
 	paneRead        func(paneID string, lines int) (string, error)
 	lookPath        func(file string) error
 
+	closes int
+
 	starts  int
 	submits int
 	pending int
@@ -40,6 +42,11 @@ func (f *fakeOps) WorkspaceCreate(cwd, label string) (string, string, error) {
 		return "w2", "w2:p1", nil
 	}
 	return f.workspaceCreate(cwd, label)
+}
+
+func (f *fakeOps) WorkspaceClose(string) error {
+	f.closes++
+	return nil
 }
 
 func (f *fakeOps) AgentStart(name, kind, paneID string, args []string) error {

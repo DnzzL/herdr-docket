@@ -163,6 +163,16 @@ func (Client) WorktreeList(repo string) ([]Worktree, error) {
 	return res.Worktrees, nil
 }
 
+// WorkspaceClose closes a workspace. Closing one that is already gone is
+// not an error worth reporting — the point was for it not to exist.
+func (c Client) WorkspaceClose(workspaceID string) error {
+	err := run(nil, "workspace", "close", workspaceID)
+	if HasCode(err, CodeWorkspaceGone) {
+		return nil
+	}
+	return err
+}
+
 // AgentStart launches an interactive agent in a pane sitting at a shell
 // prompt. extraArgs are forwarded to the agent executable (e.g. --mcp-config).
 func (Client) AgentStart(name, kind, paneID string, extraArgs []string) error {
