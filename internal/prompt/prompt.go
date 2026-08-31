@@ -55,6 +55,11 @@ with the backlog CLI, always prefixed with BACKLOG_CWD:
 Never leave the task "In Progress": if you stop for any reason, set Failed or
 Blocked with a note. Do not touch other fleet tasks' statuses.
 
+This run has a time budget. If the task is too big to finish well within it,
+do one coherent slice, record exactly where you stopped in the notes, then
+create the follow-up task for the rest and set this one Done — a finished
+slice with a good handoff beats a timed-out marathon.
+
 If you find follow-up work, create a task for it instead of expanding this one:
 BACKLOG_CWD=%s backlog task create "<title>" -d "<what and why>" -a %s
 `, fleetDir, edit, edit, edit, edit, edit, fleetDir, a.Name)

@@ -30,6 +30,7 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 		`BACKLOG_CWD=/Users/x/fleet backlog task edit TASK-7`,
 		"-s Done", "-s Failed", "-s Blocked",
 		"--check-ac",
+		"one coherent slice",
 		"-a marketing",
 	} {
 		if !strings.Contains(got, want) {
