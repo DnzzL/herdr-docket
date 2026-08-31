@@ -17,10 +17,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	
 )
-
 
 // Spec is everything Provision and Do need to know about one run: where it
 // happens, which agent does it, and what it is told. The fleet package builds

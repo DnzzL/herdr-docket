@@ -46,12 +46,9 @@ const (
 	TriggerManual Trigger = "manual"
 )
 
-// NewID names a run in the log. Everything that appends here built the same
-// name-nanos shape by hand, three times, with three different infixes.
-func NewID(task, kind string) string {
-	if kind != "" {
-		task += "-" + kind
-	}
+// NewID names a run in the log: the task plus nanoseconds, unique enough for
+// a strictly serial worker.
+func NewID(task string) string {
 	return fmt.Sprintf("%s-%d", task, time.Now().UnixNano())
 }
 

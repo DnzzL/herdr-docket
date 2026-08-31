@@ -76,13 +76,7 @@ func loadAgent(path, name string) (Agent, error) {
 	if a.Workdir == "" {
 		return Agent{}, fmt.Errorf("frontmatter has no workdir")
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		if a.Workdir == "~" {
-			a.Workdir = home
-		} else if strings.HasPrefix(a.Workdir, "~/") {
-			a.Workdir = filepath.Join(home, a.Workdir[2:])
-		}
-	}
+	a.Workdir = expandHome(a.Workdir)
 	if a.Kind == "" {
 		a.Kind = "claude"
 	}
@@ -109,4 +103,19 @@ func splitFrontmatter(s string) (front, body string, err error) {
 		return "", "", fmt.Errorf("unterminated frontmatter")
 	}
 	return rest[:i], strings.TrimPrefix(rest[i+4:], "\n"), nil
+}
+
+// expandHome resolves a leading ~ against the user's home directory.
+func expandHome(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	if path == "~" {
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }

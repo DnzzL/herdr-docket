@@ -15,7 +15,9 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/history"
 	"github.com/DnzzL/herdr-fleet/internal/hostpath"
 	"github.com/DnzzL/herdr-fleet/internal/pane"
+	"github.com/DnzzL/herdr-fleet/internal/pick"
 	"github.com/DnzzL/herdr-fleet/internal/runner"
+	"github.com/DnzzL/herdr-fleet/internal/text"
 )
 
 // Version is stamped by the release build; "dev" for local builds.
@@ -105,7 +107,7 @@ func list() error {
 			} else if _, ok := agents[t.Assignees[0]]; !ok {
 				who += " (unknown!)"
 			}
-			lines = append(lines, fmt.Sprintf("  %-10s %-30s %s", t.ID, truncate(t.Title, 30), who))
+			lines = append(lines, fmt.Sprintf("  %-10s %-30s %s", t.ID, text.Truncate(t.Title, 30), who))
 		}
 		if len(lines) > 0 {
 			fmt.Printf("%s:\n%s\n", status, strings.Join(lines, "\n"))
@@ -131,10 +133,7 @@ func runCmd(args []string) error {
 		return fmt.Errorf("%s is already In Progress", v.ID)
 	}
 	agents, _ := fleet.LoadAgents(settings.Dir)
-	name := settings.DefaultAgent
-	if len(v.Assignees) > 0 {
-		name = v.Assignees[0]
-	}
+	name := pick.AssigneeFor(v.Task, settings.DefaultAgent)
 	agent, ok := agents[name]
 	if !ok {
 		return fmt.Errorf("%s: assignee %q is not a fleet agent", v.ID, name)
@@ -160,11 +159,4 @@ func historyCmd(args []string) error {
 		fmt.Println(line)
 	}
 	return nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n-1] + "…"
 }

@@ -97,13 +97,18 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 
 	res := pick.Next(tasks, agents, settings.DefaultAgent)
 	for _, t := range res.Unknown {
-		key := t.ID + "/" + firstAssignee(t)
+		name := pick.AssigneeFor(t, settings.DefaultAgent)
+		note := fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", name, name)
+		if len(t.Assignees) == 0 {
+			note = fmt.Sprintf("fleet: default_agent %q (fleet.yaml) is not a fleet agent.", name)
+		}
+		key := t.ID + "/" + name
 		if reported[key] {
 			continue
 		}
 		reported[key] = true
-		log.Printf("%s: assignee %q is not a fleet agent, leaving it To Do", t.ID, firstAssignee(t))
-		if err := board.AppendNote(t.ID, fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", firstAssignee(t), firstAssignee(t))); err != nil {
+		log.Printf("%s: %s", t.ID, note)
+		if err := board.AppendNote(t.ID, note); err != nil {
 			log.Printf("%s: append note: %v", t.ID, err)
 		}
 	}
@@ -120,13 +125,6 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	}()
 }
 
-func firstAssignee(t backlog.Task) string {
-	if len(t.Assignees) > 0 {
-		return t.Assignees[0]
-	}
-	return ""
-}
-
 // restart re-executes the daemon so a plugin upgrade takes effect without
 // waiting for the Herdr server to be restarted.
 func restart(release func(), runs *runner.Runner) {
@@ -141,7 +139,12 @@ func restart(release func(), runs *runner.Runner) {
 	log.Printf("binary changed, re-executing %s", exe)
 	release() // the new process takes the lock
 	if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+		// Exec replaced nothing, and the lock is gone: without reclaiming it a
+		// second daemon could now start and race this one for every task.
 		log.Printf("re-exec failed, continuing with the old build: %v", err)
+		if _, err := acquireLock(); err != nil {
+			log.Printf("could not re-take the daemon lock: %v", err)
+		}
 	}
 }
 

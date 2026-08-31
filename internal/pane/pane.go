@@ -15,7 +15,9 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/herdr"
 	"github.com/DnzzL/herdr-fleet/internal/history"
+	"github.com/DnzzL/herdr-fleet/internal/pick"
 	"github.com/DnzzL/herdr-fleet/internal/runner"
+	"github.com/DnzzL/herdr-fleet/internal/text"
 )
 
 var (
@@ -77,17 +79,18 @@ const (
 )
 
 type model struct {
-	dir     string
-	rows    []row
-	agents  map[string]fleet.Agent
-	sel     int
-	width   int
-	height  int
-	status  string
-	mode    mode
-	input   string
-	pending string // the title typed before the assignee is asked
-	runs    *runner.Runner
+	dir          string
+	defaultAgent string
+	rows         []row
+	agents       map[string]fleet.Agent
+	sel          int
+	width        int
+	height       int
+	status       string
+	mode         mode
+	input        string
+	pending      string // the title typed before the assignee is asked
+	runs         *runner.Runner
 }
 
 type refreshMsg struct {
@@ -104,7 +107,7 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	m := model{dir: settings.Dir, runs: runner.Default(settings.Dir)}
+	m := model{dir: settings.Dir, defaultAgent: settings.DefaultAgent, runs: runner.Default(settings.Dir)}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
@@ -164,7 +167,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			return m.runSelected()
 		case "enter":
-			m.jumpSelected()
+			return m, m.jumpSelected()
 		}
 	}
 	return m, nil
@@ -243,10 +246,7 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 		m.status = r.task.ID + " is already In Progress"
 		return m, nil
 	}
-	name := ""
-	if len(r.task.Assignees) > 0 {
-		name = r.task.Assignees[0]
-	}
+	name := pick.AssigneeFor(r.task, m.defaultAgent)
 	agent, ok := m.agents[name]
 	if !ok {
 		m.status = fmt.Sprintf("%s: assignee %q is not a fleet agent", r.task.ID, name)
@@ -257,15 +257,19 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg { return ranMsg{err: runs.Run(task, agent, history.TriggerManual)} }
 }
 
-func (m *model) jumpSelected() {
+func (m *model) jumpSelected() tea.Cmd {
 	r := m.selected()
 	if r == nil || r.last == nil || r.last.WorkspaceID == "" {
 		m.status = "no run to jump to"
-		return
+		return nil
 	}
-	var c herdr.Client
-	if err := c.Focus(r.last.WorkspaceID, r.last.PaneID); err != nil {
-		m.status = err.Error()
+	last := *r.last
+	return func() tea.Msg {
+		var c herdr.Client
+		if err := c.Focus(last.WorkspaceID, last.PaneID); err != nil {
+			return refreshMsg{err: err}
+		}
+		return nil
 	}
 }
 
@@ -288,7 +292,7 @@ func (m model) View() string {
 		if r.last != nil {
 			detail = dimStyle.Render(fmt.Sprintf("last run %s %s", r.last.Status, r.last.At.Format("Mon 15:04")))
 		}
-		line := fmt.Sprintf("  %-9s %-40s %-16s %s", r.task.ID, truncate(r.task.Title, 40), who, detail)
+		line := fmt.Sprintf("  %-9s %-40s %-16s %s", r.task.ID, text.Truncate(r.task.Title, 40), who, detail)
 		if i == m.sel {
 			line = selectedStyle.Render(line)
 		}
@@ -319,11 +323,4 @@ func agentNames(agents map[string]fleet.Agent) []string {
 		names = append(names, n)
 	}
 	return names
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n-1] + "…"
 }

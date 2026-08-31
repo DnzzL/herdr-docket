@@ -32,13 +32,10 @@ func LoadSettings() (Settings, error) {
 	} else if !os.IsNotExist(err) {
 		return Settings{}, err
 	}
-	home, _ := os.UserHomeDir()
 	if s.Dir == "" {
+		home, _ := os.UserHomeDir()
 		s.Dir = filepath.Join(home, "fleet")
-	} else if s.Dir == "~" {
-		s.Dir = home
-	} else if len(s.Dir) > 1 && s.Dir[:2] == "~/" {
-		s.Dir = filepath.Join(home, s.Dir[2:])
 	}
+	s.Dir = expandHome(s.Dir)
 	return s, nil
 }

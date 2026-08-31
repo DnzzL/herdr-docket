@@ -54,10 +54,7 @@ func Next(tasks []backlog.Task, agents map[string]fleet.Agent, defaultAgent stri
 
 	var res Result
 	for i, t := range todo {
-		name := defaultAgent
-		if len(t.Assignees) > 0 {
-			name = t.Assignees[0]
-		}
+		name := AssigneeFor(t, defaultAgent)
 		if name == "" {
 			continue
 		}
@@ -72,4 +69,14 @@ func Next(tasks []backlog.Task, agents map[string]fleet.Agent, defaultAgent stri
 		}
 	}
 	return res
+}
+
+// AssigneeFor is the one routing rule: the task's first assignee, or the
+// configured default agent when it has none. Every surface that routes a task
+// (daemon, board, CLI) must go through this, or they drift apart.
+func AssigneeFor(t backlog.Task, defaultAgent string) string {
+	if len(t.Assignees) > 0 {
+		return t.Assignees[0]
+	}
+	return defaultAgent
 }

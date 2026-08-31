@@ -8,6 +8,7 @@ import (
 
 	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
+	"github.com/DnzzL/herdr-fleet/internal/history"
 	"github.com/DnzzL/herdr-fleet/internal/host"
 )
 
@@ -78,6 +79,11 @@ func TestAgentSettledWithoutReportingIsAFailure(t *testing.T) {
 	}
 	if len(b.notes) == 0 || !strings.Contains(b.notes[0], "without reporting") {
 		t.Fatalf("notes = %v", b.notes)
+	}
+	// The history must not call this run "done" when the board says Failed.
+	runs, err := history.Runs("TASK-1", 1)
+	if err != nil || len(runs) != 1 || runs[0].Status != history.StatusFailed {
+		t.Fatalf("history = %+v, %v", runs, err)
 	}
 }
 

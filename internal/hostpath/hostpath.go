@@ -2,14 +2,11 @@
 // find: the herdr binary, the config directory, the state directory, the
 // plugin checkout.
 //
-// Every one of those follows the same shape — Herdr's environment variable
-// wins, then we ask the herdr CLI, then we fall back to Herdr's own layout —
-// and every one of them used to be answered in whichever package happened to
-// need it. That cost us the fix in f30e866 twice: `herdr.bin` learned to
-// distrust a HERDR_BIN_PATH whose file is gone, `config.herdrBin` never did,
-// and a stale path there resolves the config directory to a guess. A guess
-// that reads as an empty automations.yaml, which is every automation silently
-// disappearing.
+// Every one of those follows the same shape: Herdr's environment variable
+// wins, then we ask the herdr CLI, then we fall back to Herdr's own layout.
+// Keeping them in one package is the point — answered ad hoc, two callers
+// eventually disagree about where the config lives, and a daemon reading the
+// wrong directory looks exactly like an empty fleet.
 package hostpath
 
 import (
