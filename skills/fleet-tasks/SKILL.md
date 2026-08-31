@@ -7,8 +7,8 @@ description: Create and manage tasks in the fleet backlog — the shared Backlog
 
 The fleet backlog is a Backlog.md project (default `~/fleet`, check
 `herdr-fleet` output for the real path) that a daemon polls: every `To Do`
-task assigned to a known agent gets picked up and run by that agent,
-strictly one at a time.
+task assigned to a known agent gets picked up and run by that agent —
+agents work in parallel, but each agent runs one task at a time.
 
 All commands go through the `backlog` CLI **with `BACKLOG_CWD` pointing at
 the fleet dir** — you are usually working in some other repo:

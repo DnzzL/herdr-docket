@@ -138,21 +138,37 @@ func TestAgentsOwnVerdictIsRespectedEvenAfterAHostError(t *testing.T) {
 	}
 }
 
-func TestSecondRunIsRefusedWhileTheFirstIsInFlight(t *testing.T) {
+func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
-	b := newBoard(backlog.StatusToDo)
+	b := &fakeBoard{status: map[string]string{"TASK-1": backlog.StatusToDo, "TASK-2": backlog.StatusToDo, "TASK-3": backlog.StatusToDo}}
 	started, release := make(chan struct{}), make(chan struct{})
-	h := &fakeHost{after: func() { close(started); <-release; b.status["TASK-1"] = backlog.StatusDone }}
+	h := &fakeHost{after: func() { close(started); <-release }}
 	r := New(h, b, "/fleet")
-	agent := fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1}
+	rootA := fleet.Agent{Name: "pm", Workdir: "/repo", Workspace: "root", TimeoutMinutes: 1}
+	rootB := fleet.Agent{Name: "docs", Workdir: "/repo", Workspace: "root", TimeoutMinutes: 1}
+	tree := fleet.Agent{Name: "dev", Workdir: "/repo", Workspace: "worktree", TimeoutMinutes: 1}
+
 	first := make(chan struct{})
-	go func() { defer close(first); r.Run(backlog.Task{ID: "TASK-1"}, agent, "poll") }()
+	go func() { defer close(first); r.Run(backlog.Task{ID: "TASK-1"}, rootA, "poll") }()
 	<-started
-	if !r.Busy() {
-		t.Fatal("runner should be busy")
+	if !r.Busy() || r.CanRun(rootA) {
+		t.Fatal("rootA's slot must be taken")
 	}
-	if err := r.Run(backlog.Task{ID: "TASK-2"}, agent, "poll"); err == nil {
-		t.Fatal("want busy refusal")
+	// Same agent again, and a different root agent on the same checkout: refused.
+	if err := r.Run(backlog.Task{ID: "TASK-2"}, rootA, "poll"); err == nil {
+		t.Fatal("same agent must be refused")
+	}
+	if err := r.Run(backlog.Task{ID: "TASK-2"}, rootB, "poll"); err == nil || r.CanRun(rootB) {
+		t.Fatal("a root-mode agent sharing the checkout must be refused")
+	}
+	// A worktree agent on the same repo gets its own checkout: allowed.
+	if !r.CanRun(tree) {
+		t.Fatal("a worktree agent must be free to run")
+	}
+	h2 := &fakeHost{after: func() { b.status["TASK-3"] = backlog.StatusDone }}
+	r.host = h2
+	if err := r.Run(backlog.Task{ID: "TASK-3"}, tree, "poll"); err != nil {
+		t.Fatalf("worktree run alongside a root run: %v", err)
 	}
 	close(release)
 	// Wait for the run to finish inside the test: leaked past it, the goroutine

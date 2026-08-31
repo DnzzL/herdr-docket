@@ -48,9 +48,10 @@ read, diff, and back up:
   `To Do → In Progress → Done | Failed | Blocked`.
 - **An agent** is one markdown file: YAML frontmatter for the run parameters,
   body for the persona every one of its runs opens with.
-- **One at a time.** No locking protocol, no checkout races, no pile-ups: the
-  daemon runs a single task to completion, then polls again. A second `To Do`
-  task simply waits its turn.
+- **One at a time, per agent.** Agents work in parallel, but each agent runs
+  a single task to completion — and root-mode agents sharing a checkout are
+  serialized, because the thing to protect is the working copy, not a queue.
+  A second `To Do` task for a busy agent simply waits its turn.
 - **The agent closes its own task** through the `backlog` CLI — it checks off
   acceptance criteria, appends what it did to the notes, and sets the final
   status. If it doesn't, the daemon does: a run that ends silent goes `Failed`,
@@ -169,8 +170,9 @@ Show HN post, prepare the launch thread…), created by the agent itself.
 
 ## Anatomy of a run
 
-1. The daemon polls `backlog task list --json` (~15s) and picks the most
-   urgent routed `To Do` task: priority, then ordinal, then age.
+1. The daemon polls `backlog task list --json` (~15s) and, for every idle
+   agent, picks its most urgent routed `To Do` task: priority, then ordinal,
+   then age.
 2. It claims the task (`In Progress`), provisions a Herdr workspace on the
    agent's `workdir`, and starts the agent with an assembled prompt: persona
    + full task (description, acceptance criteria, notes from previous runs)
@@ -231,8 +233,9 @@ default_agent: dev        # picks up unassigned tasks; unset = leave them alone
   automations decide *when*, fleet decides *what* and *who*.
 - **Not a workflow engine.** A task is one goal for one agent. Fan-out happens
   the honest way: an agent creates follow-up tasks in the same backlog.
-- **Not parallel.** One run at a time is the concurrency model, not a missing
-  feature — it's what makes the queue race-free with zero infrastructure.
+- **Not a job scheduler with priorities and preemption.** One run per agent,
+  serialized per shared checkout, nothing preempted: the concurrency model is
+  what a git checkout can survive, with zero infrastructure.
 - **No store.** The backlog is markdown in a git repo, run history is one JSONL
   file, and uninstalling leaves both behind.
 

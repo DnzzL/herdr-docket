@@ -31,23 +31,25 @@ type Board interface {
 	AppendNote(id, note string) error
 }
 
-// Runner runs tasks on a host, one at a time. One-at-a-time holds across
-// processes, not just this one: the daemon, `herdr-fleet run` and the board
-// each have their own Runner, and without a machine-wide claim a manual run
-// could start while the daemon is mid-task — or start the very task the
-// daemon is about to claim. An OS file lock in the state dir is that claim.
+// Runner runs tasks on a host, one at a time *per checkout*. The unit of
+// mutual exclusion is what a run mutates: an agent in worktree mode gets its
+// own checkout per run, so two such agents (or two runs of different agents)
+// can fly in parallel; agents in root mode share their working copy, so runs
+// keyed to the same root workdir are serialized. The claim holds across
+// processes — the daemon, `herdr-fleet run` and the board each have their own
+// Runner, and an OS file lock per key in the state dir keeps a manual run
+// from racing the daemon into the same agent or the same checkout.
 type Runner struct {
 	host     host.Host
 	board    Board
 	fleetDir string
-	busy     bool
-	lock     *os.File
+	busy     map[string]*os.File
 	mu       sync.Mutex
 }
 
 // New returns a Runner working through h against the board.
 func New(h host.Host, b Board, fleetDir string) *Runner {
-	return &Runner{host: h, board: b, fleetDir: fleetDir}
+	return &Runner{host: h, board: b, fleetDir: fleetDir, busy: map[string]*os.File{}}
 }
 
 // Default returns a Runner driving the real Herdr and the real backlog CLI.
@@ -55,27 +57,47 @@ func Default(fleetDir string) *Runner {
 	return New(host.New(), backlog.New(fleetDir), fleetDir)
 }
 
-// Busy reports whether a task is mid-run in this process.
+// LockKey names what a run of this agent would mutate: the shared checkout
+// for root mode, the agent itself for worktree mode (each of its runs gets a
+// fresh checkout — the agent's serial identity is all there is to protect).
+func LockKey(a fleet.Agent) string {
+	if a.Workspace == "root" {
+		return "root-" + sanitize(a.Workdir)
+	}
+	return "agent-" + sanitize(a.Name)
+}
+
+// CanRun reports whether this process could start a run for the agent right
+// now. Advisory — the daemon uses it to pick work without log-spamming
+// refusals; Run still makes the authoritative claim.
+func (r *Runner) CanRun(a fleet.Agent) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, taken := r.busy[LockKey(a)]
+	return !taken
+}
+
+// Busy reports whether any task is mid-run in this process.
 func (r *Runner) Busy() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.busy
+	return len(r.busy) > 0
 }
 
-// acquire claims the machine-wide run slot: the in-process flag plus a
-// non-blocking flock on <state>/run.lock. flock dies with the process, so a
-// crashed run never leaves a stale claim behind.
-func (r *Runner) acquire() bool {
+// acquire claims the run slot for one key: the in-process entry plus a
+// non-blocking flock on <state>/run-<key>.lock. flock dies with the process,
+// so a crashed run never leaves a stale claim behind.
+func (r *Runner) acquire(key string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.busy {
+	if _, taken := r.busy[key]; taken {
 		return false
 	}
 	if err := os.MkdirAll(hostpath.StateDir(), 0o755); err != nil {
 		log.Printf("state dir: %v", err)
 		return false
 	}
-	f, err := os.OpenFile(filepath.Join(hostpath.StateDir(), "run.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(filepath.Join(hostpath.StateDir(), "run-"+key+".lock"), os.O_CREATE|os.O_RDWR, 0o644)
 	if err != nil {
 		log.Printf("run lock: %v", err)
 		return false
@@ -84,28 +106,45 @@ func (r *Runner) acquire() bool {
 		f.Close()
 		return false
 	}
-	r.busy, r.lock = true, f
+	r.busy[key] = f
 	return true
 }
 
-func (r *Runner) release() {
+func (r *Runner) release(key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.lock != nil {
-		syscall.Flock(int(r.lock.Fd()), syscall.LOCK_UN)
-		r.lock.Close()
-		r.lock = nil
+	if f, ok := r.busy[key]; ok {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		f.Close()
+		delete(r.busy, key)
 	}
-	r.busy = false
 }
 
-// Run executes the task synchronously. A task offered while another is in
-// flight is refused, not queued — it stays To Do and the next tick sees it.
-func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) error {
-	if !r.acquire() {
-		return fmt.Errorf("%s: a task is already in flight", t.ID)
+// sanitize keeps a lock-file name safe: lowercase alphanumerics and dashes.
+func sanitize(s string) string {
+	out := make([]rune, 0, len(s))
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+			out = append(out, c)
+		case c >= 'A' && c <= 'Z':
+			out = append(out, c+32)
+		default:
+			out = append(out, '-')
+		}
 	}
-	defer r.release()
+	return string(out)
+}
+
+// Run executes the task synchronously. A task offered while its agent (or,
+// in root mode, its checkout) is in flight is refused, not queued — it stays
+// To Do and the next tick sees it.
+func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) error {
+	key := LockKey(a)
+	if !r.acquire(key) {
+		return fmt.Errorf("%s: a run is already in flight for %s", t.ID, key)
+	}
+	defer r.release(key)
 
 	rec := recorder{id: history.NewID(t.ID), task: t.ID, trigger: trigger}
 	v, err := r.board.View(t.ID)

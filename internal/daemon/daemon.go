@@ -68,13 +68,12 @@ func Run() error {
 	}
 }
 
-// evaluate polls the backlog and starts at most one run. reported keeps the
-// unknown-assignee noise down to one comment per task per daemon lifetime:
-// re-noting an unfixed typo every 15 seconds would bury the task in comments.
+// evaluate polls the backlog and starts every run that can start now: at
+// most one per agent (and one per shared checkout for root-mode agents).
+// reported keeps the unknown-assignee noise down to one comment per task per
+// daemon lifetime: re-noting an unfixed typo every 15 seconds would bury the
+// task in comments.
 func evaluate(runs *runner.Runner, reported map[string]bool) {
-	if runs.Busy() {
-		return // strictly one task at a time; the next tick will look again
-	}
 	settings, err := fleet.LoadSettings()
 	if err != nil {
 		log.Printf("fleet.yaml error, skipping this tick: %v", err)
@@ -95,7 +94,14 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		return
 	}
 
-	res := pick.Next(tasks, agents, settings.DefaultAgent)
+	available := map[string]fleet.Agent{}
+	for name, a := range agents {
+		if runs.CanRun(a) {
+			available[name] = a
+		}
+	}
+
+	res := pick.Next(tasks, available, settings.DefaultAgent)
 	for _, t := range res.Unknown {
 		name := pick.AssigneeFor(t, settings.DefaultAgent)
 		note := fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", name, name)
@@ -112,17 +118,30 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 			log.Printf("%s: append note: %v", t.ID, err)
 		}
 	}
-	if res.Task == nil {
-		return
-	}
-
-	t, agent := *res.Task, res.Agent
-	log.Printf("%s: starting (%s, agent %s)", t.ID, t.Title, agent.Name)
-	go func() {
-		if err := runs.Run(t, agent, history.TriggerPoll); err != nil {
-			log.Printf("run %s: %v", t.ID, err)
+	for res.Task != nil {
+		t, agent := *res.Task, res.Agent
+		log.Printf("%s: starting (%s, agent %s)", t.ID, t.Title, agent.Name)
+		go func() {
+			if err := runs.Run(t, agent, history.TriggerPoll); err != nil {
+				log.Printf("run %s: %v", t.ID, err)
+			}
+		}()
+		// The started agent is spoken for; anything sharing its lock key is
+		// too. Re-pick among what is left for this tick.
+		for name, a := range available {
+			if runner.LockKey(a) == runner.LockKey(agent) {
+				delete(available, name)
+			}
 		}
-	}()
+		remaining := tasks[:0:0]
+		for _, x := range tasks {
+			if x.ID != t.ID {
+				remaining = append(remaining, x)
+			}
+		}
+		tasks = remaining
+		res = pick.Next(tasks, available, settings.DefaultAgent)
+	}
 }
 
 // restart re-executes the daemon so a plugin upgrade takes effect without
