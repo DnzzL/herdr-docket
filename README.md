@@ -2,13 +2,13 @@
 
 **A shared task backlog worked by your coding agents.** A [Backlog.md](https://backlog.md)
 project as the queue, `AGENT.md` personas as the workers, and a daemon that routes
-every `To Do` task to the agent it names — one run at a time, in a [Herdr](https://herdr.dev)
-workspace you can watch, join, or close.
+every `To Do` task to the agent it names — agents in parallel, one run each,
+in [Herdr](https://herdr.dev) workspaces you can watch, join, or close.
 
 ```
       you ─────────┐
  an automation ────┼──► fleet backlog (To Do) ──► daemon ──► herdr agent run ──► Done | Failed | Blocked
- another agent ────┘         markdown, git             one at a time         (the agent reports itself)
+ another agent ────┘         markdown, git             one run per agent     (the agent reports itself)
 ```
 
 Write a task, assign it to an agent, walk away:
