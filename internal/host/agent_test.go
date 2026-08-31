@@ -272,3 +272,26 @@ func TestAwaitReportsWhatHerdrLastSaid(t *testing.T) {
 		t.Fatalf("got %v, want herdr's last error kept", err)
 	}
 }
+
+func TestStartWaitsOutAnAgentStillInitialising(t *testing.T) {
+	statuses := []string{"blocked", "blocked", "idle", "working"}
+	ops := &fakeOps{
+		agentStart: func(string, string, string, []string) error {
+			return &herdr.APIError{Command: "agent start", Code: herdr.CodeAgentNotReady}
+		},
+		agentStatus: func(string) (string, error) {
+			s := statuses[0]
+			if len(statuses) > 1 {
+				statuses = statuses[1:]
+			}
+			return s, nil
+		},
+	}
+	w := agentWork{ops: ops, knobs: fast(), a: Spec{Agent: "claude", Prompt: "p"}}
+	if err := w.do(Session{PaneID: "p"}, time.Minute); err != nil {
+		t.Fatalf("want the run to proceed once idle, got %v", err)
+	}
+	if ops.submits == 0 {
+		t.Fatal("prompt was never submitted")
+	}
+}

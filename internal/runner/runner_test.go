@@ -128,7 +128,8 @@ func TestSecondRunIsRefusedWhileTheFirstIsInFlight(t *testing.T) {
 	h := &fakeHost{after: func() { close(started); <-release; b.status["TASK-1"] = backlog.StatusDone }}
 	r := New(h, b, "/fleet")
 	agent := fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1}
-	go r.Run(backlog.Task{ID: "TASK-1"}, agent, "poll")
+	first := make(chan struct{})
+	go func() { defer close(first); r.Run(backlog.Task{ID: "TASK-1"}, agent, "poll") }()
 	<-started
 	if !r.Busy() {
 		t.Fatal("runner should be busy")
@@ -137,4 +138,7 @@ func TestSecondRunIsRefusedWhileTheFirstIsInFlight(t *testing.T) {
 		t.Fatal("want busy refusal")
 	}
 	close(release)
+	// Wait for the run to finish inside the test: leaked past it, the goroutine
+	// writes history with the test env torn down — into the real state dir.
+	<-first
 }

@@ -180,6 +180,11 @@ func (Client) AgentStart(name, kind, paneID string, extraArgs []string) error {
 // sleep-delayed worktree create can return minutes before the pane is usable.
 const CodePaneBusy = "agent_pane_busy"
 
+// CodeAgentNotReady is herdr's answer when the agent process exists in the
+// pane but is still starting up — a trust dialog, MCP servers connecting — and
+// cannot take a prompt yet. The start succeeded; readiness is what's pending.
+const CodeAgentNotReady = "agent_not_ready"
+
 // CodeAgentGone means there is no agent in the target pane any more — the
 // workspace was closed, or the agent exited on its own. herdr only reports it
 // when the call it was given returns, so a wait handed the run's whole timeout

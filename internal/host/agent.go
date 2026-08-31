@@ -46,19 +46,44 @@ func (w agentWork) args() []string {
 }
 
 // start launches the agent, retrying while herdr says the pane is not a shell
-// yet. Any other error is final — a bad agent kind or a missing binary will
-// not fix itself, and retrying only delays the report.
+// yet. An agent_not_ready answer means the start itself worked — the agent is
+// in the pane but still initialising (trust dialog, MCP servers), so start
+// waits for it to become idle rather than reporting a failure. Any other
+// error is final — a bad agent kind or a missing binary will not fix itself,
+// and retrying only delays the report.
 func (w agentWork) start(s Session) error {
 	deadline := time.Now().Add(w.knobs.paneReady)
 	for {
 		err := w.ops.AgentStart(agentName(w.a.Name), w.a.Agent, s.PaneID, w.args())
-		if err == nil || !w.ops.HasCode(err, herdr.CodePaneBusy) {
+		switch {
+		case err == nil:
+			return nil
+		case w.ops.HasCode(err, herdr.CodeAgentNotReady):
+			return w.awaitReady(s, deadline, err)
+		case !w.ops.HasCode(err, herdr.CodePaneBusy):
 			return err
 		}
 		if !time.Now().Before(deadline) {
 			return err
 		}
 		log.Printf("pane has no shell yet, retrying agent start in %s", w.knobs.paneReadyPoll)
+		time.Sleep(w.knobs.paneReadyPoll)
+	}
+}
+
+// awaitReady polls the agent until it can take a prompt. startErr is what
+// gets reported if the deadline passes first — the not-ready answer is more
+// useful than "timed out".
+func (w agentWork) awaitReady(s Session, deadline time.Time, startErr error) error {
+	for {
+		status, err := w.ops.AgentStatus(s.PaneID)
+		if err == nil && status == "idle" {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return startErr
+		}
+		log.Printf("agent still starting (status %q), waiting %s", status, w.knobs.paneReadyPoll)
 		time.Sleep(w.knobs.paneReadyPoll)
 	}
 }
