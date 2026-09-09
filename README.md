@@ -165,7 +165,8 @@ to be bigger than it looked, do one coherent slice and create a follow-up
 task for the rest.
 ```
 
-Every run lands on its own `fleet/…` branch: review the diff, merge or delete.
+Every run lands on its own `fleet/…` branch and opens a PR. That PR is the
+artifact a human — or the reviewer in Example 4 — reads, merges, or deletes.
 
 ### Example 3 — a marketer that owns a strategy
 
@@ -186,6 +187,47 @@ assigned to yourself — the backlog is your plan.
 Seed it once — *"Write the publication strategy, then decompose it into
 tasks"* — and it fans out: each follow-up run is one concrete step (draft the
 Show HN post, prepare the launch thread…), created by the agent itself.
+
+### Example 4 — a reviewer that gates the dev's PRs
+
+The dev above opens a PR per ticket. Somebody still has to read it, and
+"somebody" is usually the one person who has no time for it. A second persona
+closes that loop — it verifies, it does not fix:
+
+```markdown
+---
+workdir: ~/Projects/myapp
+workspace: root
+timeout_minutes: 45
+---
+
+You are the code-review gate for MyApp. `dev` implements tickets on `fleet/…`
+branches and opens PRs; you say in public whether the result is fit to merge.
+You never merge, and you never write code.
+
+A review is worth exactly its evidence: every claim names a file, a line, or a
+test you ran. Read the ticket before the diff, then re-derive every acceptance
+criterion yourself — never trust the author's checkboxes. Met / not met /
+unverifiable, and unverifiable is not met. Correctness and scope are hard
+gates; taste is not, and a finding you would not block on files no task.
+
+The verdict is a PR review with one `VERDICT:` line. Every blocking finding
+carries the concrete fix and becomes a follow-up task assigned to `dev` — a PR
+comment is not a queue. You may uncheck an acceptance criterion you proved
+false; you may not change a ticket's status or edit the task the author closed.
+```
+
+Two shapes of task, both worth seeding: `dev` hands off one PR per run, and a
+*sweep* task — "review the oldest un-reviewed PR, then re-task yourself for the
+rest" — clears the pile whenever it grows. The loop is a gate, not a merge
+button: an approve-shaped verdict still waits for the human. (One caveat if your
+agents commit under your own account: GitHub refuses to let an account approve
+its own PR, so put the verdict in the review's words, not its state.)
+
+Note the `workspace: root`. Personas that must *write* to a project's own
+`backlog/` need the real checkout — a checkbox ticked inside a disposable
+worktree is gone with the worktree. Do the reading in a scratch worktree, the
+recording in the repo root, and say so in the persona.
 
 ## Anatomy of a run
 
@@ -225,6 +267,21 @@ key = "prefix+f"
 type = "shell"
 command = "herdr plugin pane open --plugin dnzzl.fleet --entrypoint board --placement overlay"
 ```
+
+Nothing happens when you press the chord? A linked plugin is registered but not
+necessarily *built*, and it can be *disabled* — and because the chord is a plain
+shell command it fails silently, with `herdr config check` reporting `ok`. Ask
+for the pane directly, which prints the error the keybinding swallows:
+
+```bash
+herdr plugin list                      # enabled? and does bin/ actually exist?
+herdr plugin pane open --plugin dnzzl.fleet --entrypoint board --placement overlay
+herdr plugin pane close PANE_ID        # this opens the board without any chord
+```
+
+`plugin_disabled` → `herdr plugin enable dnzzl.fleet`. `... because it does not
+exist` → run the manifest's build step (`sh scripts/install.sh`). Both take
+effect without restarting the Herdr server, so no running agent loses its pane.
 
 Config is optional — `fleet.yaml` in the plugin config dir:
 
