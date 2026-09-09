@@ -96,6 +96,42 @@ func TestDisabledAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
 	}
 }
 
+// An agent with a run in flight is busy, not missing. A sweep that hands off
+// to itself creates the next task while its own run is still going, so
+// reporting it Unknown would write a false "is not a fleet agent" note onto the
+// ticket seconds before the daemon runs it.
+func TestUnavailableAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
+	busy := map[string]fleet.Agent{"reviewer": {Name: "reviewer", Unavailable: true}}
+
+	res := Next([]backlog.Task{task("T-1", "To Do", "", "reviewer")}, busy, "")
+	if res.Task != nil {
+		t.Fatalf("busy agent must not run work, got %v", res.Task.ID)
+	}
+	if len(res.Unknown) != 0 {
+		t.Fatalf("busy agent must not be reported unknown: %v", res.Unknown)
+	}
+
+	if res := Next([]backlog.Task{task("T-2", "To Do", "", "")}, busy, "reviewer"); res.Task != nil || len(res.Unknown) != 0 {
+		t.Fatalf("busy default agent must not steal or be reported unknown: %+v", res)
+	}
+}
+
+func TestUnavailableAgentLeavesTheRestOfTheQueueMoving(t *testing.T) {
+	m := agents("dev")
+	m["reviewer"] = fleet.Agent{Name: "reviewer", Unavailable: true}
+
+	res := Next([]backlog.Task{
+		task("T-1", "To Do", "", "reviewer"),
+		task("T-2", "To Do", "high", "dev"),
+	}, m, "")
+	if res.Task == nil || res.Task.ID != "T-2" || res.Agent.Name != "dev" {
+		t.Fatalf("idle agent's work should still run: %+v", res)
+	}
+	if len(res.Unknown) != 0 {
+		t.Fatalf("the busy agent must not be reported unknown: %v", res.Unknown)
+	}
+}
+
 func TestParkedAgentDoesNotBlockTheRestOfTheQueue(t *testing.T) {
 	res := Next([]backlog.Task{
 		task("T-1", "To Do", "critical", "dev"),

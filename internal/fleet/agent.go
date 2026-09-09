@@ -25,8 +25,12 @@ type Agent struct {
 	TimeoutMinutes int      `yaml:"timeout_minutes"`
 	// Disabled keeps the agent in agents/ but out of scheduling: the daemon
 	// starts no new run for it. A run already in flight is untouched.
-	Disabled bool   `yaml:"disabled"`
-	Persona  string `yaml:"-"`
+	Disabled bool `yaml:"disabled"`
+	// Unavailable is runtime state, not config: the agent exists and is fine,
+	// it just cannot take a run this tick (its own run is in flight, or a
+	// root-mode run holds the checkout it shares). Only the scheduler sets it.
+	Unavailable bool   `yaml:"-"`
+	Persona     string `yaml:"-"`
 }
 
 // Diagnostic is one AGENT.md that did not load, and why. The rest of the

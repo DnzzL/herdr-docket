@@ -94,14 +94,17 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		return
 	}
 
-	available := map[string]fleet.Agent{}
+	// The router sees every agent, with a busy flag: an agent that cannot take a
+	// run this tick is unavailable, not unknown. Dropping it from the map here
+	// is what used to write "is not a fleet agent" onto a ticket whose agent was
+	// still working — which is every self-queueing sweep, seconds after it
+	// creates its own next task.
 	for name, a := range agents {
-		if runs.CanRun(a) {
-			available[name] = a
-		}
+		a.Unavailable = !runs.CanRun(a)
+		agents[name] = a
 	}
 
-	res := pick.Next(tasks, available, settings.DefaultAgent)
+	res := pick.Next(tasks, agents, settings.DefaultAgent)
 	for _, t := range res.Unknown {
 		name := pick.AssigneeFor(t, settings.DefaultAgent)
 		note := fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", name, name)
@@ -127,10 +130,12 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 			}
 		}()
 		// The started agent is spoken for; anything sharing its lock key is
-		// too. Re-pick among what is left for this tick.
-		for name, a := range available {
+		// too. Mark them unavailable (never delete — that would make pick call a
+		// live agent unknown) and re-pick among what is left for this tick.
+		for name, a := range agents {
 			if runner.LockKey(a) == runner.LockKey(agent) {
-				delete(available, name)
+				a.Unavailable = true
+				agents[name] = a
 			}
 		}
 		remaining := tasks[:0:0]
@@ -140,7 +145,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 			}
 		}
 		tasks = remaining
-		res = pick.Next(tasks, available, settings.DefaultAgent)
+		res = pick.Next(tasks, agents, settings.DefaultAgent)
 	}
 }
 
