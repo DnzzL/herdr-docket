@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,6 +31,9 @@ Usage:
   herdr-fleet init             Bootstrap the fleet dir (backlog project + example agent)
   herdr-fleet list             List tasks by status, with the routed agent
   herdr-fleet run <task-id>    Run one task now (any status except In Progress)
+  herdr-fleet agent list       Show the agents and which are paused
+  herdr-fleet agent pause <n>  Stop scheduling an agent (a running task finishes)
+  herdr-fleet agent resume <n> Start scheduling it again
   herdr-fleet history [id]     Show recent runs
   herdr-fleet pane             Interactive board (used by the Herdr pane)
   herdr-fleet version          Print the version
@@ -53,6 +57,8 @@ func main() {
 		err = list()
 	case "run":
 		err = runCmd(os.Args[2:])
+	case "agent":
+		err = agentCmd(os.Args[2:])
 	case "history":
 		err = historyCmd(os.Args[2:])
 	case "pane":
@@ -133,13 +139,84 @@ func runCmd(args []string) error {
 		return fmt.Errorf("%s is already In Progress", v.ID)
 	}
 	agents, _ := fleet.LoadAgents(settings.Dir)
-	name := pick.AssigneeFor(v.Task, settings.DefaultAgent)
-	agent, ok := agents[name]
-	if !ok {
-		return fmt.Errorf("%s: assignee %q is not a fleet agent", v.ID, name)
+	agent, err := routedAgent(agents, v.Task, settings.DefaultAgent)
+	if err != nil {
+		return fmt.Errorf("%s: %w", v.ID, err)
 	}
 	fmt.Printf("running %s (%s) with agent %s\n", v.ID, v.Title, agent.Name)
 	return runner.Default(settings.Dir).Run(v.Task, agent, history.TriggerManual)
+}
+
+// routedAgent resolves the agent a task runs with, for surfaces acting on one
+// task at a human's request. Unlike pick.Next it ignores Disabled: `run` is
+// explicit intent, so pausing an agent parks the scheduler without forbidding
+// the work. Every manual route goes through here, or the two drift apart.
+func routedAgent(agents map[string]fleet.Agent, t backlog.Task, defaultAgent string) (fleet.Agent, error) {
+	name := pick.AssigneeFor(t, defaultAgent)
+	agent, ok := agents[name]
+	if !ok {
+		return fleet.Agent{}, fmt.Errorf("assignee %q is not a fleet agent", name)
+	}
+	return agent, nil
+}
+
+// agentCmd is the per-agent pause: list, pause, resume. A pause is a scheduler
+// change only — a run already in flight keeps its timeout, and `herdr-fleet run`
+// still reaches a paused agent, because that call is human intent.
+func agentCmd(args []string) error {
+	settings, err := fleet.LoadSettings()
+	if err != nil {
+		return err
+	}
+	if len(args) == 0 {
+		return fmt.Errorf("usage: herdr-fleet agent list|pause|resume <name>")
+	}
+
+	switch args[0] {
+	case "list":
+		return agentList(settings.Dir)
+	case "pause", "resume":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: herdr-fleet agent %s <name>", args[0])
+		}
+		paused := args[0] == "pause"
+		if err := fleet.SetDisabled(settings.Dir, args[1], paused); err != nil {
+			return err
+		}
+		verb := "resumed"
+		if paused {
+			verb = "paused"
+		}
+		fmt.Printf("%s %s — the daemon notices within one tick (~15s)\n", args[1], verb)
+		if paused {
+			fmt.Println("a run already in flight keeps going; `run` still works")
+		}
+		return nil
+	}
+	return fmt.Errorf("unknown agent command %q", args[0])
+}
+
+// agentList reports the agents as the fleet dir holds them: paused is a fact
+// about the persona file, so it stays true even with the daemon not running.
+func agentList(dir string) error {
+	agents, diags := fleet.LoadAgents(dir)
+	names := make([]string, 0, len(agents))
+	for name := range agents {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		a := agents[name]
+		status := "active"
+		if a.Disabled {
+			status = "paused"
+		}
+		fmt.Printf("%-14s %-8s %s\n", a.Name, status, a.Workdir)
+	}
+	for _, d := range diags {
+		fmt.Fprintf(os.Stderr, "herdr-fleet: %s\n", d)
+	}
+	return nil
 }
 
 func historyCmd(args []string) error {

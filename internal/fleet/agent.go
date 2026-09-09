@@ -23,7 +23,10 @@ type Agent struct {
 	MCPConfig      string   `yaml:"mcp_config"`
 	AgentArgs      []string `yaml:"agent_args"`
 	TimeoutMinutes int      `yaml:"timeout_minutes"`
-	Persona        string   `yaml:"-"`
+	// Disabled keeps the agent in agents/ but out of scheduling: the daemon
+	// starts no new run for it. A run already in flight is untouched.
+	Disabled bool   `yaml:"disabled"`
+	Persona  string `yaml:"-"`
 }
 
 // Diagnostic is one AGENT.md that did not load, and why. The rest of the
@@ -90,6 +93,62 @@ func loadAgent(path, name string) (Agent, error) {
 		a.TimeoutMinutes = 60
 	}
 	return a, nil
+}
+
+// SetDisabled pauses (true) or resumes (false) one agent by rewriting only the
+// disabled line of its frontmatter. AGENT.md is hand-written YAML above a
+// markdown persona, with comments a re-marshal would silently drop — so the
+// file is edited line by line and every byte outside that one line is left
+// exactly as found.
+func SetDisabled(dir, name string, disabled bool) error {
+	path := filepath.Join(dir, "agents", name, "AGENT.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("agent %q: %w", name, err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	start, end, ok := frontmatterRange(lines)
+	if !ok {
+		return fmt.Errorf("agent %q: %s has no frontmatter to edit", name, path)
+	}
+
+	// at is the line holding an existing disabled key, or -1 when there is none.
+	at := -1
+	for i := start; i < end; i++ {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "disabled:") {
+			at = i
+			break
+		}
+	}
+
+	out := lines
+	switch {
+	case disabled && at == -1:
+		out = append(append(append([]string{}, lines[:end]...), "disabled: true"), lines[end:]...)
+	case disabled:
+		out = append(append(append([]string{}, lines[:at]...), "disabled: true"), lines[at+1:]...)
+	case at != -1:
+		out = append(append([]string{}, lines[:at]...), lines[at+1:]...)
+	}
+
+	if err := os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644); err != nil {
+		return fmt.Errorf("agent %q: %w", name, err)
+	}
+	return nil
+}
+
+// frontmatterRange returns the half-open span of the YAML header lines between
+// the two fences. The fences themselves belong to the caller's copy.
+func frontmatterRange(lines []string) (start, end int, ok bool) {
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return 0, 0, false
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return 1, i, true
+		}
+	}
+	return 0, 0, false
 }
 
 // splitFrontmatter separates the YAML header from the markdown body.

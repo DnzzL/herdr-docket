@@ -76,6 +76,7 @@ workspace: worktree           # worktree (default): fresh branch per run
                               # root: work directly on the checkout
 timeout_minutes: 60           # optional — the run's time budget (default 60)
 agent: claude                 # optional — any kind `herdr agent start` supports
+disabled: false               # optional — true parks the agent: no new runs
 ---
 
 You are the persona every run of this agent opens with. Say who the agent
@@ -87,6 +88,24 @@ the difference between a generic LLM and a colleague.
 a run that went sideways is a diff you throw away. `root` is for agents whose
 job *is* the working copy: backlog grooming, docs, anything that must see
 uncommitted state.
+
+### Parking an agent
+
+`disabled: true` keeps the persona on disk but takes the agent out of
+scheduling: the daemon starts nothing new for it, and its `To Do` tasks wait
+in the backlog without a word written on them. Pause from the CLI instead of
+by hand:
+
+```bash
+herdr-fleet agent pause dev      # resume with: agent resume dev
+herdr-fleet agent list           # dev  paused  ~/Projects/myapp
+```
+
+The daemon re-reads `agents/` on every tick, so a pause lands within ~15s and
+needs no restart. Two things it deliberately does *not* do: it never kills a
+run already in flight (that agent keeps its full timeout and still reports its
+task), and it never overrides you — `herdr-fleet run TASK-12` reaches a paused
+agent, because pressing the button is human intent, not scheduling.
 
 ### Example 1 — a PM that triages your project's backlog
 
@@ -175,8 +194,8 @@ Show HN post, prepare the launch thread…), created by the agent itself.
    then age.
 2. It claims the task (`In Progress`), provisions a Herdr workspace on the
    agent's `workdir`, and starts the agent with an assembled prompt: persona
-   + full task (description, acceptance criteria, notes from previous runs)
-   + the reporting protocol.
+   - full task (description, acceptance criteria, notes from previous runs)
+   - the reporting protocol.
 3. The agent works — you can watch it live, jump in, answer its permission
    prompts, or close its workspace to call the run off.
 4. The agent reports: checks `--check-ac`, appends `--append-notes`, sets
@@ -217,11 +236,13 @@ default_agent: dev        # picks up unassigned tasks; unset = leave them alone
 ## Commands
 
 | | |
-|---|---|
+| --- | --- |
 | `herdr-fleet daemon` | the worker (Herdr starts it for you) |
 | `herdr-fleet init` | bootstrap the fleet dir |
 | `herdr-fleet list` | tasks by status, with the routed agent |
 | `herdr-fleet run TASK-12` | run one task now |
+| `herdr-fleet agent list` | the agents, and which are parked |
+| `herdr-fleet agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-fleet history [TASK-12]` | recent runs |
 | `herdr-fleet pane` | the interactive board |
 

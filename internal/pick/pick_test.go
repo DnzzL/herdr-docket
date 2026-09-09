@@ -76,6 +76,39 @@ func TestUnknownAssigneeIsReportedNotRun(t *testing.T) {
 	}
 }
 
+func TestDisabledAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
+	parked := map[string]fleet.Agent{"dev": {Name: "dev", Disabled: true}}
+
+	// A parked agent exists: reporting it Unknown would make the daemon write
+	// "assignee is not a fleet agent" onto the ticket, which is false.
+	res := Next([]backlog.Task{task("T-1", "To Do", "high", "dev")}, parked, "")
+	if res.Task != nil {
+		t.Fatalf("parked agent must not run work, got %v", res.Task.ID)
+	}
+	if len(res.Unknown) != 0 {
+		t.Fatalf("parked agent must not be reported unknown: %v", res.Unknown)
+	}
+
+	// The same holds through the default-agent path: an unassigned task must
+	// not be picked up by a parked default agent.
+	if res := Next([]backlog.Task{task("T-2", "To Do", "", "")}, parked, "dev"); res.Task != nil {
+		t.Fatalf("parked default agent must not steal an unassigned task, got %v", res.Task.ID)
+	}
+}
+
+func TestParkedAgentDoesNotBlockTheRestOfTheQueue(t *testing.T) {
+	res := Next([]backlog.Task{
+		task("T-1", "To Do", "critical", "dev"),
+		task("T-2", "To Do", "low", "scribe"),
+	}, map[string]fleet.Agent{
+		"dev":    {Name: "dev", Disabled: true},
+		"scribe": {Name: "scribe"},
+	}, "")
+	if res.Task == nil || res.Task.ID != "T-2" {
+		t.Fatalf("want T-2 to keep moving, got %+v", res.Task)
+	}
+}
+
 func TestBlockedFailedAndDoneAreLeftAlone(t *testing.T) {
 	res := Next([]backlog.Task{
 		task("T-1", "Blocked", "high", "a"),

@@ -63,6 +63,11 @@ func Next(tasks []backlog.Task, agents map[string]fleet.Agent, defaultAgent stri
 			res.Unknown = append(res.Unknown, t)
 			continue
 		}
+		if agent.Disabled {
+			// Parked, not missing: the task stays in To Do unremarked, and the
+			// rest of the queue keeps moving.
+			continue
+		}
 		if res.Task == nil {
 			res.Task = &todo[i]
 			res.Agent = agent
