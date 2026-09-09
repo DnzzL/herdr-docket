@@ -1,6 +1,7 @@
 package host
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -219,11 +220,50 @@ func TestSlugProducesValidBranchNames(t *testing.T) {
 
 func TestAgentNameFitsHerdrsLimit(t *testing.T) {
 	long := "a-very-long-automation-name-that-herdr-will-not-accept"
-	got := agentName(long)
+	got := agentName(long, "")
 	if len(got) > 32 {
 		t.Fatalf("agentName(%q) = %q, %d chars", long, got, len(got))
 	}
 	if got[len(got)-1] == '-' {
 		t.Errorf("agentName(%q) = %q, want no trailing dash", long, got)
+	}
+}
+
+// Herdr keeps agent names unique across every workspace, and a Failed or
+// Blocked run leaves its workspace open as the place to resume. An untagged
+// name therefore made every retry of a task collide with the workspace its
+// failed attempt abandoned — the retry could not start while the pane it was
+// meant to improve was still holding the name.
+func TestAgentNameKeepsAttemptsAtATaskApart(t *testing.T) {
+	first := agentName("TASK-34 Sweep notara PR review queue: !18-!27", "tl4367")
+	second := agentName("TASK-34 Sweep notara PR review queue: !18-!27", "tl4368")
+	if first == second {
+		t.Fatalf("two attempts at one task share an agent name: %q", first)
+	}
+	for i, got := range []string{first, second} {
+		tag := []string{"tl4367", "tl4368"}[i]
+		if len(got) > 32 {
+			t.Fatalf("agentName = %q, %d chars — over herdr's limit", got, len(got))
+		}
+		if !strings.HasPrefix(got, "task-34") {
+			t.Errorf("agentName = %q, want the task still recognisable at the front", got)
+		}
+		if !strings.HasSuffix(got, tag) {
+			t.Errorf("agentName = %q, want the run tag %q to survive truncation", got, tag)
+		}
+	}
+}
+
+func TestTagIsTheRunsSecondAndDistinguishesAttempts(t *testing.T) {
+	a := Tag("TASK-34-1788981775983655000")
+	b := Tag("TASK-34-1788981776983655000")
+	if a == "" || a != "tl4367" {
+		t.Fatalf("Tag = %q, want tl4367", a)
+	}
+	if a == b {
+		t.Fatal("a second later must be a different tag")
+	}
+	if got := Tag("no-separator-here"); got != "" {
+		t.Fatalf("Tag on an id with no numeric suffix = %q, want empty", got)
 	}
 }

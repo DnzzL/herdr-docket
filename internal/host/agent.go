@@ -54,7 +54,7 @@ func (w agentWork) args() []string {
 func (w agentWork) start(s Session) error {
 	deadline := time.Now().Add(w.knobs.paneReady)
 	for {
-		err := w.ops.AgentStart(agentName(w.a.Name), w.a.Agent, s.PaneID, w.args())
+		err := w.ops.AgentStart(agentName(w.a.Name, w.a.RunTag), w.a.Agent, s.PaneID, w.args())
 		switch {
 		case err == nil:
 			return nil

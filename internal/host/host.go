@@ -15,6 +15,7 @@ package host
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -24,6 +25,7 @@ import (
 // one per task; this package never reads task files or AGENT.md itself.
 type Spec struct {
 	Name      string // used for workspace labels and branch names
+	RunTag    string // per-attempt suffix, see Tag: keeps retries from colliding
 	Repo      string // absolute path the workspace opens on
 	Workspace WorkspaceMode
 	Agent     string // agent kind as understood by `herdr agent start --kind`
@@ -168,11 +170,33 @@ func slug(name string) string {
 }
 
 // agentName fits an automation name into Herdr's agent-name rules: lowercase,
-// [a-z0-9-_], at most 32 characters.
-func agentName(name string) string {
+// [a-z0-9-_], at most 32 characters. Herdr's registry is global, so the run tag
+// is appended after the name is shortened for it — a name that simply lost its
+// tail to the limit would collide with every earlier attempt at the task.
+func agentName(name, tag string) string {
 	s := slug(name)
-	if len(s) > 32 {
-		s = strings.Trim(s[:32], "-")
+	if tag = slug(tag); tag == "" {
+		return s
 	}
-	return s
+	if room := 32 - len(tag) - 1; len(s) > room {
+		s = strings.Trim(s[:room], "-")
+	}
+	return s + "-" + tag
+}
+
+// Tag shortens a run id into something that fits an agent name: the run's
+// second, in base36. Two attempts at one task always land in different seconds
+// — a worker runs one task at a time — so the tag distinguishes a retry from
+// the abandoned workspace it is retrying past. Empty when the id has no numeric
+// suffix to read, which leaves the name untagged rather than wrong.
+func Tag(runID string) string {
+	i := strings.LastIndexByte(runID, '-')
+	if i < 0 {
+		return ""
+	}
+	ns, err := strconv.ParseInt(runID[i+1:], 10, 64)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatInt(ns/int64(time.Second), 36)
 }

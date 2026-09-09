@@ -164,6 +164,7 @@ func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) err
 
 	spec := host.Spec{
 		Name:      t.ID + " " + t.Title,
+		RunTag:    host.Tag(rec.id),
 		Repo:      a.Workdir,
 		Workspace: host.WorkspaceMode(a.Workspace),
 		Agent:     a.Kind,
