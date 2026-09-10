@@ -8,25 +8,25 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
+	"github.com/DnzzL/herdr-fleet/internal/work"
 )
 
 // Assemble builds the run prompt for one task. fleetDir is where the platform
 // backlog lives — the agent works in its own workdir, so every backlog call
 // it makes must carry BACKLOG_CWD.
-func Assemble(a fleet.Agent, v backlog.View, fleetDir string) string {
+func Assemble(a fleet.Agent, v work.Item, fleetDir string) string {
 	var b strings.Builder
 	b.WriteString(a.Persona)
 	b.WriteString("\n\n")
 
 	fmt.Fprintf(&b, "# Your task: %s — %s\n\n", v.ID, v.Title)
-	if v.Description != "" {
-		fmt.Fprintf(&b, "## Description\n\n%s\n\n", v.Description)
+	if v.Body != "" {
+		fmt.Fprintf(&b, "## Description\n\n%s\n\n", v.Body)
 	}
-	if len(v.AcceptanceCriteria) > 0 {
+	if len(v.Criteria) > 0 {
 		b.WriteString("## Acceptance criteria\n\n")
-		for _, c := range v.AcceptanceCriteria {
+		for _, c := range v.Criteria {
 			box := "[ ]"
 			if c.Checked {
 				box = "[x]"
@@ -35,8 +35,8 @@ func Assemble(a fleet.Agent, v backlog.View, fleetDir string) string {
 		}
 		b.WriteString("\n")
 	}
-	if v.ImplementationNotes != "" {
-		fmt.Fprintf(&b, "## Notes from previous runs\n\n%s\n\n", v.ImplementationNotes)
+	if v.Notes != "" {
+		fmt.Fprintf(&b, "## Notes from previous runs\n\n%s\n\n", v.Notes)
 	}
 
 	edit := fmt.Sprintf("BACKLOG_CWD=%s backlog task edit %s", fleetDir, v.ID)

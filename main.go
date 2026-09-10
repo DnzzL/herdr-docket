@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/daemon"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/history"
@@ -33,7 +32,7 @@ Usage:
   herdr-fleet daemon           Run the worker (started by the plugin startup hook)
   herdr-fleet init             Bootstrap the fleet dir (backlog project + example agent)
   herdr-fleet list             List tasks by status, with the routed agent
-  herdr-fleet run <task-id>    Run one task now (any status except In Progress)
+  herdr-fleet run <task-id>    Run one open task now, whatever its status
   herdr-fleet task list        List open work from the queue (--all for closed)
   herdr-fleet task view <id>   Show one task: body, notes and criteria
   herdr-fleet task create      Add work: "<title>" [-a <agent>] [-d "<body>"]
@@ -106,27 +105,31 @@ func list() error {
 	if err != nil {
 		return err
 	}
-	tasks, err := backlog.New(settings.Dir).List()
+	items, err := backlogmd.New(settings.Dir).List()
 	if err != nil {
 		return err
 	}
 	agents, _ := fleet.LoadAgents(settings.Dir)
-	for _, status := range backlog.Statuses {
+	for _, phase := range work.PhasesOf(items) {
 		var lines []string
-		for _, t := range tasks {
-			if t.Status != status {
+		for _, it := range items {
+			if it.Phase != phase {
 				continue
 			}
-			who := strings.Join(t.Assignees, ",")
+			who := it.Assignee
 			if who == "" {
 				who = "-"
-			} else if _, ok := agents[t.Assignees[0]]; !ok {
+			} else if _, ok := agents[who]; !ok {
 				who += " (unknown!)"
 			}
-			lines = append(lines, fmt.Sprintf("  %-10s %-30s %s", t.ID, text.Truncate(t.Title, 30), who))
+			lines = append(lines, fmt.Sprintf("  %-10s %-30s %s", it.ID, text.Truncate(it.Title, 30), who))
 		}
 		if len(lines) > 0 {
-			fmt.Printf("%s:\n%s\n", status, strings.Join(lines, "\n"))
+			heading := phase
+			if heading == "" {
+				heading = "(no phase)"
+			}
+			fmt.Printf("%s:\n%s\n", heading, strings.Join(lines, "\n"))
 		}
 	}
 	return nil
@@ -332,29 +335,29 @@ func runCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	board := backlog.New(settings.Dir)
-	v, err := board.View(args[0])
+	board := backlogmd.New(settings.Dir)
+	it, err := board.Get(args[0])
 	if err != nil {
 		return err
 	}
-	if v.Status == backlog.StatusInProgress {
-		return fmt.Errorf("%s is already In Progress", v.ID)
+	if !it.Open {
+		return fmt.Errorf("%s is already closed — reopen it first if it is still work", it.ID)
 	}
 	agents, _ := fleet.LoadAgents(settings.Dir)
-	agent, err := routedAgent(agents, v.Task, settings.DefaultAgent)
+	agent, err := routedAgent(agents, it, settings.DefaultAgent)
 	if err != nil {
-		return fmt.Errorf("%s: %w", v.ID, err)
+		return fmt.Errorf("%s: %w", it.ID, err)
 	}
-	fmt.Printf("running %s (%s) with agent %s\n", v.ID, v.Title, agent.Name)
-	return runner.Default(settings.Dir).Run(v.Task, agent, history.TriggerManual)
+	fmt.Printf("running %s (%s) with agent %s\n", it.ID, it.Title, agent.Name)
+	return runner.Default(settings.Dir).Run(it, agent, history.TriggerManual)
 }
 
 // routedAgent resolves the agent a task runs with, for surfaces acting on one
 // task at a human's request. Unlike pick.Next it ignores Disabled: `run` is
 // explicit intent, so pausing an agent parks the scheduler without forbidding
 // the work. Every manual route goes through here, or the two drift apart.
-func routedAgent(agents map[string]fleet.Agent, t backlog.Task, defaultAgent string) (fleet.Agent, error) {
-	name := pick.AssigneeFor(t, defaultAgent)
+func routedAgent(agents map[string]fleet.Agent, it work.Item, defaultAgent string) (fleet.Agent, error) {
+	name := pick.AssigneeFor(it, defaultAgent)
 	agent, ok := agents[name]
 	if !ok {
 		return fleet.Agent{}, fmt.Errorf("assignee %q is not a fleet agent", name)

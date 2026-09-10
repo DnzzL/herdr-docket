@@ -14,11 +14,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/history"
 	"github.com/DnzzL/herdr-fleet/internal/pick"
 	"github.com/DnzzL/herdr-fleet/internal/runner"
+	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
 
 // tickInterval is how often the backlog is polled. Short enough that a task
@@ -87,7 +87,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		}
 	}
 
-	board := backlog.New(settings.Dir)
+	board := backlogmd.New(settings.Dir)
 	tasks, err := board.List()
 	if err != nil {
 		log.Printf("backlog poll failed: %v", err)
@@ -108,7 +108,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	for _, t := range res.Unknown {
 		name := pick.AssigneeFor(t, settings.DefaultAgent)
 		note := fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", name, name)
-		if len(t.Assignees) == 0 {
+		if t.Assignee == "" {
 			note = fmt.Sprintf("fleet: default_agent %q (fleet.yaml) is not a fleet agent.", name)
 		}
 		key := t.ID + "/" + name
@@ -117,7 +117,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		}
 		reported[key] = true
 		log.Printf("%s: %s", t.ID, note)
-		if err := board.AppendNote(t.ID, note); err != nil {
+		if err := board.Comment(t.ID, note); err != nil {
 			log.Printf("%s: append note: %v", t.ID, err)
 		}
 	}

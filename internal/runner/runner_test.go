@@ -2,14 +2,15 @@ package runner
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/history"
 	"github.com/DnzzL/herdr-fleet/internal/host"
+	"github.com/DnzzL/herdr-fleet/internal/work"
 )
 
 type fakeHost struct {
@@ -17,8 +18,8 @@ type fakeHost struct {
 	doErr        error
 	closes       int
 	spec         host.Spec
-	// statusAfterDo lets the fake board change the task status mid-run, the
-	// way a real agent reports back through the CLI.
+	// after lets the fake board change the task mid-run, the way a real agent
+	// reports back through the fleet CLI.
 	after func()
 }
 
@@ -35,36 +36,78 @@ func (f *fakeHost) Do(s host.Session, a host.Spec, timeout time.Duration) error 
 	return f.doErr
 }
 
+// fakeBoard is a queue in memory: enough for the runner to read an item back,
+// show it as running, and close it.
 type fakeBoard struct {
-	status  map[string]string
-	notes   []string
-	viewErr error
+	items     map[string]work.Item
+	notes     []string
+	getErr    error
+	phaseErr  error
+	phaseSeen []work.Phase
 }
 
-func newBoard(status string) *fakeBoard {
-	return &fakeBoard{status: map[string]string{"TASK-1": status}}
+func newBoard(id string) *fakeBoard {
+	return &fakeBoard{items: map[string]work.Item{
+		id: {ID: id, Title: "T", Phase: "To Do", Open: true},
+	}}
 }
-func (b *fakeBoard) View(id string) (backlog.View, error) {
-	return backlog.View{Task: backlog.Task{ID: id, Title: "T", Status: b.status[id]}, Description: "d"}, b.viewErr
+
+func (b *fakeBoard) List() ([]work.Item, error) { return nil, nil }
+
+func (b *fakeBoard) Get(id string) (work.Item, error) {
+	if b.getErr != nil {
+		return work.Item{}, b.getErr
+	}
+	it, ok := b.items[id]
+	if !ok {
+		return work.Item{}, fmt.Errorf("no such item %q", id)
+	}
+	return it, nil
 }
-func (b *fakeBoard) SetStatus(id, status string) error { b.status[id] = status; return nil }
-func (b *fakeBoard) AppendNote(id, note string) error  { b.notes = append(b.notes, note); return nil }
+
+func (b *fakeBoard) Create(title, body, assignee string) (string, error) { return "new", nil }
+
+func (b *fakeBoard) Comment(id, text string) error {
+	b.notes = append(b.notes, text)
+	return nil
+}
+
+func (b *fakeBoard) Close(id string, v work.Verdict) error {
+	it := b.items[id]
+	it.Open, it.Verdict = false, v
+	b.items[id] = it
+	return nil
+}
+
+func (b *fakeBoard) SetPhase(id string, p work.Phase) error {
+	b.phaseSeen = append(b.phaseSeen, p)
+	if b.phaseErr != nil {
+		return b.phaseErr
+	}
+	it := b.items[id]
+	it.Phase = string(p)
+	b.items[id] = it
+	return nil
+}
+
+func (b *fakeBoard) verdict(id string) work.Verdict { return b.items[id].Verdict }
+func (b *fakeBoard) open(id string) bool            { return b.items[id].Open }
 
 func run(t *testing.T, h *fakeHost, b *fakeBoard) error {
 	t.Helper()
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	r := New(h, b, "/fleet")
-	return r.Run(backlog.Task{ID: "TASK-1", Title: "T"}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
+	return r.Run(work.Item{ID: "TASK-1", Title: "T", Open: true}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
 }
 
 func TestHappyPathAgentReportsDone(t *testing.T) {
-	b := newBoard(backlog.StatusToDo)
-	h := &fakeHost{after: func() { b.status["TASK-1"] = backlog.StatusDone }}
+	b := newBoard("TASK-1")
+	h := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}
 	if err := run(t, h, b); err != nil {
 		t.Fatal(err)
 	}
-	if b.status["TASK-1"] != backlog.StatusDone {
-		t.Fatalf("status = %s", b.status["TASK-1"])
+	if b.verdict("TASK-1") != work.Done || b.open("TASK-1") {
+		t.Fatalf("verdict = %q, open = %v", b.verdict("TASK-1"), b.open("TASK-1"))
 	}
 	if h.spec.Repo != "/w" || h.spec.Workspace != host.WorkspaceRoot || !strings.Contains(h.spec.Prompt, "TASK-1") {
 		t.Fatalf("spec = %+v", h.spec)
@@ -75,17 +118,17 @@ func TestHappyPathAgentReportsDone(t *testing.T) {
 }
 
 func TestAgentSettledWithoutReportingIsAFailure(t *testing.T) {
-	b := newBoard(backlog.StatusToDo)
+	b := newBoard("TASK-1")
 	if err := run(t, &fakeHost{}, b); err == nil {
 		t.Fatal("want error")
 	}
-	if b.status["TASK-1"] != backlog.StatusFailed {
-		t.Fatalf("status = %s", b.status["TASK-1"])
+	if b.verdict("TASK-1") != work.Failed || b.open("TASK-1") {
+		t.Fatalf("verdict = %q, open = %v", b.verdict("TASK-1"), b.open("TASK-1"))
 	}
 	if len(b.notes) == 0 || !strings.Contains(b.notes[0], "without reporting") {
 		t.Fatalf("notes = %v", b.notes)
 	}
-	// The history must not call this run "done" when the board says Failed.
+	// The history must not call this run "done" when the queue says Failed.
 	runs, err := history.Runs("TASK-1", 1)
 	if err != nil || len(runs) != 1 || runs[0].Status != history.StatusFailed {
 		t.Fatalf("history = %+v, %v", runs, err)
@@ -93,17 +136,17 @@ func TestAgentSettledWithoutReportingIsAFailure(t *testing.T) {
 }
 
 func TestCancelledRunGoesBlockedNotFailed(t *testing.T) {
-	b := newBoard(backlog.StatusToDo)
+	b := newBoard("TASK-1")
 	if err := run(t, &fakeHost{doErr: host.ErrCancelled}, b); err == nil {
 		t.Fatal("want error")
 	}
-	if b.status["TASK-1"] != backlog.StatusBlocked {
-		t.Fatalf("status = %s", b.status["TASK-1"])
+	if b.verdict("TASK-1") != work.Blocked {
+		t.Fatalf("verdict = %q", b.verdict("TASK-1"))
 	}
 }
 
 func TestNonDoneRunsKeepTheirWorkspaceAndNoteIt(t *testing.T) {
-	b := newBoard(backlog.StatusToDo)
+	b := newBoard("TASK-1")
 	h := &fakeHost{doErr: errors.New("boom")}
 	_ = run(t, h, b)
 	if h.closes != 0 {
@@ -115,12 +158,12 @@ func TestNonDoneRunsKeepTheirWorkspaceAndNoteIt(t *testing.T) {
 }
 
 func TestHostFailureMarksTheTaskFailedWithTheReason(t *testing.T) {
-	b := newBoard(backlog.StatusToDo)
+	b := newBoard("TASK-1")
 	if err := run(t, &fakeHost{doErr: errors.New("agent never started")}, b); err == nil {
 		t.Fatal("want error")
 	}
-	if b.status["TASK-1"] != backlog.StatusFailed {
-		t.Fatalf("status = %s", b.status["TASK-1"])
+	if b.verdict("TASK-1") != work.Failed {
+		t.Fatalf("verdict = %q", b.verdict("TASK-1"))
 	}
 	if !strings.Contains(strings.Join(b.notes, " "), "agent never started") {
 		t.Fatalf("notes = %v", b.notes)
@@ -128,19 +171,39 @@ func TestHostFailureMarksTheTaskFailedWithTheReason(t *testing.T) {
 }
 
 func TestAgentsOwnVerdictIsRespectedEvenAfterAHostError(t *testing.T) {
-	// Timeout expired but the agent had already set Blocked: keep its verdict.
-	b := newBoard(backlog.StatusToDo)
+	// Timeout expired but the agent had already closed it Blocked: keep that.
+	b := newBoard("TASK-1")
 	h := &fakeHost{doErr: errors.New("still working after 1m"),
-		after: func() { b.status["TASK-1"] = backlog.StatusBlocked }}
+		after: func() { b.Close("TASK-1", work.Blocked) }}
 	_ = run(t, h, b)
-	if b.status["TASK-1"] != backlog.StatusBlocked {
-		t.Fatalf("status = %s", b.status["TASK-1"])
+	if b.verdict("TASK-1") != work.Blocked {
+		t.Fatalf("verdict = %q", b.verdict("TASK-1"))
+	}
+}
+
+// The claim is display only. A backend that cannot show a phase — a Basecamp
+// to-do — must run exactly the same, and one whose phase write fails must not
+// lose the run over it.
+func TestAPhaseWriteIsBestEffort(t *testing.T) {
+	b := newBoard("TASK-1")
+	b.phaseErr = errors.New("this backend has no phases")
+	h := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}
+	if err := run(t, h, b); err != nil {
+		t.Fatalf("a failed phase write must not fail the run: %v", err)
+	}
+	if b.verdict("TASK-1") != work.Done {
+		t.Fatalf("verdict = %q", b.verdict("TASK-1"))
+	}
+	if len(b.phaseSeen) != 1 || b.phaseSeen[0] != work.PhaseRunning {
+		t.Fatalf("the run should have marked itself running once, saw %v", b.phaseSeen)
 	}
 }
 
 func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
-	b := &fakeBoard{status: map[string]string{"TASK-1": backlog.StatusToDo, "TASK-2": backlog.StatusToDo, "TASK-3": backlog.StatusToDo}}
+	b := newBoard("TASK-1")
+	b.items["TASK-2"] = work.Item{ID: "TASK-2", Open: true, Phase: "To Do"}
+	b.items["TASK-3"] = work.Item{ID: "TASK-3", Open: true, Phase: "To Do"}
 	started, release := make(chan struct{}), make(chan struct{})
 	h := &fakeHost{after: func() { close(started); <-release }}
 	r := New(h, b, "/fleet")
@@ -149,25 +212,25 @@ func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	tree := fleet.Agent{Name: "dev", Workdir: "/repo", Workspace: "worktree", TimeoutMinutes: 1}
 
 	first := make(chan struct{})
-	go func() { defer close(first); r.Run(backlog.Task{ID: "TASK-1"}, rootA, "poll") }()
+	go func() { defer close(first); r.Run(work.Item{ID: "TASK-1"}, rootA, "poll") }()
 	<-started
 	if !r.Busy() || r.CanRun(rootA) {
 		t.Fatal("rootA's slot must be taken")
 	}
 	// Same agent again, and a different root agent on the same checkout: refused.
-	if err := r.Run(backlog.Task{ID: "TASK-2"}, rootA, "poll"); err == nil {
+	if err := r.Run(work.Item{ID: "TASK-2"}, rootA, "poll"); err == nil {
 		t.Fatal("same agent must be refused")
 	}
-	if err := r.Run(backlog.Task{ID: "TASK-2"}, rootB, "poll"); err == nil || r.CanRun(rootB) {
+	if err := r.Run(work.Item{ID: "TASK-2"}, rootB, "poll"); err == nil || r.CanRun(rootB) {
 		t.Fatal("a root-mode agent sharing the checkout must be refused")
 	}
 	// A worktree agent on the same repo gets its own checkout: allowed.
 	if !r.CanRun(tree) {
 		t.Fatal("a worktree agent must be free to run")
 	}
-	h2 := &fakeHost{after: func() { b.status["TASK-3"] = backlog.StatusDone }}
+	h2 := &fakeHost{after: func() { b.Close("TASK-3", work.Done) }}
 	r.host = h2
-	if err := r.Run(backlog.Task{ID: "TASK-3"}, tree, "poll"); err != nil {
+	if err := r.Run(work.Item{ID: "TASK-3"}, tree, "poll"); err != nil {
 		t.Fatalf("worktree run alongside a root run: %v", err)
 	}
 	close(release)

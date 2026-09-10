@@ -14,22 +14,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/history"
 	"github.com/DnzzL/herdr-fleet/internal/host"
 	"github.com/DnzzL/herdr-fleet/internal/hostpath"
 	"github.com/DnzzL/herdr-fleet/internal/prompt"
+	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
-
-// Board is the slice of the backlog client a run needs. The agent talks to
-// the same backlog itself, through the CLI; this is only the claim and the
-// safety net around it.
-type Board interface {
-	View(id string) (backlog.View, error)
-	SetStatus(id, status string) error
-	AppendNote(id, note string) error
-}
 
 // Runner runs tasks on a host, one at a time *per checkout*. The unit of
 // mutual exclusion is what a run mutates: an agent in worktree mode gets its
@@ -41,20 +33,20 @@ type Board interface {
 // from racing the daemon into the same agent or the same checkout.
 type Runner struct {
 	host     host.Host
-	board    Board
+	board    work.Source
 	fleetDir string
 	busy     map[string]*os.File
 	mu       sync.Mutex
 }
 
 // New returns a Runner working through h against the board.
-func New(h host.Host, b Board, fleetDir string) *Runner {
+func New(h host.Host, b work.Source, fleetDir string) *Runner {
 	return &Runner{host: h, board: b, fleetDir: fleetDir, busy: map[string]*os.File{}}
 }
 
 // Default returns a Runner driving the real Herdr and the real backlog CLI.
 func Default(fleetDir string) *Runner {
-	return New(host.New(), backlog.New(fleetDir), fleetDir)
+	return New(host.New(), backlogmd.New(fleetDir), fleetDir)
 }
 
 // LockKey names what a run of this agent would mutate: the shared checkout
@@ -138,8 +130,9 @@ func sanitize(s string) string {
 
 // Run executes the task synchronously. A task offered while its agent (or,
 // in root mode, its checkout) is in flight is refused, not queued — it stays
-// To Do and the next tick sees it.
-func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) error {
+// open and the next tick sees it. The lock is the whole claim: a task routes
+// to exactly one agent, so holding that agent's slot is holding the task.
+func (r *Runner) Run(t work.Item, a fleet.Agent, trigger history.Trigger) error {
 	key := LockKey(a)
 	if !r.acquire(key) {
 		return fmt.Errorf("%s: a run is already in flight for %s", t.ID, key)
@@ -147,19 +140,12 @@ func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) err
 	defer r.release(key)
 
 	rec := recorder{id: history.NewID(t.ID), task: t.ID, trigger: trigger}
-	v, err := r.board.View(t.ID)
+	v, err := r.board.Get(t.ID)
 	if err != nil {
 		rec.record(history.StatusFailed, host.Session{}, err.Error())
 		return err
 	}
-	if v.Status == backlog.StatusInProgress {
-		// Claimed by another process between our caller's read and our lock.
-		return fmt.Errorf("%s is already In Progress", t.ID)
-	}
-	if err := r.board.SetStatus(t.ID, backlog.StatusInProgress); err != nil {
-		rec.record(history.StatusFailed, host.Session{}, err.Error())
-		return err
-	}
+	r.claim(t.ID)
 	rec.record(history.StatusScheduled, host.Session{}, "")
 
 	spec := host.Spec{
@@ -189,7 +175,7 @@ func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) err
 		rec.record(history.StatusCancelled, session, err.Error())
 	case err != nil:
 		rec.record(history.StatusFailed, session, err.Error())
-	case final == backlog.StatusFailed:
+	case final == work.Failed:
 		// The run mechanics worked, but "the agent settled" is only a success
 		// if it reported a verdict; reconcile turned silence into Failed and
 		// the history must say the same.
@@ -201,35 +187,49 @@ func (r *Runner) Run(t backlog.Task, a fleet.Agent, trigger history.Trigger) err
 	return err
 }
 
-// reconcile makes the board tell the truth after a run and returns the
-// task's final status: the agent's own verdict stands, but a task left
-// "In Progress" gets the outcome the run mechanics imply. A cancelled run
-// (workspace closed under it) goes Blocked — somebody decided, a human should
-// say what happens next. Anything else that leaves the task unreported is
-// Failed.
-func (r *Runner) reconcile(taskID string, runErr error) string {
-	v, err := r.board.View(taskID)
+// claim shows the item as being worked on, where the backend can say so. The
+// write is display only and best-effort: a binary backend has no such state,
+// and the run lock — not this — is what keeps two runs apart, so a backend
+// that cannot say it is not a reason to refuse the run.
+func (r *Runner) claim(id string) {
+	p, ok := r.board.(work.Phaser)
+	if !ok {
+		return
+	}
+	if err := p.SetPhase(id, work.PhaseRunning); err != nil {
+		log.Printf("%s: mark as running: %v", id, err)
+	}
+}
+
+// reconcile makes the item tell the truth after a run and returns the verdict
+// it ended on. The agent's own verdict stands: if the agent closed the item,
+// there is nothing to do. An item the agent left open gets the verdict the run
+// mechanics imply — a cancelled run (workspace closed under it) goes Blocked,
+// because somebody decided and a human should say what happens next; anything
+// else that leaves the item unreported is Failed.
+func (r *Runner) reconcile(taskID string, runErr error) work.Verdict {
+	v, err := r.board.Get(taskID)
 	if err != nil {
 		log.Printf("%s: cannot re-read the task after the run: %v", taskID, err)
 		return ""
 	}
-	if v.Status != backlog.StatusInProgress {
-		return v.Status // the agent reported; its verdict stands
+	if !v.Open {
+		return v.Verdict // the agent reported; its verdict stands
 	}
-	status, note := backlog.StatusFailed, "fleet: the agent settled without reporting a status."
+	verdict, note := work.Failed, "fleet: the agent settled without reporting a status."
 	switch {
 	case errors.Is(runErr, host.ErrCancelled):
-		status, note = backlog.StatusBlocked, "fleet: the run's workspace was closed — called off by a human."
+		verdict, note = work.Blocked, "fleet: the run's workspace was closed — called off by a human."
 	case runErr != nil:
 		note = "fleet: run failed: " + runErr.Error()
 	}
-	if err := r.board.AppendNote(taskID, note); err != nil {
+	if err := r.board.Comment(taskID, note); err != nil {
 		log.Printf("%s: append note: %v", taskID, err)
 	}
-	if err := r.board.SetStatus(taskID, status); err != nil {
-		log.Printf("%s: set status %s: %v", taskID, status, err)
+	if err := r.board.Close(taskID, verdict); err != nil {
+		log.Printf("%s: close as %s: %v", taskID, verdict, err)
 	}
-	return status
+	return verdict
 }
 
 // cleanup decides what happens to the run's workspace. A task that ended Done
@@ -237,18 +237,18 @@ func (r *Runner) reconcile(taskID string, runErr error) string {
 // workspace is torn down. Anything else keeps its workspace open as the place
 // to resume: the board's enter-jump lands there, and the note names it for
 // anyone reading the ticket instead of the board.
-func (r *Runner) cleanup(taskID string, s host.Session, final string) {
+func (r *Runner) cleanup(taskID string, s host.Session, final work.Verdict) {
 	if s.WorkspaceID == "" {
 		return
 	}
-	if final == backlog.StatusDone {
+	if final == work.Done {
 		if err := r.host.Close(s); err != nil {
 			log.Printf("%s: close workspace %s: %v", taskID, s.WorkspaceID, err)
 		}
 		return
 	}
 	note := fmt.Sprintf("fleet: the run's workspace %s (pane %s) is left open — jump in to resume.", s.WorkspaceID, s.PaneID)
-	if err := r.board.AppendNote(taskID, note); err != nil {
+	if err := r.board.Comment(taskID, note); err != nil {
 		log.Printf("%s: append note: %v", taskID, err)
 	}
 }

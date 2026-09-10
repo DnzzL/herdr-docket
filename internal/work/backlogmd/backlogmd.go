@@ -87,6 +87,35 @@ var verdicts = map[work.Verdict]string{
 	work.Blocked: backlog.StatusBlocked,
 }
 
+// verdictOf is the same table read backwards: what a closed item's status
+// word still says about how it ended. Backlog.md is rich enough to keep the
+// verdict, which is how the runner knows whether to tear down a run's
+// workspace or leave it open to resume. A binary backend cannot, and simply
+// leaves Verdict empty.
+func verdictOf(status string) work.Verdict {
+	for v, s := range verdicts {
+		if s == status {
+			return v
+		}
+	}
+	return ""
+}
+
+// SetPhase shows the item as being worked on. Backlog.md has a state for it;
+// this is the only phase the fleet ever writes, and it is display only — the
+// run lock is what keeps two runs apart, so nothing reads this back.
+func (s *Source) SetPhase(id string, phase work.Phase) error {
+	status, ok := phases[phase]
+	if !ok {
+		return fmt.Errorf("phase %q: the backlogmd adapter does not know it", phase)
+	}
+	return s.client.SetStatus(id, status)
+}
+
+var phases = map[work.Phase]string{
+	work.PhaseRunning: backlog.StatusInProgress,
+}
+
 // item maps a Backlog.md task onto the fleet's vocabulary. A task is open
 // until a verdict has closed it: Done, Failed and Blocked are all closed to
 // the fleet, and the native word survives in Phase for the board to show.
@@ -97,6 +126,7 @@ func item(t backlog.Task) work.Item {
 		Assignee:  first(t.Assignees),
 		Open:      open(t.Status),
 		Phase:     t.Status,
+		Verdict:   verdictOf(t.Status),
 		Priority:  t.Priority,
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,

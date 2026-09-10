@@ -4,21 +4,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
+	"github.com/DnzzL/herdr-fleet/internal/work"
 )
 
 func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 	got := Assemble(
 		fleet.Agent{Name: "marketing", Persona: "You run publication."},
-		backlog.View{
-			Task:        backlog.Task{ID: "TASK-7", Title: "Draft launch post"},
-			Description: "Write the Show HN post.",
-			AcceptanceCriteria: []backlog.Criterion{
+		work.Item{
+			ID: "TASK-7", Title: "Draft launch post", Open: true,
+			Body: "Write the Show HN post.",
+			Criteria: []work.Criterion{
 				{Index: 1, Text: "under 200 words", Checked: false},
 				{Index: 2, Text: "links the repo", Checked: true},
 			},
-			ImplementationNotes: "previous attempt stalled",
+			Notes: "previous attempt stalled",
 		},
 		"/Users/x/fleet",
 	)
@@ -41,7 +41,7 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 
 func TestAssembleOmitsEmptySections(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		backlog.View{Task: backlog.Task{ID: "T-1", Title: "t"}}, "/d")
+		work.Item{ID: "T-1", Title: "t", Open: true}, "/d")
 	for _, absent := range []string{"Acceptance criteria", "Notes from previous runs", "## Description"} {
 		if strings.Contains(got, absent) {
 			t.Fatalf("empty section %q rendered:\n%s", absent, got)

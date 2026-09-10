@@ -1,9 +1,10 @@
 ---
 id: TASK-6
 title: Migrate the fleet onto the port (mechanical)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:10'
+updated_date: '2026-09-10 20:20'
 labels: []
 dependencies:
   - TASK-4

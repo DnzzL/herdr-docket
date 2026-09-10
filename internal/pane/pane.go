@@ -12,13 +12,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/herdr"
 	"github.com/DnzzL/herdr-fleet/internal/history"
+	"github.com/DnzzL/herdr-fleet/internal/host"
 	"github.com/DnzzL/herdr-fleet/internal/pick"
 	"github.com/DnzzL/herdr-fleet/internal/runner"
 	"github.com/DnzzL/herdr-fleet/internal/text"
+	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
 
 var (
@@ -31,31 +33,31 @@ var (
 	warnStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )
 
-// row is one line of the board: a status header, a spacer between groups, or
+// row is one line of the board: a phase header, a spacer between groups, or
 // a task under a header.
 type row struct {
 	header string
 	spacer bool
-	task   backlog.Task
+	task   work.Item
 	last   *history.Record
 }
 
 func (r row) selectable() bool { return r.header == "" && !r.spacer }
 
-// rows lays the board out: every fleet status in lifecycle order, tasks under
+// rows lays the board out: every phase the queue actually uses, tasks under
 // each, a header per non-empty group and a blank spacer between groups. When
 // query is non-empty only tasks whose ID or title contain it (case-insensitive)
 // are included. Pure, so the layout is testable without a terminal.
-func rows(tasks []backlog.Task, last map[string]*history.Record, query string) []row {
+func rows(items []work.Item, last map[string]*history.Record, query string) []row {
 	query = strings.ToLower(query)
 	var out []row
-	for _, status := range backlog.Statuses {
+	for _, phase := range work.PhasesOf(items) {
 		var group []row
-		for _, t := range tasks {
-			if t.Status != status || !matches(t, query) {
+		for _, it := range items {
+			if it.Phase != phase || !matches(it, query) {
 				continue
 			}
-			group = append(group, row{task: t, last: last[t.ID]})
+			group = append(group, row{task: it, last: last[it.ID]})
 		}
 		if len(group) == 0 {
 			continue
@@ -63,7 +65,11 @@ func rows(tasks []backlog.Task, last map[string]*history.Record, query string) [
 		if len(out) > 0 {
 			out = append(out, row{spacer: true})
 		}
-		out = append(out, row{header: status})
+		heading := phase
+		if heading == "" {
+			heading = "(no phase)"
+		}
+		out = append(out, row{header: heading})
 		out = append(out, group...)
 	}
 	return out
@@ -71,24 +77,25 @@ func rows(tasks []backlog.Task, last map[string]*history.Record, query string) [
 
 // matches reports whether the task's ID or title contains query, which the
 // caller has already lowercased. An empty query matches everything.
-func matches(t backlog.Task, query string) bool {
+func matches(it work.Item, query string) bool {
 	if query == "" {
 		return true
 	}
-	return strings.Contains(strings.ToLower(t.ID), query) ||
-		strings.Contains(strings.ToLower(t.Title), query)
+	return strings.Contains(strings.ToLower(it.ID), query) ||
+		strings.Contains(strings.ToLower(it.Title), query)
 }
 
-func statusStyle(s string) lipgloss.Style {
-	switch s {
-	case backlog.StatusDone:
+// phaseStyle colours a group heading by the fleet's own words for the common
+// phases. A backend with phases of its own — or none — renders plain, which is
+// why nothing depends on this: the board is readable either way.
+func phaseStyle(phase string) lipgloss.Style {
+	switch phase {
+	case "Done", "In Progress":
 		return okStyle
-	case backlog.StatusFailed:
+	case "Failed":
 		return failStyle
-	case backlog.StatusBlocked:
+	case "Blocked":
 		return warnStyle
-	case backlog.StatusInProgress:
-		return okStyle
 	}
 	return lipgloss.NewStyle()
 }
@@ -111,8 +118,9 @@ const (
 
 type model struct {
 	dir          string
+	src          work.Source
 	defaultAgent string
-	tasks        []backlog.Task
+	tasks        []work.Item
 	last         map[string]*history.Record
 	rows         []row
 	agents       map[string]fleet.Agent
@@ -129,7 +137,7 @@ type model struct {
 }
 
 type refreshMsg struct {
-	tasks  []backlog.Task
+	tasks  []work.Item
 	last   map[string]*history.Record
 	agents map[string]fleet.Agent
 	err    error
@@ -143,29 +151,35 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	m := model{dir: settings.Dir, defaultAgent: settings.DefaultAgent, runs: runner.Default(settings.Dir)}
+	src := backlogmd.New(settings.Dir)
+	m := model{
+		dir:          settings.Dir,
+		src:          src,
+		defaultAgent: settings.DefaultAgent,
+		runs:         runner.New(host.New(), src, settings.Dir),
+	}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
 }
 
-func (m model) Init() tea.Cmd { return tea.Batch(refresh(m.dir), tick()) }
+func (m model) Init() tea.Cmd { return tea.Batch(refresh(m.src, m.dir), tick()) }
 
 func tick() tea.Cmd {
 	return tea.Tick(5*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
-func refresh(dir string) tea.Cmd {
+func refresh(src work.Source, dir string) tea.Cmd {
 	return func() tea.Msg {
-		tasks, err := backlog.New(dir).List()
+		items, err := src.List()
 		if err != nil {
 			return refreshMsg{err: err}
 		}
 		last := map[string]*history.Record{}
-		for _, t := range tasks {
-			last[t.ID], _ = history.LastRun(t.ID)
+		for _, it := range items {
+			last[it.ID], _ = history.LastRun(it.ID)
 		}
 		agents, _ := fleet.LoadAgents(dir)
-		return refreshMsg{tasks: tasks, last: last, agents: agents}
+		return refreshMsg{tasks: items, last: last, agents: agents}
 	}
 }
 
@@ -188,12 +202,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rebuildRows()
 		m.clampSel()
 	case tickMsg:
-		return m, tea.Batch(refresh(m.dir), tick())
+		return m, tea.Batch(refresh(m.src, m.dir), tick())
 	case ranMsg:
 		if msg.err != nil {
 			m.status = msg.err.Error()
 		}
-		return m, refresh(m.dir)
+		return m, refresh(m.src, m.dir)
 	case tea.KeyMsg:
 		if m.mode == searching {
 			return m.updateSearch(msg)
@@ -253,9 +267,9 @@ func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		title, assignee := m.pending, strings.TrimSpace(m.input)
 		m.mode, m.input, m.pending = browsing, "", ""
-		dir := m.dir
+		src := m.src
 		return m, func() tea.Msg {
-			_, err := backlog.New(dir).Create(title, "", assignee)
+			_, err := src.Create(title, "", assignee)
 			return ranMsg{err: err}
 		}
 	case "backspace":
@@ -353,8 +367,8 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 	if r == nil {
 		return m, nil
 	}
-	if r.task.Status == backlog.StatusInProgress {
-		m.status = r.task.ID + " is already In Progress"
+	if !r.task.Open {
+		m.status = r.task.ID + " is already closed"
 		return m, nil
 	}
 	name := pick.AssigneeFor(r.task, m.defaultAgent)
@@ -442,10 +456,10 @@ func (m model) boardView() string {
 			continue
 		}
 		if r.header != "" {
-			fmt.Fprintf(&b, "%s\n", headerStyle.Render(statusStyle(r.header).Render(r.header)))
+			fmt.Fprintf(&b, "%s\n", headerStyle.Render(phaseStyle(r.header).Render(r.header)))
 			continue
 		}
-		who := strings.Join(r.task.Assignees, ",")
+		who := r.task.Assignee
 		if who == "" {
 			who = "-"
 		} else if _, ok := m.agents[who]; !ok {

@@ -4,13 +4,17 @@
 // own vocabulary. Nothing above an adapter knows which backend answered.
 package work
 
+import "sort"
+
 // Item is one unit of work as the fleet sees it.
 //
 // Open is the only state the fleet reads: an item stays open until a verdict
 // closes it, which is all a binary backend (a Basecamp to-do) can express.
 // Phase is the backend's own status word, carried for display only — written
-// best-effort, never read back. Assignee is a plain routing key, not an
-// account: each adapter decides what carries it.
+// best-effort, never read back. Verdict is how a closed item ended, when the
+// backend can still say: a rich backend keeps the verdict, a binary one only
+// knows the item is closed and leaves it empty. Assignee is a plain routing
+// key, not an account: each adapter decides what carries it.
 type Item struct {
 	ID        string
 	Title     string
@@ -19,6 +23,7 @@ type Item struct {
 	Assignee  string
 	Open      bool
 	Phase     string
+	Verdict   Verdict
 	Priority  string
 	Ordinal   float64
 	CreatedAt string
@@ -45,6 +50,23 @@ const (
 	Blocked Verdict = "blocked"
 )
 
+// Phase is the fleet's word for what a run is doing, for the backends that
+// can show it. Display only, written best-effort, never read back.
+type Phase string
+
+// PhaseRunning is the one phase the fleet writes: this item is being worked
+// on right now.
+const PhaseRunning Phase = "running"
+
+// Phaser is the optional capability of a source that can show an item as
+// being worked on. Backlog.md has an In Progress state to write; a Basecamp
+// to-do is simply done or not, and the run lock is what actually keeps two
+// runs apart — so a source without this is not a lesser source, just a
+// quieter one.
+type Phaser interface {
+	SetPhase(id string, phase Phase) error
+}
+
 // Source is the port the fleet's queue lives behind. Picking, running and the
 // board speak only this.
 type Source interface {
@@ -53,4 +75,38 @@ type Source interface {
 	Create(title, body, assignee string) (string, error)
 	Comment(id, text string) error
 	Close(id string, verdict Verdict) error
+}
+
+// PhaseOrder is the order the fleet shows phases in, most actionable first.
+// A default rather than a closed set: a backend with phases of its own gets
+// them listed after these, in the order it reports them. Display only —
+// nothing here decides what runs; Open does.
+var PhaseOrder = []string{"To Do", "In Progress", "Blocked", "Failed", "Done"}
+
+// PhaseRank sorts a phase for display. Phases the fleet does not know tie,
+// and keep the order they arrived in.
+func PhaseRank(phase string) int {
+	for i, p := range PhaseOrder {
+		if p == phase {
+			return i
+		}
+	}
+	return len(PhaseOrder)
+}
+
+// PhasesOf lists the phases these items actually use, most actionable first —
+// the order a board or a listing should show them in. Backend-blind: a phase
+// the fleet does not know by name still gets its place, just after the ones it
+// does, in the order it turned up.
+func PhasesOf(items []Item) []string {
+	var phases []string
+	seen := map[string]bool{}
+	for _, it := range items {
+		if !seen[it.Phase] {
+			seen[it.Phase] = true
+			phases = append(phases, it.Phase)
+		}
+	}
+	sort.SliceStable(phases, func(i, j int) bool { return PhaseRank(phases[i]) < PhaseRank(phases[j]) })
+	return phases
 }
