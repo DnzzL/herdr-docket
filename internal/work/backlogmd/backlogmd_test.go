@@ -2,11 +2,13 @@ package backlogmd
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-fleet/internal/work/worktest"
 )
 
 // fakeClient is the adapter's seam: the Backlog.md client is a process
@@ -175,4 +177,95 @@ func TestCommentAppendsWithoutReplacing(t *testing.T) {
 	if want := []string{"why it failed"}; !reflect.DeepEqual(f.comments, want) {
 		t.Fatalf("comments %v, want %v", f.comments, want)
 	}
+}
+
+// The adapter is held to the port's contract, not just to the mapping of a
+// canned response. Every backend the fleet speaks to runs the same suite, so
+// a new adapter is judged by behaviour rather than by its author's taste.
+func TestSourceMeetsTheContract(t *testing.T) {
+	worktest.Run(t, func(t *testing.T) work.Source { return newWith(&memClient{}) })
+}
+
+// memClient is a Backlog.md project in miniature: enough state for the
+// contract to be exercised end to end, rather than one canned reply per test.
+type memClient struct {
+	seq   int
+	order []string
+	tasks map[string]*memTask
+}
+
+type memTask struct {
+	task     backlog.Task
+	body     string
+	notes    string
+	criteria []backlog.Criterion
+}
+
+func (m *memClient) put(t *memTask) {
+	if m.tasks == nil {
+		m.tasks = map[string]*memTask{}
+	}
+	m.order = append(m.order, t.task.ID)
+	m.tasks[t.task.ID] = t
+}
+
+func (m *memClient) find(id string) (*memTask, error) {
+	mt, ok := m.tasks[id]
+	if !ok {
+		return nil, fmt.Errorf("no such task %q", id)
+	}
+	return mt, nil
+}
+
+func (m *memClient) List() ([]backlog.Task, error) {
+	tasks := make([]backlog.Task, 0, len(m.order))
+	for _, id := range m.order {
+		tasks = append(tasks, m.tasks[id].task)
+	}
+	return tasks, nil
+}
+
+func (m *memClient) View(id string) (backlog.View, error) {
+	mt, err := m.find(id)
+	if err != nil {
+		return backlog.View{}, err
+	}
+	return backlog.View{
+		Task:                mt.task,
+		Description:         mt.body,
+		AcceptanceCriteria:  mt.criteria,
+		ImplementationNotes: mt.notes,
+	}, nil
+}
+
+func (m *memClient) Create(title, body, assignee string) (string, error) {
+	m.seq++
+	t := &memTask{task: backlog.Task{ID: fmt.Sprintf("TASK-%d", m.seq), Title: title, Status: backlog.StatusToDo}}
+	if assignee != "" {
+		t.task.Assignees = []string{assignee}
+	}
+	t.body = body
+	m.put(t)
+	return t.task.ID, nil
+}
+
+func (m *memClient) SetStatus(id, status string) error {
+	mt, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	mt.task.Status = status
+	return nil
+}
+
+func (m *memClient) AppendNote(id, note string) error {
+	mt, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	if mt.notes != "" {
+		mt.notes += "\n\n"
+	}
+	mt.notes += note
+	return nil
 }

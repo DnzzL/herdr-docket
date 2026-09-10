@@ -1,9 +1,10 @@
 ---
 id: TASK-5
 title: 'Adapter conformance suite: one contract every Source must pass'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:09'
+updated_date: '2026-09-10 20:16'
 labels: []
 dependencies:
   - TASK-4
