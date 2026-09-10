@@ -104,6 +104,9 @@ func (s *Source) Get(id string) (work.Item, error) {
 	it.Body = body(t)
 	it.Notes = notes(comments)
 	it.Criteria = criteria(t.Steps)
+	if !it.Open {
+		it.Verdict = verdictOf(comments)
+	}
 	return it, nil
 }
 
@@ -133,11 +136,49 @@ func (s *Source) Comment(id, text string) error {
 // look exactly like a finished one; the comment is the only place left to say
 // which it was. The completion comes first so that a failure to comment
 // leaves an item the fleet has closed, not one it will run again.
+//
+// An unknown verdict is refused before anything is written. Treating a typo as
+// a close would quietly throw away the item: the fleet reads Open, so a closed
+// item is one it will never look at again.
 func (s *Source) Close(id string, v work.Verdict) error {
+	if !known(v) {
+		return fmt.Errorf("close %s: unknown verdict %q", id, v)
+	}
 	if err := s.api.post("/todos/"+id+"/completion.json", nil, nil); err != nil {
 		return err
 	}
-	return s.Comment(id, "Verdict: "+string(v))
+	return s.Comment(id, verdictPrefix+string(v))
+}
+
+// verdictPrefix marks the comment Close writes. Basecamp keeps no field for
+// how a to-do ended, so the adapter puts it in the one place Basecamp does
+// have, and reads it back — which is what stops Verdict from being empty for
+// every run of a Basecamp fleet.
+const verdictPrefix = "Verdict: "
+
+// verdictOf reads back the verdict this adapter recorded when it closed the
+// to-do, newest first. A to-do ticked off by hand in Basecamp has no such
+// comment; an empty verdict is the honest answer there, and the runner falls
+// back to reading the to-do as closed-and-nothing-more.
+func verdictOf(comments []comment) work.Verdict {
+	for i := len(comments) - 1; i >= 0; i-- {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(htmlToMarkdown(comments[i].Content)), verdictPrefix)
+		if !ok {
+			continue
+		}
+		return work.Verdict(strings.TrimSpace(rest))
+	}
+	return ""
+}
+
+// known is the same check the Backlog.md adapter makes, for the same reason:
+// the port writes three verdicts and no others.
+func known(v work.Verdict) bool {
+	switch v {
+	case work.Done, work.Failed, work.Blocked:
+		return true
+	}
+	return false
 }
 
 // item maps a Basecamp to-do onto the fleet's vocabulary. Assignee is left to

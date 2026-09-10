@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-fleet/internal/work/worktest"
 )
 
 // fakeBasecamp answers the endpoints the adapter uses and remembers what it
@@ -325,5 +326,116 @@ func TestABodyIsEscapedRatherThanTurnedIntoMarkup(t *testing.T) {
 	got := richText("a <b>bold</b> claim")
 	if !strings.Contains(got, "&lt;b&gt;") || strings.Contains(got, "<b>") {
 		t.Fatalf("richText(%q) = %q, want the angle brackets escaped", "a <b>bold</b> claim", got)
+	}
+}
+
+// The same contract Backlog.md is already held to, run against an in-memory
+// Basecamp. This is the whole point of the port: a second backend is judged by
+// behaviour the fleet already depends on, rather than by whatever its author
+// happened to try by hand.
+func TestSourceMeetsTheContract(t *testing.T) {
+	worktest.Run(t, newInMemoryBasecamp)
+}
+
+// newInMemoryBasecamp is a Source over a fresh, empty fake Basecamp. The
+// contract suite calls this once per subtest, so each one starts clean — which
+// is the reason a real shared Basecamp project could not be used here.
+func newInMemoryBasecamp(t *testing.T) work.Source {
+	t.Helper()
+	return newInMemoryBasecampOn(t, newFakeServer("111", "222"))
+}
+
+func newInMemoryBasecampOn(t *testing.T, f *fakeServer) *Source {
+	t.Helper()
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	s, err := New(Config{AccountID: "1", Lists: map[string]string{"dev": "111", "reviewer": "222"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.api.base = srv.URL
+	s.api.http = srv.Client()
+	s.api.tokens = &fakeTokens{token: "tok"}
+	s.api.sleep = func(time.Duration) {}
+	return s
+}
+
+// Close is where a binary backend can throw an item away, because the fleet's
+// only question is whether it is open. An unknown verdict is refused before
+// anything is written.
+func TestCloseRefusesAVerdictItDoesNotKnow(t *testing.T) {
+	f := &fakeBasecamp{}
+	err := newTestSource(t, testConfig(), f).Close("7", work.Verdict("probably"))
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	if len(f.requests) != 0 {
+		t.Fatalf("wrote to Basecamp anyway: %v", f.requests)
+	}
+}
+
+// The runner decides whether to tear a successful run's workspace down by
+// reading how the item ended. Basecamp has no field for that, so Verdict would
+// be empty for every closed to-do and every run — including the successful
+// ones — would look unfinished and keep its workspace open. The adapter puts
+// the verdict in the comment it writes on close, and reads it back.
+func TestAClosedTodoRemembersHowItEnded(t *testing.T) {
+	for _, v := range []work.Verdict{work.Done, work.Failed, work.Blocked} {
+		t.Run(string(v), func(t *testing.T) {
+			s := newInMemoryBasecampOn(t, newFakeServer("111", "222"))
+			id, err := s.Create("Finish me", "", "dev")
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			if err := s.Close(id, v); err != nil {
+				t.Fatalf("Close(%s): %v", v, err)
+			}
+			it, err := s.Get(id)
+			if err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if it.Open {
+				t.Fatal("still open after Close")
+			}
+			if it.Verdict != v {
+				t.Fatalf("Verdict = %q, want %q", it.Verdict, v)
+			}
+		})
+	}
+}
+
+// A to-do somebody ticked off by hand has no verdict to read, and the adapter
+// must not invent one: "closed, and nothing more said" is the honest answer.
+func TestATodoClosedByHandHasNoVerdict(t *testing.T) {
+	f := &fakeBasecamp{routes: map[string]string{
+		"GET /todos/7.json":               `{"id":7,"status":"completed","completed":true,"parent":{"id":111}}`,
+		"GET /recordings/7/comments.json": `[]`,
+	}}
+	it, err := newTestSource(t, testConfig(), f).Get("7")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if it.Open {
+		t.Fatal("a completed to-do must read as closed")
+	}
+	if it.Verdict != "" {
+		t.Fatalf("Verdict = %q, want none: nobody recorded one", it.Verdict)
+	}
+}
+
+func TestTheNewestVerdictIsTheOneThatCounts(t *testing.T) {
+	f := &fakeBasecamp{routes: map[string]string{
+		"GET /todos/7.json": `{"id":7,"status":"completed","completed":true,"parent":{"id":111}}`,
+		"GET /recordings/7/comments.json": `[
+			{"id":1,"content":"<div>Verdict: failed</div>"},
+			{"id":2,"content":"<div>Verdict: done</div>"}
+		]`,
+	}}
+	it, err := newTestSource(t, testConfig(), f).Get("7")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if it.Verdict != work.Done {
+		t.Fatalf("Verdict = %q, want the newest, %q", it.Verdict, work.Done)
 	}
 }

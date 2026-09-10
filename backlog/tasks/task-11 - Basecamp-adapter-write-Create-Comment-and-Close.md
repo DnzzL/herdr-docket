@@ -1,9 +1,10 @@
 ---
 id: TASK-11
 title: 'Basecamp adapter (write): Create, Comment and Close'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:10'
+updated_date: '2026-09-10 20:47'
 labels: []
 dependencies:
   - TASK-10
@@ -18,9 +19,9 @@ Complete the Basecamp adapter. task create posts a to-do into the agent's list (
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Create posts into the list that carries the assignee and returns the new item's id
-- [ ] #2 Comment appends a comment to the to-do
-- [ ] #3 Close completes the to-do and records the verdict as a comment, for all three verdicts
-- [ ] #4 the basecamp adapter passes worktest.Contract
-- [ ] #5 go test ./... green
+- [x] #1 Create posts into the list that carries the assignee and returns the new item's id
+- [x] #2 Comment appends a comment to the to-do
+- [x] #3 Close completes the to-do and records the verdict as a comment, for all three verdicts
+- [x] #4 the basecamp adapter passes worktest.Contract
+- [x] #5 go test ./... green
 <!-- AC:END -->

@@ -1,6 +1,8 @@
-// herdr-fleet — the backlog layer for Herdr agents: a Backlog.md project as
-// the shared task queue, AGENT.md personas as the workers, and a daemon that
-// routes To Do tasks to real coding agents, one run at a time.
+// herdr-fleet — the backlog layer for Herdr agents: a shared task queue,
+// AGENT.md personas as the workers, and a daemon that routes open tasks to
+// real coding agents, one run at a time. The queue is a Backlog.md project or
+// a Basecamp project; which one is configuration, and nothing above the
+// adapter knows the difference.
 package main
 
 import (
