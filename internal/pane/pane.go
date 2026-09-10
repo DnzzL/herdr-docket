@@ -5,6 +5,7 @@ package pane
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -30,30 +31,52 @@ var (
 	warnStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 )
 
-// row is one line of the board: a status header or a task under it.
+// row is one line of the board: a status header, a spacer between groups, or
+// a task under a header.
 type row struct {
 	header string
+	spacer bool
 	task   backlog.Task
 	last   *history.Record
 }
 
+func (r row) selectable() bool { return r.header == "" && !r.spacer }
+
 // rows lays the board out: every fleet status in lifecycle order, tasks under
-// each, headers for the statuses that have any. Pure, so the layout is
-// testable without a terminal.
-func rows(tasks []backlog.Task, last map[string]*history.Record) []row {
+// each, a header per non-empty group and a blank spacer between groups. When
+// query is non-empty only tasks whose ID or title contain it (case-insensitive)
+// are included. Pure, so the layout is testable without a terminal.
+func rows(tasks []backlog.Task, last map[string]*history.Record, query string) []row {
+	query = strings.ToLower(query)
 	var out []row
 	for _, status := range backlog.Statuses {
-		start := len(out)
+		var group []row
 		for _, t := range tasks {
-			if t.Status == status {
-				out = append(out, row{task: t, last: last[t.ID]})
+			if t.Status != status || !matches(t, query) {
+				continue
 			}
+			group = append(group, row{task: t, last: last[t.ID]})
 		}
-		if len(out) > start {
-			out = append(out[:start], append([]row{{header: status}}, out[start:]...)...)
+		if len(group) == 0 {
+			continue
 		}
+		if len(out) > 0 {
+			out = append(out, row{spacer: true})
+		}
+		out = append(out, row{header: status})
+		out = append(out, group...)
 	}
 	return out
+}
+
+// matches reports whether the task's ID or title contains query, which the
+// caller has already lowercased. An empty query matches everything.
+func matches(t backlog.Task, query string) bool {
+	if query == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(t.ID), query) ||
+		strings.Contains(strings.ToLower(t.Title), query)
 }
 
 func statusStyle(s string) lipgloss.Style {
@@ -76,11 +99,21 @@ const (
 	browsing mode = iota
 	addingTitle
 	addingAssignee
+	searching
+)
+
+type view int
+
+const (
+	boardView view = iota
+	agentsView
 )
 
 type model struct {
 	dir          string
 	defaultAgent string
+	tasks        []backlog.Task
+	last         map[string]*history.Record
 	rows         []row
 	agents       map[string]fleet.Agent
 	sel          int
@@ -88,13 +121,16 @@ type model struct {
 	height       int
 	status       string
 	mode         mode
+	view         view
 	input        string
 	pending      string // the title typed before the assignee is asked
+	query        string // active task filter, live-edited while mode == searching
 	runs         *runner.Runner
 }
 
 type refreshMsg struct {
-	rows   []row
+	tasks  []backlog.Task
+	last   map[string]*history.Record
 	agents map[string]fleet.Agent
 	err    error
 }
@@ -129,8 +165,14 @@ func refresh(dir string) tea.Cmd {
 			last[t.ID], _ = history.LastRun(t.ID)
 		}
 		agents, _ := fleet.LoadAgents(dir)
-		return refreshMsg{rows: rows(tasks, last), agents: agents}
+		return refreshMsg{tasks: tasks, last: last, agents: agents}
 	}
+}
+
+// rebuildRows recomputes m.rows from the current tasks and query. Call it
+// whenever either changes.
+func (m *model) rebuildRows() {
+	m.rows = rows(m.tasks, m.last, m.query)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -142,7 +184,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 			return m, nil
 		}
-		m.rows, m.agents = msg.rows, msg.agents
+		m.tasks, m.last, m.agents = msg.tasks, msg.last, msg.agents
+		m.rebuildRows()
 		m.clampSel()
 	case tickMsg:
 		return m, tea.Batch(refresh(m.dir), tick())
@@ -152,12 +195,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, refresh(m.dir)
 	case tea.KeyMsg:
+		if m.mode == searching {
+			return m.updateSearch(msg)
+		}
 		if m.mode != browsing {
 			return m.updateInput(msg)
 		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "g":
+			if m.view == boardView {
+				m.view = agentsView
+			} else {
+				m.view = boardView
+			}
+		}
+		if m.view != boardView {
+			return m, nil
+		}
+		switch msg.String() {
 		case "j", "down":
 			m.move(1)
 		case "k", "up":
@@ -168,6 +225,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.runSelected()
 		case "enter":
 			return m, m.jumpSelected()
+		case "/":
+			m.mode, m.input = searching, m.query
+		case "esc":
+			if m.query != "" {
+				m.query = ""
+				m.rebuildRows()
+				m.clampSel()
+			}
 		}
 	}
 	return m, nil
@@ -190,7 +255,8 @@ func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode, m.input, m.pending = browsing, "", ""
 		dir := m.dir
 		return m, func() tea.Msg {
-			return ranMsg{err: backlog.New(dir).Create(title, "", assignee)}
+			_, err := backlog.New(dir).Create(title, "", assignee)
+			return ranMsg{err: err}
 		}
 	case "backspace":
 		if len(m.input) > 0 {
@@ -208,9 +274,36 @@ func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// updateSearch handles keys while typing a task filter: every edit re-filters
+// live via m.query, so the board updates as you type.
+func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode, m.input, m.query = browsing, "", ""
+	case "enter":
+		m.mode = browsing
+	case "backspace":
+		if len(m.input) > 0 {
+			m.input = m.input[:len(m.input)-1]
+		}
+	default:
+		if len(msg.String()) == 1 || msg.String() == "space" {
+			s := msg.String()
+			if s == "space" {
+				s = " "
+			}
+			m.input += s
+		}
+	}
+	m.query = m.input
+	m.rebuildRows()
+	m.clampSel()
+	return m, nil
+}
+
 func (m *model) move(d int) {
 	for i := m.sel + d; i >= 0 && i < len(m.rows); i += d {
-		if m.rows[i].header == "" {
+		if m.rows[i].selectable() {
 			m.sel = i
 			return
 		}
@@ -221,7 +314,7 @@ func (m *model) clampSel() {
 	if m.sel >= len(m.rows) {
 		m.sel = len(m.rows) - 1
 	}
-	if m.sel < 0 || (m.sel < len(m.rows) && m.rows[m.sel].header != "") {
+	if m.sel < 0 || (m.sel < len(m.rows) && !m.rows[m.sel].selectable()) {
 		m.sel = 0
 		m.move(1)
 		if m.sel == 0 && len(m.rows) > 1 {
@@ -231,10 +324,28 @@ func (m *model) clampSel() {
 }
 
 func (m model) selected() *row {
-	if m.sel >= 0 && m.sel < len(m.rows) && m.rows[m.sel].header == "" {
+	if m.sel >= 0 && m.sel < len(m.rows) && m.rows[m.sel].selectable() {
 		return &m.rows[m.sel]
 	}
 	return nil
+}
+
+// availableRows is how many list lines fit between the title and the footer.
+// 0 means the terminal size isn't known yet (no WindowSizeMsg received) —
+// callers should render everything unclipped in that case.
+func (m model) availableRows() int {
+	if m.height == 0 {
+		return 0
+	}
+	footer := 1 // hint or input line
+	if m.status != "" {
+		footer++
+	}
+	avail := m.height - 2 /*title+blank*/ - 1 /*blank before footer*/ - footer
+	if avail < 1 {
+		avail = 1
+	}
+	return avail
 }
 
 func (m model) runSelected() (tea.Model, tea.Cmd) {
@@ -274,10 +385,62 @@ func (m *model) jumpSelected() tea.Cmd {
 }
 
 func (m model) View() string {
+	if m.view == agentsView {
+		return m.agentsView()
+	}
+	return m.boardView()
+}
+
+func (m model) boardView() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("fleet — " + m.dir))
+	if m.query != "" && m.mode != searching {
+		b.WriteString(dimStyle.Render(fmt.Sprintf("  (filter: %q)", m.query)))
+	}
 	b.WriteString("\n\n")
-	for i, r := range m.rows {
+
+	// Fixed columns (id, who, detail) plus their separating spaces, so the
+	// title is the only column that flexes with terminal width. Detail is
+	// capped at 32 to fit "last run <longest status> Mon 15:04" (~30 chars).
+	const idWidth, whoWidth, detailWidth = 9, 16, 32
+	titleWidth := 40
+	if m.width > 0 {
+		if titleWidth = m.width - (idWidth + whoWidth + detailWidth + 5); titleWidth < 15 {
+			titleWidth = 15
+		} else if titleWidth > 80 {
+			titleWidth = 80
+		}
+	}
+	rowFormat := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", idWidth, titleWidth, whoWidth)
+
+	start, end := 0, len(m.rows)
+	if avail := m.availableRows(); avail > 0 && len(m.rows) > avail {
+		content := avail - 2 // reserve room for the "more above/below" lines
+		if content < 1 {
+			content = 1
+		}
+		start = m.sel - content/2
+		if start < 0 {
+			start = 0
+		}
+		end = start + content
+		if end > len(m.rows) {
+			end = len(m.rows)
+			start = end - content
+			if start < 0 {
+				start = 0
+			}
+		}
+	}
+	if start > 0 {
+		fmt.Fprintf(&b, "%s\n", dimStyle.Render(fmt.Sprintf("  ↑ %d more above", start)))
+	}
+	for i := start; i < end; i++ {
+		r := m.rows[i]
+		if r.spacer {
+			b.WriteString("\n")
+			continue
+		}
 		if r.header != "" {
 			fmt.Fprintf(&b, "%s\n", headerStyle.Render(statusStyle(r.header).Render(r.header)))
 			continue
@@ -286,17 +449,23 @@ func (m model) View() string {
 		if who == "" {
 			who = "-"
 		} else if _, ok := m.agents[who]; !ok {
-			who = failStyle.Render(who + "?")
+			who = failStyle.Render(text.Truncate(who, whoWidth-1) + "?")
+		} else {
+			who = text.Truncate(who, whoWidth)
 		}
 		detail := ""
 		if r.last != nil {
-			detail = dimStyle.Render(fmt.Sprintf("last run %s %s", r.last.Status, r.last.At.Format("Mon 15:04")))
+			raw := fmt.Sprintf("last run %s %s", r.last.Status, r.last.At.Format("Mon 15:04"))
+			detail = dimStyle.Render(text.Truncate(raw, detailWidth))
 		}
-		line := fmt.Sprintf("  %-9s %-40s %-16s %s", r.task.ID, text.Truncate(r.task.Title, 40), who, detail)
+		line := fmt.Sprintf(rowFormat, text.Truncate(r.task.ID, idWidth), text.Truncate(r.task.Title, titleWidth), who, detail)
 		if i == m.sel {
 			line = selectedStyle.Render(line)
 		}
 		b.WriteString(line + "\n")
+	}
+	if end < len(m.rows) {
+		fmt.Fprintf(&b, "%s\n", dimStyle.Render(fmt.Sprintf("  ↓ %d more below", len(m.rows)-end)))
 	}
 	if len(m.rows) == 0 {
 		b.WriteString(dimStyle.Render("  no tasks — press a to add one\n"))
@@ -308,9 +477,39 @@ func (m model) View() string {
 	case addingAssignee:
 		b.WriteString(fmt.Sprintf("assignee for %q (%s): %s▌\n",
 			m.pending, strings.Join(agentNames(m.agents), ", "), m.input))
+	case searching:
+		b.WriteString("search: " + m.input + "▌\n")
 	default:
-		b.WriteString(dimStyle.Render("j/k move · r run · enter jump to run · a add · q quit"))
+		b.WriteString(dimStyle.Render("j/k move · r run · enter jump to run · a add · / search · g agents · q quit"))
 	}
+	if m.status != "" {
+		b.WriteString("\n" + warnStyle.Render(m.status))
+	}
+	return b.String()
+}
+
+// agentsView renders the read-only fleet roster: name, kind/model, workspace
+// mode and whether the daemon will schedule it.
+func (m model) agentsView() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("fleet agents — " + m.dir))
+	b.WriteString("\n\n")
+	if len(m.agents) == 0 {
+		b.WriteString(dimStyle.Render("  no agents — add one under agents/<name>/AGENT.md\n"))
+	}
+	names := agentNames(m.agents)
+	sort.Strings(names)
+	for _, name := range names {
+		a := m.agents[name]
+		status := okStyle.Render("enabled")
+		if a.Disabled {
+			status = warnStyle.Render("disabled")
+		}
+		line := fmt.Sprintf("  %-16s %-10s %-24s %-9s %s", name, a.Kind, text.Truncate(a.Model, 24), a.Workspace, status)
+		b.WriteString(line + "\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("g board · q quit"))
 	if m.status != "" {
 		b.WriteString("\n" + warnStyle.Render(m.status))
 	}
