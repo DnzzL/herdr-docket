@@ -1,9 +1,10 @@
 ---
 id: TASK-10
 title: 'Basecamp adapter (read): auth plus List and Get'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:10'
+updated_date: '2026-09-10 20:33'
 labels: []
 dependencies:
   - TASK-9

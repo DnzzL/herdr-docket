@@ -2,19 +2,26 @@ package fleet
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/DnzzL/herdr-fleet/internal/work"
 	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-fleet/internal/work/basecamp"
 )
 
-// kindBacklogmd is the queue every fleet has unless it says otherwise: a
-// Backlog.md project in the fleet dir.
-const kindBacklogmd = "backlogmd"
+// The queues the fleet knows how to speak to.
+const (
+	kindBacklogmd = "backlogmd"
+	kindBasecamp  = "basecamp"
+)
 
 // SourceConfig is the `source:` block of fleet.yaml: which backend the queue
 // lives in. Absent, the fleet works the Backlog.md project in its own dir.
 type SourceConfig struct {
 	Kind string `yaml:"kind"`
+	// Basecamp is the block that kind reads. Each adapter owns the shape of
+	// its own configuration; this package only hands it over.
+	Basecamp basecamp.Config `yaml:"basecamp"`
 }
 
 // kind is the source kind with the default filled in.
@@ -36,6 +43,22 @@ func NewSource(s Settings) (work.Source, error) {
 	switch s.Source.kind() {
 	case kindBacklogmd:
 		return backlogmd.New(s.Dir), nil
+	case kindBasecamp:
+		return basecamp.New(s.Source.Basecamp)
 	}
-	return nil, fmt.Errorf("unknown queue %q: the fleet speaks %s", s.Source.Kind, kindBacklogmd)
+	return nil, fmt.Errorf("unknown queue %q: the fleet speaks %s or %s",
+		s.Source.Kind, kindBacklogmd, kindBasecamp)
+}
+
+// Auth signs the fleet in to a queue that needs it, and says so plainly for
+// one that does not. A local queue has no account to authenticate against,
+// which is a fact about the queue rather than a failure.
+func Auth(kind string, out io.Writer) error {
+	switch (SourceConfig{Kind: kind}).kind() {
+	case kindBacklogmd:
+		return fmt.Errorf("%s is a local queue: there is nothing to sign in to", kindBacklogmd)
+	case kindBasecamp:
+		return basecamp.Login(out)
+	}
+	return fmt.Errorf("unknown queue %q: the fleet speaks %s or %s", kind, kindBacklogmd, kindBasecamp)
 }

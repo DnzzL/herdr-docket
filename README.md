@@ -1,14 +1,16 @@
 # herdr-fleet
 
-**A shared task backlog worked by your coding agents.** A [Backlog.md](https://backlog.md)
-project as the queue, `AGENT.md` personas as the workers, and a daemon that routes
-every `To Do` task to the agent it names — agents in parallel, one run each,
-in [Herdr](https://herdr.dev) workspaces you can watch, join, or close.
+**A shared task queue worked by your coding agents.** A [Backlog.md](https://backlog.md)
+project as the queue — or Basecamp, if that's where your work already lives
+(see [Where the queue lives](#where-the-queue-lives)) — `AGENT.md` personas as
+the workers, and a daemon that routes every open task to the agent it names —
+agents in parallel, one run each, in [Herdr](https://herdr.dev) workspaces you
+can watch, join, or close.
 
-```
+```text
       you ─────────┐
- an automation ────┼──► fleet backlog (To Do) ──► daemon ──► herdr agent run ──► Done | Failed | Blocked
- another agent ────┘         markdown, git             one run per agent     (the agent reports itself)
+ an automation ────┼──► the queue (open) ──► daemon ──► herdr agent run ──► Done | Failed | Blocked
+ another agent ────┘    markdown or Basecamp   one run per agent          (the agent reports itself)
 ```
 
 Write a task, assign it to an agent, walk away:
@@ -38,13 +40,15 @@ read, diff, and back up:
 ```
 ~/fleet/
 ├── backlog/           # the Backlog.md project: one markdown file per task
+│                      # (the default queue — see "Where the queue lives")
 └── agents/
     ├── pm/AGENT.md    # who the agents are
     └── dev/AGENT.md
 ```
 
-- **A task** is a Backlog.md task: goal, description, acceptance criteria,
-  priority, and an `assignee` that names the agent. Statuses are the lifecycle:
+- **A task** is one unit of work in the queue: goal, description, acceptance
+  criteria, priority, and an `assignee` that names the agent. By default that
+  queue is Backlog.md, and its statuses are the lifecycle:
   `To Do → In Progress → Done | Failed | Blocked`.
 - **An agent** is one markdown file: YAML frontmatter for the run parameters,
   body for the persona every one of its runs opens with.
@@ -52,10 +56,13 @@ read, diff, and back up:
   a single task to completion — and root-mode agents sharing a checkout are
   serialized, because the thing to protect is the working copy, not a queue.
   A second `To Do` task for a busy agent simply waits its turn.
-- **The agent closes its own task** through the `backlog` CLI — it checks off
-  acceptance criteria, appends what it did to the notes, and sets the final
-  status. If it doesn't, the daemon does: a run that ends silent goes `Failed`,
-  a workspace you closed mid-run goes `Blocked` (you decided; the board says so).
+- **The agent closes its own task** through the fleet CLI — it reports where
+  things stand with `herdr-fleet task note`, then closes with exactly one of
+  `herdr-fleet task done | fail | block`. It never needs credentials for, or
+  knowledge of, whatever backend is behind the queue. If it ends silent, the
+  daemon closes the task for it: a run that ends with nothing to show for it
+  goes `Failed`, a workspace you closed mid-run goes `Blocked` (you decided,
+  and the board says so).
 - **Approvals are the agent's own.** Claude Code asks in its pane like it always
   does; jump in from the board, answer, leave. Configure permissiveness per repo
   the way you already do (`.claude/settings.json`).
@@ -290,9 +297,47 @@ Config is optional — `fleet.yaml` in the plugin config dir:
 dir: ~/somewhere/else     # fleet dir (default ~/fleet)
 default_agent: dev        # picks up unassigned tasks; unset = leave them alone
 source:
-  kind: backlogmd         # where the queue lives — the default, and the only
-                          # kind so far: a Backlog.md project in the fleet dir
+  kind: backlogmd         # where the queue lives (default: the Backlog.md
+                          # project in the fleet dir — see below)
 ```
+
+### Where the queue lives
+
+The queue does not have to be local. To work a Basecamp project instead:
+
+```yaml
+source:
+  kind: basecamp
+  basecamp:
+    account_id: "9999999"     # the account the lists are in
+    lists:                    # Basecamp has no labels, so the container is
+      dev: "1111111"          # the routing key: one to-do list per agent
+      pm: "2222222"
+```
+
+Basecamp wants an account, so sign in once. The fleet doesn't ship an
+application of its own — register one at
+[launchpad.37signals.com/integrations](https://launchpad.37signals.com/integrations)
+with the redirect URI `http://localhost:8917/callback`, then:
+
+```sh
+export HERDR_FLEET_BASECAMP_CLIENT_ID=...
+export HERDR_FLEET_BASECAMP_CLIENT_SECRET=...   # only if your app has one
+herdr-fleet auth basecamp
+```
+
+The tokens land in `credentials.yaml` (0600) beside `fleet.yaml` and never in
+it — `fleet.yaml` is the file you paste into a bug report. A Basecamp access
+token lives two weeks, so the fleet refreshes it on the way out: a machine
+left alone for a month heals itself on the next poll instead of failing every
+one of them.
+
+Agents never see any of this. `task list`, `view`, `create`, `note` and
+`done|fail|block` are the same commands, and the fleet CLI is the only thing
+they talk to. What differs is what Basecamp can hold: no labels (the list is
+the assignee), no priority, and one word for an ending — so a `fail` or
+`block` completes the to-do and says which it was in a comment. A to-do in a
+list the fleet doesn't know about is simply not its work.
 
 ## Commands
 
@@ -300,7 +345,8 @@ source:
 | --- | --- |
 | `herdr-fleet daemon` | the worker (Herdr starts it for you) |
 | `herdr-fleet init` | bootstrap the fleet dir |
-| `herdr-fleet list` | tasks by status, with the routed agent |
+| `herdr-fleet auth basecamp` | sign in to a hosted queue, once |
+| `herdr-fleet list` | the queue, grouped by phase, with the routed agent |
 | `herdr-fleet run TASK-12` | run one task now |
 | `herdr-fleet agent list` | the agents, and which are parked |
 | `herdr-fleet agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |

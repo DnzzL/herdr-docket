@@ -1,12 +1,14 @@
 package fleet
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-fleet/internal/work/basecamp"
 )
 
 // A fleet that names no source at all still works: Backlog.md in the fleet
@@ -76,6 +78,82 @@ func TestOnlyALocalQueueIsScaffolded(t *testing.T) {
 		if got := (SourceConfig{Kind: tc.kind}).local(); got != tc.want {
 			t.Errorf("kind %q: local = %v, want %v", tc.kind, got, tc.want)
 		}
+	}
+}
+
+// A source block that names Basecamp carries a block of its own, and the
+// adapter owns that block's shape — this package only hands it over.
+func TestASourceBlockCarriesTheBasecampConfig(t *testing.T) {
+	writeFleetYAML(t, `source:
+  kind: basecamp
+  basecamp:
+    account_id: "999"
+    lists:
+      dev: "111"
+      pm: "222"
+`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Source.Basecamp.AccountID; got != "999" {
+		t.Fatalf("account_id = %q, want 999", got)
+	}
+	if got := s.Source.Basecamp.Lists["pm"]; got != "222" {
+		t.Fatalf("lists.pm = %q, want 222", got)
+	}
+	if src, err := NewSource(s); err != nil {
+		t.Fatal(err)
+	} else if _, ok := src.(*basecamp.Source); !ok {
+		t.Fatalf("got %T", src)
+	}
+}
+
+// A Basecamp fleet that names no lists has no routing table at all, so it can
+// only be misrouted. Better to refuse it at startup than at the first poll.
+func TestABasecampFleetWithNothingToRouteWithIsRefused(t *testing.T) {
+	writeFleetYAML(t, "source:\n  kind: basecamp\n  basecamp:\n    account_id: \"999\"\n")
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSource(s); err == nil {
+		t.Fatal("want an error for a Basecamp fleet with no lists")
+	}
+}
+
+// `auth` only means something for a queue that lives somewhere else. A local
+// one has no account behind it, and saying so beats a confusing no-op.
+func TestOnlyAHostedQueueCanBeSignedInTo(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind string
+		want string
+	}{
+		{"the default queue is local", "", "local queue"},
+		{"backlogmd is local", "backlogmd", "local queue"},
+		{"a queue nothing implements", "trello", "trello"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := Auth(tc.kind, io.Discard)
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// basecamp is routed to the real flow, which refuses before it opens a
+// listener when there is no application to authorize against.
+func TestAuthingBasecampReachesTheBasecampFlow(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", t.TempDir())
+	t.Setenv("HERDR_FLEET_BASECAMP_CLIENT_ID", "")
+	err := Auth("basecamp", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "Launchpad client id") {
+		t.Fatalf("err = %v, want the missing-client-id message from the basecamp flow", err)
 	}
 }
 

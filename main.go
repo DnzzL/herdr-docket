@@ -26,12 +26,13 @@ import (
 // Version is stamped by the release build; "dev" for local builds.
 var Version = "dev"
 
-const usage = `herdr-fleet — a Backlog.md task queue worked by your Herdr agents
+const usage = `herdr-fleet — a task queue worked by your Herdr agents
 
 Usage:
   herdr-fleet daemon           Run the worker (started by the plugin startup hook)
   herdr-fleet init             Bootstrap the fleet dir (backlog project + example agent)
-  herdr-fleet list             List tasks by status, with the routed agent
+  herdr-fleet auth <queue>     Sign in to a hosted queue and store its credentials
+  herdr-fleet list             List the queue, grouped by phase
   herdr-fleet run <task-id>    Run one open task now, whatever its status
   herdr-fleet task list        List open work from the queue (--all for closed)
   herdr-fleet task view <id>   Show one task: body, notes and criteria
@@ -60,6 +61,8 @@ func main() {
 		err = daemon.Run()
 	case "init":
 		err = initCmd()
+	case "auth":
+		err = authCmd(os.Args[2:])
 	case "list":
 		err = list()
 	case "run":
@@ -98,6 +101,15 @@ func initCmd() error {
 	fmt.Println("- add work: herdr-fleet task create \"...\" -a <agent>")
 	fmt.Println("- the daemon (or `herdr-fleet daemon`) picks tasks up from there")
 	return nil
+}
+
+// authCmd is thin on purpose: which queues can be signed in to, and how, is
+// fleet's business, not the CLI's.
+func authCmd(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: herdr-fleet auth <queue>   (queues that sign in: basecamp)")
+	}
+	return fleet.Auth(args[0], os.Stdout)
 }
 
 // settingsAndSource resolves the fleet's configuration and the queue it names
