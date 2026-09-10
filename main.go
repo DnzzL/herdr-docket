@@ -95,7 +95,7 @@ func initCmd() error {
 	}
 	fmt.Printf("fleet ready at %s\n", settings.Dir)
 	fmt.Println("- describe your agents in agents/<name>/AGENT.md")
-	fmt.Printf("- add work: BACKLOG_CWD=%s backlog task create \"...\" -a <agent>\n", settings.Dir)
+	fmt.Println("- add work: herdr-fleet task create \"...\" -a <agent>")
 	fmt.Println("- the daemon (or `herdr-fleet daemon`) picks tasks up from there")
 	return nil
 }

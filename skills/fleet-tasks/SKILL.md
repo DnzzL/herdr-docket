@@ -1,37 +1,45 @@
 ---
 name: fleet-tasks
-description: Create and manage tasks in the fleet backlog — the shared Backlog.md queue that herdr-fleet routes to named agents. Use when asked to delegate work to a fleet agent, queue work for later, or report on fleet tasks.
+description: Create and manage tasks in the fleet queue — the shared task list that herdr-fleet routes to named agents. Use when asked to delegate work to a fleet agent, queue work for later, or report on fleet tasks.
 ---
 
 # Fleet tasks
 
-The fleet backlog is a Backlog.md project (default `~/fleet`, check
-`herdr-fleet` output for the real path) that a daemon polls: every `To Do`
-task assigned to a known agent gets picked up and run by that agent —
-agents work in parallel, but each agent runs one task at a time.
+The fleet works one shared queue: every open task assigned to a known agent is
+picked up by that agent and run. Agents work in parallel, but each agent runs
+one task at a time.
 
-All commands go through the `backlog` CLI **with `BACKLOG_CWD` pointing at
-the fleet dir** — you are usually working in some other repo:
+Everything goes through the `herdr-fleet` CLI — you do not need to know, or
+care, where the queue physically lives:
 
 ```bash
-BACKLOG_CWD=~/fleet backlog task list --plain
-BACKLOG_CWD=~/fleet backlog task create "Draft the launch post" \
-  -d "What needs doing and why" --ac "one measurable criterion" -a dishnow-marketing
-BACKLOG_CWD=~/fleet backlog task view TASK-12 --plain
+herdr-fleet task list                       # open work, grouped by phase
+herdr-fleet task list --all                 # include closed work
+herdr-fleet task view TASK-12               # description, criteria, notes
+herdr-fleet task create "Draft the launch post" \
+  -d "What needs doing and why" -a dishnow-marketing
+herdr-fleet task note TASK-12 "halfway; blocked on the API key"
+herdr-fleet task done TASK-12 --note "shipped; criterion 1 met, 2 dropped"
+herdr-fleet task fail TASK-12 --note "could not reproduce the crash"
+herdr-fleet task block TASK-12 --note "needs a decision on scope"
 ```
 
 Rules:
 
-- **Two backlogs, two purposes.** The fleet backlog routes work to agents.
-  A project's own `backlog/` (if it has one) tracks that project's dev work.
-  A task for an agent goes in the fleet backlog; a plain dev todo goes in the
+- **Two queues, two purposes.** The fleet queue routes work to agents. A
+  project's own `backlog/` (if it has one) tracks that project's dev work. A
+  task for an agent goes in the fleet queue; a plain dev todo goes in the
   project's. Never mix them up.
 - **Assignee = agent.** `-a <name>` must match a folder in `<fleet>/agents/`.
-  A task with no assignee is left alone (unless a default agent is configured).
-- **Statuses are the lifecycle**: `To Do`, `In Progress`, `Blocked`, `Failed`,
-  `Done`. Only the daemon and the task's own agent move a task; don't edit
-  other tasks' statuses.
+  A task with no assignee is left alone, unless a default agent is configured
+  — and a task assigned to a name nobody has is left alone too, so check
+  `herdr-fleet list` if work seems stuck.
+- **Say what "done" means.** The task description is the whole brief: the
+  agent gets exactly what the task says, nothing more. Acceptance criteria are
+  added by whoever owns the queue (`-d` is the field `herdr-fleet` writes), and
+  the agent reports on them in prose rather than ticking boxes.
 - **Creating a task is enough.** Don't try to start it — the daemon picks it
   up within seconds. `herdr-fleet run TASK-12` exists for humans who want it now.
-- Give every task a real description and at least one acceptance criterion:
-  the assigned agent gets exactly what the task says, nothing more.
+- **Closing is the report.** `done`, `fail` and `block` all take a `--note`;
+  the note is where the reasoning goes. A task left open will be run again, so
+  always close what you touch.

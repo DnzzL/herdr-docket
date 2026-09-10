@@ -12,9 +12,10 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/work"
 )
 
-// Assemble builds the run prompt for one task. fleetDir is where the platform
-// backlog lives — the agent works in its own workdir, so every backlog call
-// it makes must carry BACKLOG_CWD.
+// Assemble builds the run prompt for one task. fleetDir is where the fleet
+// lives — roster, wiring and backend config. The agent works in its own
+// workdir, so the prompt names the fleet dir for context only: every call it
+// makes goes through the fleet CLI, which finds the queue on its own.
 func Assemble(a fleet.Agent, v work.Item, fleetDir string) string {
 	var b strings.Builder
 	b.WriteString(a.Persona)
@@ -33,35 +34,38 @@ func Assemble(a fleet.Agent, v work.Item, fleetDir string) string {
 			}
 			fmt.Fprintf(&b, "- %s #%d %s\n", box, c.Index, c.Text)
 		}
-		b.WriteString("\n")
+		b.WriteString("\nThese boxes are the backlog's record, not yours to edit. Your verdict on\neach one — met or not, and the evidence — belongs in the note that closes the\ntask.\n\n")
 	}
 	if v.Notes != "" {
 		fmt.Fprintf(&b, "## Notes from previous runs\n\n%s\n\n", v.Notes)
 	}
 
-	edit := fmt.Sprintf("BACKLOG_CWD=%s backlog task edit %s", fleetDir, v.ID)
 	fmt.Fprintf(&b, `## When you are done — required
 
-This task lives in the fleet backlog at %s (not in this repo). Report back
-with the backlog CLI, always prefixed with BACKLOG_CWD:
+The task lives in the fleet queue (fleet dir: %s), not in this repo. The
+queue answers only to the herdr-fleet CLI — never edit a task by hand.
 
-- Check off each acceptance criterion you met: %s --check-ac <index>
-- Append what you did and why to the notes: %s --append-notes "<summary>"
-- Then set the final status, exactly one of:
-  - %s -s Done      — every criterion met
-  - %s -s Failed    — you could not do it; say why in the notes
-  - %s -s Blocked   — a human must decide or unblock something first
+Say what happened as you go:
 
-Never leave the task "In Progress": if you stop for any reason, set Failed or
-Blocked with a note. Do not touch other fleet tasks' statuses.
+  herdr-fleet task note %s "<what you did and why>"
+
+Then close the task exactly once, with exactly one of:
+
+  herdr-fleet task done %s --note "<what you did, which criteria you met, and how you know>"
+  herdr-fleet task fail %s --note "<why you could not do it>"
+  herdr-fleet task block %s --note "<what a human must decide or unblock>"
+
+A task you leave open is a task the fleet will pick up and run again, so don't
+leave one open. Do not touch other agents' tasks.
 
 This run has a time budget. If the task is too big to finish well within it,
-do one coherent slice, record exactly where you stopped in the notes, then
-create the follow-up task for the rest and set this one Done — a finished
-slice with a good handoff beats a timed-out marathon.
+do one coherent slice, record exactly where you stopped in the closing note,
+then create the follow-up task for the rest and close this one done — a
+finished slice with a good handoff beats a timed-out marathon.
 
 If you find follow-up work, create a task for it instead of expanding this one:
-BACKLOG_CWD=%s backlog task create "<title>" -d "<what and why>" -a %s
-`, fleetDir, edit, edit, edit, edit, edit, fleetDir, a.Name)
+
+  herdr-fleet task create "<title>" -d "<what and why>" -a %s
+`, fleetDir, v.ID, v.ID, v.ID, v.ID, a.Name)
 	return b.String()
 }

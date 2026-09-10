@@ -25,7 +25,7 @@ You are the example fleet agent. Describe here who this agent is, what it
 owns, and how it should work: the persona every one of its runs opens with.
 
 Delete this folder or rename it to create your first real agent, then assign
-a task: BACKLOG_CWD=<fleet dir> backlog task create "..." -a <agent-name>
+it a task with the fleet CLI:  herdr-fleet task create "..." -a <agent-name>
 `
 
 // Init bootstraps the fleet directory: a git repo, a Backlog.md project with

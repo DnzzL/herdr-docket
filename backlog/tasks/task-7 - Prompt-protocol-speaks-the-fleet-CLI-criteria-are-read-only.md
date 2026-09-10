@@ -1,9 +1,10 @@
 ---
 id: TASK-7
 title: Prompt protocol speaks the fleet CLI; criteria are read-only
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:10'
+updated_date: '2026-09-10 20:22'
 labels: []
 dependencies:
   - TASK-6

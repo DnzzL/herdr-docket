@@ -14,15 +14,15 @@ in [Herdr](https://herdr.dev) workspaces you can watch, join, or close.
 Write a task, assign it to an agent, walk away:
 
 ```bash
-BACKLOG_CWD=~/fleet backlog task create "Triage the project backlog" \
+herdr-fleet task create "Triage the project backlog" \
   -d "Route every needs-triage task: out of scope, agent-ready, or needs a human." \
-  --ac "no task left in needs-triage" -a pm
+  -a pm
 ```
 
 Within 15 seconds the daemon opens a workspace on that agent's repo, starts a real
 coding agent (Claude Code by default) with the agent's persona plus the task, and
-the agent reports back into the backlog itself: notes, checked criteria, final
-status. You come back to a board that tells the truth — and to nothing else,
+the agent reports back into the queue itself with `herdr-fleet task done|fail|block`.
+You come back to a board that tells the truth — and to nothing else,
 because a run that ends `Done` cleans its own workspace up.
 
 If you've wanted a tiny [paperclip.ing](https://paperclip.ing)-style company of
@@ -139,8 +139,8 @@ a comment with 2–4 sentences of reasoning. Never delete a task; never write co
 Then, whenever the inbox fills up:
 
 ```bash
-BACKLOG_CWD=~/fleet backlog task create "Triage the backlog" -a pm \
-  --ac "no task left in needs-triage" --ac "every verdict has a comment"
+herdr-fleet task create "Triage the backlog" -a pm \
+  -d "Route every needs-triage task, and say why in a comment on each one."
 ```
 
 First real run of this agent: 4 tickets triaged with `file:line` evidence,
@@ -231,8 +231,8 @@ recording in the repo root, and say so in the persona.
 
 ## Anatomy of a run
 
-1. The daemon polls `backlog task list --json` (~15s) and, for every idle
-   agent, picks its most urgent routed `To Do` task: priority, then ordinal,
+1. The daemon polls the queue (~15s) and, for every idle
+   agent, picks its most urgent routed open task: priority, then ordinal,
    then age.
 2. It claims the task (`In Progress`), provisions a Herdr workspace on the
    agent's `workdir`, and starts the agent with an assembled prompt: persona
@@ -240,9 +240,10 @@ recording in the repo root, and say so in the persona.
    - the reporting protocol.
 3. The agent works — you can watch it live, jump in, answer its permission
    prompts, or close its workspace to call the run off.
-4. The agent reports: checks `--check-ac`, appends `--append-notes`, sets
-   `Done`, `Failed`, or `Blocked`. The daemon reconciles anything left hanging
-   and records the run in an append-only `history.jsonl`.
+4. The agent reports back with `herdr-fleet task note` as it goes, then closes
+   with `done`, `fail`, or `block` and a note saying what happened and how it
+   knows. The daemon reconciles anything left hanging and records the run in
+   an append-only `history.jsonl`.
 
 Runs have a time budget. The prompt tells the agent the honest way out of a
 task that won't fit: one coherent slice, a handoff note, a follow-up task —
@@ -254,7 +255,7 @@ the backlog itself is the checkpoint mechanism.
 herdr plugin install DnzzL/herdr-fleet
 herdr-fleet init                     # backlog project + example agent in ~/fleet
 $EDITOR ~/fleet/agents/example/AGENT.md
-BACKLOG_CWD=~/fleet backlog task create "First task" -a example
+herdr-fleet task create "First task" -a example
 ```
 
 The board pane (overlay in Herdr, or `herdr-fleet pane`) shows the queue grouped
@@ -307,7 +308,7 @@ default_agent: dev        # picks up unassigned tasks; unset = leave them alone
 
 - **Not a scheduler.** Recurring work belongs to
   [herdr-automations](https://github.com/DnzzL/herdr-automations) — point an
-  automation's prompt at `backlog task create` and the two plugins compose:
+  automation's prompt at `herdr-fleet task create` and the two plugins compose:
   automations decide *when*, fleet decides *what* and *who*.
 - **Not a workflow engine.** A task is one goal for one agent. Fan-out happens
   the honest way: an agent creates follow-up tasks in the same backlog.
