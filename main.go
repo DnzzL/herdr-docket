@@ -36,6 +36,9 @@ Usage:
   herdr-fleet run <task-id>    Run one task now (any status except In Progress)
   herdr-fleet task list        List open work from the queue (--all for closed)
   herdr-fleet task view <id>   Show one task: body, notes and criteria
+  herdr-fleet task create      Add work: "<title>" [-a <agent>] [-d "<body>"]
+  herdr-fleet task note <id>   Append to a task's notes
+  herdr-fleet task done|fail|block <id> [--note "..."]  Close with a verdict
   herdr-fleet agent list       Show the agents and which are paused
   herdr-fleet agent pause <n>  Stop scheduling an agent (a running task finishes)
   herdr-fleet agent resume <n> Start scheduling it again
@@ -141,10 +144,12 @@ func taskCmd(args []string) error {
 }
 
 // runTaskCmd is the task verbs with the source injected, so the CLI's shape is
-// tested without a backend on disk.
+// tested without a backend on disk. It is the agent's whole write surface:
+// list and view to read, create to hand on follow-up work, note to say where
+// things stand, and done/fail/block to close with a verdict.
 func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-fleet task list|view <id>")
+		return fmt.Errorf("usage: herdr-fleet task list|view|create|note|done|fail|block")
 	}
 	switch args[0] {
 	case "list":
@@ -161,8 +166,112 @@ func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 			return fmt.Errorf("usage: herdr-fleet task view <id>")
 		}
 		return taskView(src, args[1], out)
+	case "create":
+		return taskCreate(src, args[1:], out)
+	case "note":
+		if len(args) != 3 {
+			return fmt.Errorf(`usage: herdr-fleet task note <id> "<text>"`)
+		}
+		return src.Comment(args[1], args[2])
+	case "done", "fail", "block":
+		return taskClose(src, args[0], args[1:], out)
 	}
 	return fmt.Errorf("unknown task command %q", args[0])
+}
+
+func taskCreate(src work.Source, args []string, out io.Writer) error {
+	const usage = `usage: herdr-fleet task create "<title>" [-a <agent>] [-d "<body>"]`
+	var title, body, assignee string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-a", "--assignee":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			assignee = v
+		case "-d", "--description":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			body = v
+		default:
+			if title != "" {
+				return fmt.Errorf("task create: unexpected argument %q\n%s", args[i], usage)
+			}
+			title = args[i]
+		}
+	}
+	if title == "" {
+		return fmt.Errorf("task create: a title is required\n%s", usage)
+	}
+	id, err := src.Create(title, body, assignee)
+	if err != nil {
+		return err
+	}
+	if id == "" {
+		fmt.Fprintln(out, "created")
+		return nil
+	}
+	fmt.Fprintf(out, "created %s\n", id)
+	return nil
+}
+
+// closeVerbs is the CLI's spelling of the verdict vocabulary: the verbs are
+// short, the verdicts are the words the port carries.
+var closeVerbs = map[string]work.Verdict{
+	"done":  work.Done,
+	"fail":  work.Failed,
+	"block": work.Blocked,
+}
+
+// taskClose runs one of the three closing verbs. The note is recorded first,
+// so the reason is on the item by the time it closes.
+func taskClose(src work.Source, verb string, args []string, out io.Writer) error {
+	verdict, ok := closeVerbs[verb]
+	if !ok {
+		return fmt.Errorf("unknown closing verb %q", verb)
+	}
+	usage := fmt.Sprintf(`usage: herdr-fleet task %s <id> [--note "<text>"]`, verb)
+	var id, note string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-n", "--note":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			note = v
+		default:
+			if id != "" {
+				return fmt.Errorf("task %s: unexpected argument %q\n%s", verb, args[i], usage)
+			}
+			id = args[i]
+		}
+	}
+	if id == "" {
+		return fmt.Errorf("task %s: an id is required\n%s", verb, usage)
+	}
+	if note != "" {
+		if err := src.Comment(id, note); err != nil {
+			return err
+		}
+	}
+	if err := src.Close(id, verdict); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s %s\n", id, verb)
+	return nil
+}
+
+// flagValue consumes the value after a flag, advancing the loop index.
+func flagValue(args []string, i *int, flag string) (string, error) {
+	if *i+1 >= len(args) {
+		return "", fmt.Errorf("%s needs a value", flag)
+	}
+	*i++
+	return args[*i], nil
 }
 
 func taskList(src work.Source, out io.Writer, all bool) error {

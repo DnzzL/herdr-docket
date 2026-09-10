@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -120,9 +121,10 @@ func (c *Client) AppendNote(id, note string) error {
 	return err
 }
 
-// Create adds a task and returns nothing — the daemon will find it on the
-// next tick like any other. Used by the board's add flow.
-func (c *Client) Create(title, description, assignee string) error {
+// Create adds a task and returns its id. The CLI names the new task on the
+// plain output's header line; an id we cannot read is not an error — the task
+// exists either way, and the caller can list.
+func (c *Client) Create(title, description, assignee string) (string, error) {
 	args := []string{"task", "create", title, "--plain"}
 	if description != "" {
 		args = append(args, "-d", description)
@@ -130,6 +132,20 @@ func (c *Client) Create(title, description, assignee string) error {
 	if assignee != "" {
 		args = append(args, "-a", assignee)
 	}
-	_, err := c.exec(args...)
-	return err
+	out, err := c.exec(args...)
+	if err != nil {
+		return "", err
+	}
+	return createdID(out), nil
+}
+
+// createdID reads the id out of `task create --plain`, whose first task line
+// is "Task <id> - <title>".
+var createdIDLine = regexp.MustCompile(`(?m)^Task\s+(\S+)\s+-`)
+
+func createdID(out []byte) string {
+	if m := createdIDLine.FindSubmatch(out); m != nil {
+		return string(m[1])
+	}
+	return ""
 }

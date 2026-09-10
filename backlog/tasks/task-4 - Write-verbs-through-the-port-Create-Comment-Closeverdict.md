@@ -1,9 +1,10 @@
 ---
 id: TASK-4
 title: 'Write verbs through the port: Create, Comment, Close(verdict)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:09'
+updated_date: '2026-09-10 20:14'
 labels: []
 dependencies:
   - TASK-3

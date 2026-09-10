@@ -34,9 +34,23 @@ type Criterion struct {
 	Checked bool
 }
 
+// Verdict is how a run ended. Close always closes the item, whatever the
+// verdict: a blocked or failed task left open would be handed straight back
+// by the next tick, and a binary backend has no other word for it.
+type Verdict string
+
+const (
+	Done    Verdict = "done"
+	Failed  Verdict = "failed"
+	Blocked Verdict = "blocked"
+)
+
 // Source is the port the fleet's queue lives behind. Picking, running and the
 // board speak only this.
 type Source interface {
 	List() ([]Item, error)
 	Get(id string) (Item, error)
+	Create(title, body, assignee string) (string, error)
+	Comment(id, text string) error
+	Close(id string, verdict Verdict) error
 }

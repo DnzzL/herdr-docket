@@ -4,6 +4,8 @@
 package backlogmd
 
 import (
+	"fmt"
+
 	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/work"
 )
@@ -14,6 +16,9 @@ import (
 type Client interface {
 	List() ([]backlog.Task, error)
 	View(id string) (backlog.View, error)
+	Create(title, body, assignee string) (string, error)
+	SetStatus(id, status string) error
+	AppendNote(id, note string) error
 }
 
 // Source is a work.Source backed by a Backlog.md project.
@@ -52,6 +57,34 @@ func (s *Source) Get(id string) (work.Item, error) {
 		it.Criteria = append(it.Criteria, work.Criterion{Index: c.Index, Text: c.Text, Checked: c.Checked})
 	}
 	return it, nil
+}
+
+// Create adds an item to the project and returns its new id.
+func (s *Source) Create(title, body, assignee string) (string, error) {
+	return s.client.Create(title, body, assignee)
+}
+
+// Comment appends to the item's notes. Backlog.md has no separate comment
+// stream, and the notes are where a run's account of itself belongs.
+func (s *Source) Comment(id, text string) error {
+	return s.client.AppendNote(id, text)
+}
+
+// Close ends the item with a verdict. Backlog.md can say Done, Failed or
+// Blocked, so the hardware word survives; the item is closed to the fleet
+// either way.
+func (s *Source) Close(id string, v work.Verdict) error {
+	status, ok := verdicts[v]
+	if !ok {
+		return fmt.Errorf("close %s: unknown verdict %q", id, v)
+	}
+	return s.client.SetStatus(id, status)
+}
+
+var verdicts = map[work.Verdict]string{
+	work.Done:    backlog.StatusDone,
+	work.Failed:  backlog.StatusFailed,
+	work.Blocked: backlog.StatusBlocked,
 }
 
 // item maps a Backlog.md task onto the fleet's vocabulary. A task is open
