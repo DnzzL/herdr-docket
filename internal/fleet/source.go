@@ -46,8 +46,14 @@ func NewSource(s Settings) (work.Source, error) {
 	case kindBasecamp:
 		return basecamp.New(s.Source.Basecamp)
 	}
-	return nil, fmt.Errorf("unknown queue %q: the fleet speaks %s or %s",
-		s.Source.Kind, kindBacklogmd, kindBasecamp)
+	return nil, unknownQueue(s.Source.Kind)
+}
+
+// unknownQueue is the one wording for a queue the fleet has never heard of.
+// Which queues exist is stated once, in the switch above, and this is how both
+// the config and the CLI report one that does not.
+func unknownQueue(kind string) error {
+	return fmt.Errorf("unknown queue %q: the fleet speaks %s or %s", kind, kindBacklogmd, kindBasecamp)
 }
 
 // Auth signs the fleet in to a queue that needs it, and says so plainly for
@@ -60,5 +66,5 @@ func Auth(kind string, out io.Writer) error {
 	case kindBasecamp:
 		return basecamp.Login(out)
 	}
-	return fmt.Errorf("unknown queue %q: the fleet speaks %s or %s", kind, kindBacklogmd, kindBasecamp)
+	return unknownQueue(kind)
 }

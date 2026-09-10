@@ -74,12 +74,18 @@ func (s *Source) Comment(id, text string) error {
 // Blocked, so the hardware word survives; the item is closed to the fleet
 // either way.
 func (s *Source) Close(id string, v work.Verdict) error {
-	status, ok := verdicts[v]
-	if !ok {
+	if !v.Known() {
 		return fmt.Errorf("close %s: unknown verdict %q", id, v)
 	}
-	return s.client.SetStatus(id, status)
+	// verdicts is total over the known verdicts, which the test beside this
+	// one keeps it.
+	return s.client.SetStatus(id, verdicts[v])
 }
+
+// verdicts is the translation from the port's verdict to the status word that
+// records it. An adapter that can only say one thing about an ending (a binary
+// completed flag) has no such table — it asks the port whether the verdict is
+// known and records whatever it can.
 
 var verdicts = map[work.Verdict]string{
 	work.Done:    statusDone,

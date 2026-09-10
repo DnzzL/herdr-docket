@@ -2,7 +2,7 @@ id = "dnzzl.fleet"
 name = "Fleet"
 version = "0.1.0"
 min_herdr_version = "0.8.0"
-description = "A Backlog.md task queue worked by your Herdr agents — assign a task to a named agent and the daemon runs it, one at a time."
+description = "A shared task queue worked by your Herdr agents — Backlog.md or Basecamp — assign a task to a named agent and the daemon runs it, one at a time."
 platforms = ["linux", "macos"]
 
 [[build]]

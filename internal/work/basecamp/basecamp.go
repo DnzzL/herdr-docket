@@ -141,7 +141,7 @@ func (s *Source) Comment(id, text string) error {
 // a close would quietly throw away the item: the fleet reads Open, so a closed
 // item is one it will never look at again.
 func (s *Source) Close(id string, v work.Verdict) error {
-	if !known(v) {
+	if !v.Known() {
 		return fmt.Errorf("close %s: unknown verdict %q", id, v)
 	}
 	if err := s.api.post("/todos/"+id+"/completion.json", nil, nil); err != nil {
@@ -169,16 +169,6 @@ func verdictOf(comments []comment) work.Verdict {
 		return work.Verdict(strings.TrimSpace(rest))
 	}
 	return ""
-}
-
-// known is the same check the Backlog.md adapter makes, for the same reason:
-// the port writes three verdicts and no others.
-func known(v work.Verdict) bool {
-	switch v {
-	case work.Done, work.Failed, work.Blocked:
-		return true
-	}
-	return false
 }
 
 // item maps a Basecamp to-do onto the fleet's vocabulary. Assignee is left to

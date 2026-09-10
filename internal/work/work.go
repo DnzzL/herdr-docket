@@ -50,6 +50,19 @@ const (
 	Blocked Verdict = "blocked"
 )
 
+// Known reports whether v is one of the verdicts the port writes. An adapter
+// must refuse anything else rather than treat a typo as a close: the fleet's
+// only question about an item is whether it is open, so a closed item is one
+// it will never look at again — and a mistyped verdict would quietly throw
+// the work away.
+func (v Verdict) Known() bool {
+	switch v {
+	case Done, Failed, Blocked:
+		return true
+	}
+	return false
+}
+
 // Phase is the fleet's word for what a run is doing, for the backends that
 // can show it. Display only, written best-effort, never read back.
 type Phase string

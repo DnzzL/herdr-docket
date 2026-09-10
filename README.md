@@ -348,6 +348,11 @@ list the fleet doesn't know about is simply not its work.
 | `herdr-fleet auth basecamp` | sign in to a hosted queue, once |
 | `herdr-fleet list` | the queue, grouped by phase, with the routed agent |
 | `herdr-fleet run TASK-12` | run one task now |
+| `herdr-fleet task list` | the queue as the agent sees it (`--all` includes closed work) |
+| `herdr-fleet task view ID` | one task: body, notes, criteria, and who it is routed to |
+| `herdr-fleet task create "…" -a AGENT` | add work to the queue |
+| `herdr-fleet task note ID "…"` | say where things stand without closing |
+| `herdr-fleet task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence) |
 | `herdr-fleet agent list` | the agents, and which are parked |
 | `herdr-fleet agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-fleet history [TASK-12]` | recent runs |

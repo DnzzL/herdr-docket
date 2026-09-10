@@ -268,3 +268,20 @@ func (m *memClient) AppendNote(id, note string) error {
 	mt.notes += note
 	return nil
 }
+
+// The port owns the verdict vocabulary; this adapter owns the translation into
+// Backlog.md's status words. Adding a verdict to the port without a status to
+// record it would otherwise close the item into an empty status.
+func TestEveryKnownVerdictHasAStatus(t *testing.T) {
+	for _, v := range []work.Verdict{work.Done, work.Failed, work.Blocked} {
+		if !v.Known() {
+			t.Fatalf("%q is a port verdict but Known() denies it", v)
+		}
+		if verdicts[v] == "" {
+			t.Errorf("verdict %q has no Backlog.md status to record it as", v)
+		}
+	}
+	if work.Verdict("probably").Known() {
+		t.Error("Known() must not accept a verdict the port does not write")
+	}
+}
