@@ -20,7 +20,6 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/runner"
 	"github.com/DnzzL/herdr-fleet/internal/text"
 	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
 
 var (
@@ -151,7 +150,10 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	src := backlogmd.New(settings.Dir)
+	src, err := fleet.NewSource(settings)
+	if err != nil {
+		return err
+	}
 	m := model{
 		dir:          settings.Dir,
 		src:          src,

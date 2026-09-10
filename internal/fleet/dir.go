@@ -17,6 +17,9 @@ type Settings struct {
 	// DefaultAgent picks up tasks that have no assignee. Empty means
 	// unassigned tasks are simply not the fleet's business.
 	DefaultAgent string `yaml:"default_agent"`
+	// Source is where the queue lives. Absent, it is the Backlog.md project
+	// in Dir.
+	Source SourceConfig `yaml:"source"`
 }
 
 // LoadSettings reads fleet.yaml, fills defaults, expands ~. A missing file is

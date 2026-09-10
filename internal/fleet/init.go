@@ -40,10 +40,11 @@ Delete this folder or rename it to create your first real agent, then assign
 it a task with the fleet CLI:  herdr-fleet task create "..." -a <agent-name>
 `
 
-// Init bootstraps the fleet directory: a git repo, a Backlog.md project with
-// the fleet's statuses, and an example agent. Safe to re-run: existing pieces
-// are left alone.
-func Init(dir string) error {
+// Init bootstraps the fleet directory: a git repo, an example agent, and —
+// when the queue is a local one — the Backlog.md project itself. Safe to
+// re-run: existing pieces are left alone.
+func Init(s Settings) error {
+	dir := s.Dir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -52,13 +53,10 @@ func Init(dir string) error {
 			return fmt.Errorf("git init: %s", out)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(dir, "backlog")); os.IsNotExist(err) {
-		if out, err := command(dir, "backlog", "init", "fleet", "--defaults"); err != nil {
-			return fmt.Errorf("backlog init: %s", out)
+	if s.Source.local() {
+		if err := initBacklog(dir); err != nil {
+			return err
 		}
-	}
-	if err := patchStatuses(filepath.Join(dir, "backlog", "config.yml")); err != nil {
-		return err
 	}
 	example := filepath.Join(dir, "agents", "example")
 	if _, err := os.Stat(filepath.Join(dir, "agents")); os.IsNotExist(err) {
@@ -70,6 +68,17 @@ func Init(dir string) error {
 		}
 	}
 	return nil
+}
+
+// initBacklog lays down the Backlog.md project and makes sure the project
+// config knows the fleet's lifecycle.
+func initBacklog(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, "backlog")); os.IsNotExist(err) {
+		if out, err := command(dir, "backlog", "init", "fleet", "--defaults"); err != nil {
+			return fmt.Errorf("backlog init: %s", out)
+		}
+	}
+	return patchStatuses(filepath.Join(dir, "backlog", "config.yml"))
 }
 
 // patchStatuses rewrites the statuses list in the Backlog.md config. Leaves

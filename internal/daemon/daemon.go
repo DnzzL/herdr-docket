@@ -16,9 +16,9 @@ import (
 
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/history"
+	"github.com/DnzzL/herdr-fleet/internal/host"
 	"github.com/DnzzL/herdr-fleet/internal/pick"
 	"github.com/DnzzL/herdr-fleet/internal/runner"
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
 
 // tickInterval is how often the backlog is polled. Short enough that a task
@@ -43,7 +43,11 @@ func Run() error {
 	}
 	log.Printf("daemon starting, fleet=%s", settings.Dir)
 
-	runs := runner.Default(settings.Dir)
+	src, err := fleet.NewSource(settings)
+	if err != nil {
+		return err
+	}
+	runs := runner.New(host.New(), src, settings.Dir)
 	binary := binaryStamp()
 	reported := map[string]bool{}
 
@@ -87,7 +91,11 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		}
 	}
 
-	board := backlogmd.New(settings.Dir)
+	board, err := fleet.NewSource(settings)
+	if err != nil {
+		log.Printf("queue error, skipping this tick: %v", err)
+		return
+	}
 	tasks, err := board.List()
 	if err != nil {
 		log.Printf("backlog poll failed: %v", err)

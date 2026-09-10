@@ -289,6 +289,9 @@ Config is optional — `fleet.yaml` in the plugin config dir:
 ```yaml
 dir: ~/somewhere/else     # fleet dir (default ~/fleet)
 default_agent: dev        # picks up unassigned tasks; unset = leave them alone
+source:
+  kind: backlogmd         # where the queue lives — the default, and the only
+                          # kind so far: a Backlog.md project in the fleet dir
 ```
 
 ## Commands

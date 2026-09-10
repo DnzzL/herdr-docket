@@ -20,7 +20,6 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/hostpath"
 	"github.com/DnzzL/herdr-fleet/internal/prompt"
 	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
 
 // Runner runs tasks on a host, one at a time *per checkout*. The unit of
@@ -42,11 +41,6 @@ type Runner struct {
 // New returns a Runner working through h against the board.
 func New(h host.Host, b work.Source, fleetDir string) *Runner {
 	return &Runner{host: h, board: b, fleetDir: fleetDir, busy: map[string]*os.File{}}
-}
-
-// Default returns a Runner driving the real Herdr and the real backlog CLI.
-func Default(fleetDir string) *Runner {
-	return New(host.New(), backlogmd.New(fleetDir), fleetDir)
 }
 
 // LockKey names what a run of this agent would mutate: the shared checkout

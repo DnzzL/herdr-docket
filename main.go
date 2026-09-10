@@ -14,13 +14,13 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/daemon"
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/history"
+	"github.com/DnzzL/herdr-fleet/internal/host"
 	"github.com/DnzzL/herdr-fleet/internal/hostpath"
 	"github.com/DnzzL/herdr-fleet/internal/pane"
 	"github.com/DnzzL/herdr-fleet/internal/pick"
 	"github.com/DnzzL/herdr-fleet/internal/runner"
 	"github.com/DnzzL/herdr-fleet/internal/text"
 	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
 
 // Version is stamped by the release build; "dev" for local builds.
@@ -90,7 +90,7 @@ func initCmd() error {
 	if err != nil {
 		return err
 	}
-	if err := fleet.Init(settings.Dir); err != nil {
+	if err := fleet.Init(settings); err != nil {
 		return err
 	}
 	fmt.Printf("fleet ready at %s\n", settings.Dir)
@@ -100,12 +100,23 @@ func initCmd() error {
 	return nil
 }
 
+// settingsAndSource resolves the fleet's configuration and the queue it names
+// — one shape for every command that needs both.
+func settingsAndSource() (fleet.Settings, work.Source, error) {
+	s, err := fleet.LoadSettings()
+	if err != nil {
+		return fleet.Settings{}, nil, err
+	}
+	src, err := fleet.NewSource(s)
+	return s, src, err
+}
+
 func list() error {
-	settings, err := fleet.LoadSettings()
+	settings, src, err := settingsAndSource()
 	if err != nil {
 		return err
 	}
-	items, err := backlogmd.New(settings.Dir).List()
+	items, err := src.List()
 	if err != nil {
 		return err
 	}
@@ -139,11 +150,11 @@ func list() error {
 // the agent-facing verbs. It is the only queue surface an agent is given, and
 // it is backend-blind: the adapter decides what answers.
 func taskCmd(args []string) error {
-	settings, err := fleet.LoadSettings()
+	_, src, err := settingsAndSource()
 	if err != nil {
 		return err
 	}
-	return runTaskCmd(backlogmd.New(settings.Dir), args, os.Stdout)
+	return runTaskCmd(src, args, os.Stdout)
 }
 
 // runTaskCmd is the task verbs with the source injected, so the CLI's shape is
@@ -331,11 +342,10 @@ func runCmd(args []string) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: herdr-fleet run <task-id>")
 	}
-	settings, err := fleet.LoadSettings()
+	settings, board, err := settingsAndSource()
 	if err != nil {
 		return err
 	}
-	board := backlogmd.New(settings.Dir)
 	it, err := board.Get(args[0])
 	if err != nil {
 		return err
@@ -349,7 +359,7 @@ func runCmd(args []string) error {
 		return fmt.Errorf("%s: %w", it.ID, err)
 	}
 	fmt.Printf("running %s (%s) with agent %s\n", it.ID, it.Title, agent.Name)
-	return runner.Default(settings.Dir).Run(it, agent, history.TriggerManual)
+	return runner.New(host.New(), board, settings.Dir).Run(it, agent, history.TriggerManual)
 }
 
 // routedAgent resolves the agent a task runs with, for surfaces acting on one

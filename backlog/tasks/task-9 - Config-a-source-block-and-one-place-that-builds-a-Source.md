@@ -1,9 +1,10 @@
 ---
 id: TASK-9
 title: 'Config: a source block and one place that builds a Source'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:10'
+updated_date: '2026-09-10 20:26'
 labels: []
 dependencies:
   - TASK-6
