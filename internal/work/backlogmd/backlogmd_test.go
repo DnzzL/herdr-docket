@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/work"
 	"github.com/DnzzL/herdr-fleet/internal/work/worktest"
 )
@@ -15,8 +14,8 @@ import (
 // boundary, so standing in for it tests the mapping without shelling out.
 // Writes are recorded so the verbs can be checked without a project on disk.
 type fakeClient struct {
-	tasks []backlog.Task
-	view  backlog.View
+	tasks []task
+	view  view
 	err   error
 
 	created  []string // title, body, assignee
@@ -24,8 +23,8 @@ type fakeClient struct {
 	comments []string
 }
 
-func (f *fakeClient) List() ([]backlog.Task, error)        { return f.tasks, f.err }
-func (f *fakeClient) View(id string) (backlog.View, error) { return f.view, f.err }
+func (f *fakeClient) List() ([]task, error)        { return f.tasks, f.err }
+func (f *fakeClient) View(id string) (view, error) { return f.view, f.err }
 
 func (f *fakeClient) Create(title, body, assignee string) (string, error) {
 	f.created = []string{title, body, assignee}
@@ -45,7 +44,7 @@ func (f *fakeClient) AppendNote(id, note string) error {
 // The native status word decides openness: a verdict closed Done, Failed or
 // Blocked, and only the word survives for the board.
 func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
-	tasks := []backlog.Task{
+	tasks := []task{
 		{ID: "T-1", Title: "queued", Status: "To Do"},
 		{ID: "T-2", Title: "running", Status: "In Progress"},
 		{ID: "T-3", Title: "parked", Status: "Blocked"},
@@ -73,7 +72,7 @@ func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 // The routing key is the first assignee: the one field pick reads to decide
 // whose work this is.
 func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
-	items, err := newWith(&fakeClient{tasks: []backlog.Task{{
+	items, err := newWith(&fakeClient{tasks: []task{{
 		ID: "TASK-2", Title: "B", Status: "To Do", Priority: "high",
 		Assignees: []string{"dev", "pm"}, Ordinal: 2000, CreatedAt: "2026-08-30T10:00:00Z",
 	}}}).List()
@@ -97,10 +96,10 @@ func TestListPropagatesTheBackendError(t *testing.T) {
 
 // Get is the full item: the list view plus what the prompt needs.
 func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
-	s := newWith(&fakeClient{view: backlog.View{
-		Task:        backlog.Task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"dev"}},
+	s := newWith(&fakeClient{view: view{
+		task:        task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"dev"}},
 		Description: "do it",
-		AcceptanceCriteria: []backlog.Criterion{
+		AcceptanceCriteria: []criterion{
 			{Index: 1, Text: "works", Checked: false},
 			{Index: 2, Text: "tested", Checked: true},
 		},
@@ -145,9 +144,9 @@ func TestCloseMapsEachVerdictToItsStatus(t *testing.T) {
 		verdict work.Verdict
 		status  string
 	}{
-		{work.Done, backlog.StatusDone},
-		{work.Failed, backlog.StatusFailed},
-		{work.Blocked, backlog.StatusBlocked},
+		{work.Done, statusDone},
+		{work.Failed, statusFailed},
+		{work.Blocked, statusBlocked},
 	} {
 		f := &fakeClient{}
 		if err := newWith(f).Close("T-1", tc.verdict); err != nil {
@@ -195,10 +194,10 @@ type memClient struct {
 }
 
 type memTask struct {
-	task     backlog.Task
+	task     task
 	body     string
 	notes    string
-	criteria []backlog.Criterion
+	criteria []criterion
 }
 
 func (m *memClient) put(t *memTask) {
@@ -217,21 +216,21 @@ func (m *memClient) find(id string) (*memTask, error) {
 	return mt, nil
 }
 
-func (m *memClient) List() ([]backlog.Task, error) {
-	tasks := make([]backlog.Task, 0, len(m.order))
+func (m *memClient) List() ([]task, error) {
+	tasks := make([]task, 0, len(m.order))
 	for _, id := range m.order {
 		tasks = append(tasks, m.tasks[id].task)
 	}
 	return tasks, nil
 }
 
-func (m *memClient) View(id string) (backlog.View, error) {
+func (m *memClient) View(id string) (view, error) {
 	mt, err := m.find(id)
 	if err != nil {
-		return backlog.View{}, err
+		return view{}, err
 	}
-	return backlog.View{
-		Task:                mt.task,
+	return view{
+		task:                mt.task,
 		Description:         mt.body,
 		AcceptanceCriteria:  mt.criteria,
 		ImplementationNotes: mt.notes,
@@ -240,7 +239,7 @@ func (m *memClient) View(id string) (backlog.View, error) {
 
 func (m *memClient) Create(title, body, assignee string) (string, error) {
 	m.seq++
-	t := &memTask{task: backlog.Task{ID: fmt.Sprintf("TASK-%d", m.seq), Title: title, Status: backlog.StatusToDo}}
+	t := &memTask{task: task{ID: fmt.Sprintf("TASK-%d", m.seq), Title: title, Status: statusToDo}}
 	if assignee != "" {
 		t.task.Assignees = []string{assignee}
 	}

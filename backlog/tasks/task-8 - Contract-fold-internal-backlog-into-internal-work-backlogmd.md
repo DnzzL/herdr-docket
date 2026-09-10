@@ -1,9 +1,10 @@
 ---
 id: TASK-8
 title: 'Contract: fold internal/backlog into internal/work/backlogmd'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-10 20:10'
+updated_date: '2026-09-10 20:24'
 labels: []
 dependencies:
   - TASK-6

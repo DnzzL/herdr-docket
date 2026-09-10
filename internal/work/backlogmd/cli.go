@@ -1,7 +1,4 @@
-// Package backlog is a thin client over the Backlog.md CLI, pointed at the
-// fleet's platform backlog via BACKLOG_CWD. It never edits the markdown files
-// itself: the CLI is the schema.
-package backlog
+package backlogmd
 
 import (
 	"encoding/json"
@@ -12,21 +9,22 @@ import (
 	"strings"
 )
 
-// The fleet's task lifecycle. `fleet init` writes these into the Backlog.md
-// project config; the CLI rejects any status outside the configured list.
+// The Backlog.md lifecycle the fleet uses, in board order. `fleet init` writes
+// this list into the project config — the CLI rejects any status outside it —
+// so every status the adapter reads or writes has to be in here.
 const (
-	StatusToDo       = "To Do"
-	StatusInProgress = "In Progress"
-	StatusBlocked    = "Blocked"
-	StatusFailed     = "Failed"
-	StatusDone       = "Done"
+	statusToDo       = "To Do"
+	statusInProgress = "In Progress"
+	statusBlocked    = "Blocked"
+	statusFailed     = "Failed"
+	statusDone       = "Done"
 )
 
-// Statuses is the full lifecycle, in board order.
-var Statuses = []string{StatusToDo, StatusInProgress, StatusBlocked, StatusFailed, StatusDone}
+// Statuses is that lifecycle as a list, for whoever has to write it down.
+var Statuses = []string{statusToDo, statusInProgress, statusBlocked, statusFailed, statusDone}
 
-// Task is one row of `task list --json` — enough to pick work and draw a board.
-type Task struct {
+// task is one row of `task list --json` — enough to pick work and draw a board.
+type task struct {
 	ID        string   `json:"id"`
 	Title     string   `json:"title"`
 	Status    string   `json:"status"`
@@ -37,37 +35,37 @@ type Task struct {
 	CreatedAt string   `json:"createdAt"`
 }
 
-// Criterion is one acceptance criterion of a task.
-type Criterion struct {
+// criterion is one acceptance criterion of a task.
+type criterion struct {
 	Index   int    `json:"index"`
 	Text    string `json:"text"`
 	Checked bool   `json:"checked"`
 }
 
-// View is the full task, as `task view --json` reports it.
-type View struct {
-	Task
+// view is the full task, as `task view --json` reports it.
+type view struct {
+	task
 	Description         string      `json:"description"`
-	AcceptanceCriteria  []Criterion `json:"acceptanceCriteria"`
+	AcceptanceCriteria  []criterion `json:"acceptanceCriteria"`
 	ImplementationNotes string      `json:"implementationNotes"`
 }
 
-// Client calls the backlog CLI against one project directory.
-type Client struct {
-	Dir string
+// cli drives the Backlog.md CLI against one project directory. It never edits
+// the markdown files itself: the CLI is the schema.
+type cli struct {
+	dir string
 	// run is the exec seam; nil means the real CLI.
 	run func(args ...string) ([]byte, error)
 }
 
-// New returns a client on the Backlog.md project at dir.
-func New(dir string) *Client { return &Client{Dir: dir} }
+func newCLI(dir string) *cli { return &cli{dir: dir} }
 
-func (c *Client) exec(args ...string) ([]byte, error) {
+func (c *cli) exec(args ...string) ([]byte, error) {
 	if c.run != nil {
 		return c.run(args...)
 	}
 	cmd := exec.Command("backlog", args...)
-	cmd.Env = append(os.Environ(), "BACKLOG_CWD="+c.Dir)
+	cmd.Env = append(os.Environ(), "BACKLOG_CWD="+c.dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
@@ -80,13 +78,13 @@ func (c *Client) exec(args ...string) ([]byte, error) {
 }
 
 // List returns every task in the project.
-func (c *Client) List() ([]Task, error) {
+func (c *cli) List() ([]task, error) {
 	out, err := c.exec("task", "list", "--json")
 	if err != nil {
 		return nil, err
 	}
 	var res struct {
-		Tasks []Task `json:"tasks"`
+		Tasks []task `json:"tasks"`
 	}
 	if err := json.Unmarshal(out, &res); err != nil {
 		return nil, fmt.Errorf("task list: decode: %w", err)
@@ -95,28 +93,28 @@ func (c *Client) List() ([]Task, error) {
 }
 
 // View returns one task in full.
-func (c *Client) View(id string) (View, error) {
+func (c *cli) View(id string) (view, error) {
 	out, err := c.exec("task", "view", id, "--json")
 	if err != nil {
-		return View{}, err
+		return view{}, err
 	}
 	var res struct {
-		Task View `json:"task"`
+		Task view `json:"task"`
 	}
 	if err := json.Unmarshal(out, &res); err != nil {
-		return View{}, fmt.Errorf("task view %s: decode: %w", id, err)
+		return view{}, fmt.Errorf("task view %s: decode: %w", id, err)
 	}
 	return res.Task, nil
 }
 
 // SetStatus moves a task. The CLI validates against the configured statuses.
-func (c *Client) SetStatus(id, status string) error {
+func (c *cli) SetStatus(id, status string) error {
 	_, err := c.exec("task", "edit", id, "-s", status, "--plain")
 	return err
 }
 
 // AppendNote adds to the task's implementation notes without replacing them.
-func (c *Client) AppendNote(id, note string) error {
+func (c *cli) AppendNote(id, note string) error {
 	_, err := c.exec("task", "edit", id, "--append-notes", note, "--plain")
 	return err
 }
@@ -124,7 +122,7 @@ func (c *Client) AppendNote(id, note string) error {
 // Create adds a task and returns its id. The CLI names the new task on the
 // plain output's header line; an id we cannot read is not an error — the task
 // exists either way, and the caller can list.
-func (c *Client) Create(title, description, assignee string) (string, error) {
+func (c *cli) Create(title, description, assignee string) (string, error) {
 	args := []string{"task", "create", title, "--plain"}
 	if description != "" {
 		args = append(args, "-d", description)

@@ -7,12 +7,24 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 )
 
-// backlogStatuses is the fleet lifecycle, mirrored in internal/backlog.
-// Written here into the Backlog.md project config because the CLI refuses
-// `config set statuses` — the file is the only supported channel.
-const backlogStatuses = `statuses: ["To Do", "In Progress", "Blocked", "Failed", "Done"]`
+// backlogStatuses is the lifecycle the Backlog.md adapter reads and writes,
+// as YAML. Built from the adapter's own list rather than retyped, so a status
+// added there cannot go missing here — the CLI refuses any status the project
+// config does not declare. Written to the config file because the CLI has no
+// `config set statuses`: the file is the only supported channel.
+var backlogStatuses = statusesYAML()
+
+func statusesYAML() string {
+	quoted := make([]string, len(backlogmd.Statuses))
+	for i, s := range backlogmd.Statuses {
+		quoted[i] = `"` + s + `"`
+	}
+	return "statuses: [" + strings.Join(quoted, ", ") + "]"
+}
 
 const exampleAgent = `---
 # model: claude-sonnet-5

@@ -1,4 +1,4 @@
-package backlog
+package backlogmd
 
 import (
 	"errors"
@@ -29,12 +29,12 @@ const listJSON = `{"schemaVersion":1,"kind":"task-list","tasks":[
 
 func TestListDecodesTasks(t *testing.T) {
 	f := &fakeRun{out: map[string]string{"task list": listJSON}}
-	c := &Client{Dir: "/tmp/x", run: f.run}
+	c := &cli{dir: "/tmp/x", run: f.run}
 	tasks, err := c.List()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Task{
+	want := []task{
 		{ID: "TASK-2", Title: "B", Status: "To Do", Priority: "high", Assignees: []string{"backlog"}, Labels: []string{}, Ordinal: 2000, CreatedAt: "2026-08-30T10:00:00Z"},
 		{ID: "TASK-1", Title: "A", Status: "Done", Assignees: []string{}, Labels: []string{"x"}, Ordinal: 1000, CreatedAt: "2026-08-29T10:00:00Z"},
 	}
@@ -51,7 +51,7 @@ func TestViewDecodesDescriptionAndCriteria(t *testing.T) {
 	 {"id":"TASK-2","title":"B","status":"To Do","description":"do it",
 	  "acceptanceCriteria":[{"index":1,"text":"works","checked":false}],
 	  "implementationNotes":"so far"}}`}}
-	c := &Client{run: f.run}
+	c := &cli{run: f.run}
 	v, err := c.View("TASK-2")
 	if err != nil {
 		t.Fatal(err)
@@ -63,8 +63,8 @@ func TestViewDecodesDescriptionAndCriteria(t *testing.T) {
 
 func TestSetStatusAndAppendNote(t *testing.T) {
 	f := &fakeRun{out: map[string]string{}}
-	c := &Client{run: f.run}
-	if err := c.SetStatus("TASK-2", StatusInProgress); err != nil {
+	c := &cli{run: f.run}
+	if err := c.SetStatus("TASK-2", statusInProgress); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.AppendNote("TASK-2", "a note"); err != nil {
@@ -81,7 +81,7 @@ func TestSetStatusAndAppendNote(t *testing.T) {
 
 func TestErrorsPropagate(t *testing.T) {
 	f := &fakeRun{err: errors.New("boom")}
-	c := &Client{run: f.run}
+	c := &cli{run: f.run}
 	if _, err := c.List(); err == nil {
 		t.Fatal("want error")
 	}

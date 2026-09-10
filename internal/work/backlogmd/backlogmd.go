@@ -1,33 +1,33 @@
 // Package backlogmd adapts a Backlog.md project to work.Source. Backlog.md is
 // the fleet's default queue: a git repo of markdown tasks, driven through the
-// backlog CLI, one status word per task.
+// backlog CLI, one status word per task. Everything Backlog.md-specific lives
+// here — nothing above an adapter knows the word "backlog".
 package backlogmd
 
 import (
 	"fmt"
 
-	"github.com/DnzzL/herdr-fleet/internal/backlog"
 	"github.com/DnzzL/herdr-fleet/internal/work"
 )
 
-// Client is the slice of the Backlog.md client the adapter needs. The real
-// one shells out to the CLI; tests stand in for it, which is the only way to
-// test the mapping without a backlog project on disk.
-type Client interface {
-	List() ([]backlog.Task, error)
-	View(id string) (backlog.View, error)
+// client is the slice of the Backlog.md CLI the adapter needs. The real one
+// shells out; tests stand in for it, which is the only way to test the mapping
+// without a backlog project on disk.
+type client interface {
+	List() ([]task, error)
+	View(id string) (view, error)
 	Create(title, body, assignee string) (string, error)
 	SetStatus(id, status string) error
 	AppendNote(id, note string) error
 }
 
 // Source is a work.Source backed by a Backlog.md project.
-type Source struct{ client Client }
+type Source struct{ client client }
 
 // New returns a Source on the Backlog.md project at dir.
-func New(dir string) *Source { return newWith(backlog.New(dir)) }
+func New(dir string) *Source { return newWith(newCLI(dir)) }
 
-func newWith(c Client) *Source { return &Source{client: c} }
+func newWith(c client) *Source { return &Source{client: c} }
 
 // List returns every item in the project, closed ones included — the board
 // shows them, and only the queue cares about Open.
@@ -50,7 +50,7 @@ func (s *Source) Get(id string) (work.Item, error) {
 	if err != nil {
 		return work.Item{}, err
 	}
-	it := item(v.Task)
+	it := item(v.task)
 	it.Body = v.Description
 	it.Notes = v.ImplementationNotes
 	for _, c := range v.AcceptanceCriteria {
@@ -82,9 +82,9 @@ func (s *Source) Close(id string, v work.Verdict) error {
 }
 
 var verdicts = map[work.Verdict]string{
-	work.Done:    backlog.StatusDone,
-	work.Failed:  backlog.StatusFailed,
-	work.Blocked: backlog.StatusBlocked,
+	work.Done:    statusDone,
+	work.Failed:  statusFailed,
+	work.Blocked: statusBlocked,
 }
 
 // verdictOf is the same table read backwards: what a closed item's status
@@ -113,13 +113,13 @@ func (s *Source) SetPhase(id string, phase work.Phase) error {
 }
 
 var phases = map[work.Phase]string{
-	work.PhaseRunning: backlog.StatusInProgress,
+	work.PhaseRunning: statusInProgress,
 }
 
 // item maps a Backlog.md task onto the fleet's vocabulary. A task is open
 // until a verdict has closed it: Done, Failed and Blocked are all closed to
 // the fleet, and the native word survives in Phase for the board to show.
-func item(t backlog.Task) work.Item {
+func item(t task) work.Item {
 	return work.Item{
 		ID:        t.ID,
 		Title:     t.Title,
@@ -135,7 +135,7 @@ func item(t backlog.Task) work.Item {
 
 func open(status string) bool {
 	switch status {
-	case backlog.StatusDone, backlog.StatusFailed, backlog.StatusBlocked:
+	case statusDone, statusFailed, statusBlocked:
 		return false
 	}
 	return true
