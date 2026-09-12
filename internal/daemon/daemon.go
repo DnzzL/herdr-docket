@@ -25,6 +25,15 @@ import (
 // you just wrote is picked up while you are still watching the board.
 const tickInterval = 15 * time.Second
 
+// The daemon's reads of the outside world, as variables so a tick can be
+// exercised without a fleet dir or a backend on disk. Production never
+// replaces them.
+var (
+	loadSettings = fleet.LoadSettings
+	loadAgents   = fleet.LoadAgents
+	newSource    = fleet.NewSource
+)
+
 func Run() error {
 	log.SetPrefix("[herdr-fleet] ")
 
@@ -43,11 +52,13 @@ func Run() error {
 	}
 	log.Printf("daemon starting, fleet=%s", settings.Dir)
 
-	src, err := fleet.NewSource(settings)
-	if err != nil {
+	// Fail fast on a queue the fleet cannot build, but keep no handle on it:
+	// every tick builds its own, so the writes always land on the queue the
+	// tick read from.
+	if _, err := fleet.NewSource(settings); err != nil {
 		return err
 	}
-	runs := runner.New(host.New(), src, settings.Dir)
+	runs := runner.New(host.New(), settings.Dir)
 	binary := binaryStamp()
 	reported := map[string]bool{}
 
@@ -78,12 +89,12 @@ func Run() error {
 // daemon lifetime: re-noting an unfixed typo every 15 seconds would bury the
 // task in comments.
 func evaluate(runs *runner.Runner, reported map[string]bool) {
-	settings, err := fleet.LoadSettings()
+	settings, err := loadSettings()
 	if err != nil {
 		log.Printf("fleet.yaml error, skipping this tick: %v", err)
 		return
 	}
-	agents, diags := fleet.LoadAgents(settings.Dir)
+	agents, diags := loadAgents(settings.Dir)
 	for _, d := range diags {
 		if !reported[d.String()] {
 			reported[d.String()] = true
@@ -91,12 +102,15 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		}
 	}
 
-	board, err := fleet.NewSource(settings)
+	// One source per evaluation: the tasks picked from below and the queue
+	// claimed, commented and closed on are the same value, so a config change
+	// (or a fleet of several queues) can never split the read from the writes.
+	src, err := newSource(settings)
 	if err != nil {
 		log.Printf("queue error, skipping this tick: %v", err)
 		return
 	}
-	tasks, err := board.List()
+	tasks, err := src.List()
 	if err != nil {
 		log.Printf("queue poll failed: %v", err)
 		return
@@ -107,8 +121,10 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	// is what used to write "is not a fleet agent" onto a ticket whose agent was
 	// still working — which is every self-queueing sweep, seconds after it
 	// creates its own next task.
+	usage := history.UsageSince(time.Now())
 	for name, a := range agents {
-		a.Unavailable = !runs.CanRun(a)
+		u := usage[name]
+		a.Unavailable = !runs.CanRun(a) || pick.OverBudget(a, u.Runs, u.Minutes)
 		agents[name] = a
 	}
 
@@ -125,7 +141,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		}
 		reported[key] = true
 		log.Printf("%s: %s", t.ID, note)
-		if err := board.Comment(t.ID, note); err != nil {
+		if err := src.Comment(t.ID, note); err != nil {
 			log.Printf("%s: append note: %v", t.ID, err)
 		}
 	}
@@ -133,7 +149,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		t, agent := *res.Task, res.Agent
 		log.Printf("%s: starting (%s, agent %s)", t.ID, t.Title, agent.Name)
 		go func() {
-			if err := runs.Run(t, agent, history.TriggerPoll); err != nil {
+			if err := runs.Run(src, t, agent, history.TriggerPoll); err != nil {
 				log.Printf("run %s: %v", t.ID, err)
 			}
 		}()

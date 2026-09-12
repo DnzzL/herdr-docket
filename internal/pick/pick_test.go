@@ -2,8 +2,10 @@ package pick
 
 import (
 	"testing"
+	"time"
 
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
+	"github.com/DnzzL/herdr-fleet/internal/history"
 	"github.com/DnzzL/herdr-fleet/internal/work"
 )
 
@@ -183,5 +185,72 @@ func TestClosedWorkIsLeftAlone(t *testing.T) {
 	}
 	if len(res.Unknown) != 0 {
 		t.Fatalf("closed work must not be reported as unknown: %v", res.Unknown)
+	}
+}
+
+// A budget is scheduling policy, not a config toggle: an agent inside its
+// limit runs exactly as before, one that has reached a limit waits, and an
+// agent with no limit is unbounded. Reaching a limit spends it — the run that
+// would cross the line is the one that waits.
+func TestBudgetDecidesWhetherAnAgentStillRuns(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		runs, minutes int
+		limit         fleet.Agent
+		spent         bool
+	}{
+		{"under the run budget", 5, 0, fleet.Agent{RunsPerDay: 6}, false},
+		{"at the run budget", 6, 0, fleet.Agent{RunsPerDay: 6}, true},
+		{"past the run budget", 7, 0, fleet.Agent{RunsPerDay: 6}, true},
+		{"under the minute budget", 0, 130, fleet.Agent{MinutesPerDay: 180}, false},
+		{"at the minute budget", 0, 180, fleet.Agent{MinutesPerDay: 180}, true},
+		{"no budget at all is unbounded", 1000, 100000, fleet.Agent{}, false},
+		{"a run budget leaves minutes alone", 0, 100000, fleet.Agent{RunsPerDay: 6}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := OverBudget(tc.limit, tc.runs, tc.minutes); got != tc.spent {
+				t.Fatalf("OverBudget = %v, want %v", got, tc.spent)
+			}
+		})
+	}
+}
+
+// The roster reads a budgeted agent's spend against its limits; an agent with
+// no budget says nothing, because "unbounded" is not a number.
+func TestBudgetLineRendersOnlyWhatIsBudgeted(t *testing.T) {
+	a := fleet.Agent{Name: "dev", RunsPerDay: 6, MinutesPerDay: 180}
+	if got := BudgetLine(a, 4, 130); got != "4/6 runs today, 130/180 min" {
+		t.Fatalf("BudgetLine = %q", got)
+	}
+	if got := BudgetLine(fleet.Agent{Name: "dev", RunsPerDay: 6}, 4, 130); got != "4/6 runs today" {
+		t.Fatalf("a runs-only budget should show only runs, got %q", got)
+	}
+	if got := BudgetLine(fleet.Agent{Name: "dev"}, 4, 130); got != "" {
+		t.Fatalf("an unbudgeted agent should show no line, got %q", got)
+	}
+}
+
+// The window rolls, so a budget re-opens on its own: the same six runs that
+// spend a six-run budget today leave it whole once one slides out of the last
+// 24h. OverBudget reads the count; UsageSince is what makes it a day and not
+// a flag nobody ever clears.
+func TestABudgetReopensAsOldRunsLeaveTheWindow(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	now := time.Now()
+	for i := 0; i < 6; i++ {
+		at := now.Add(-time.Minute)
+		if i == 0 {
+			at = now.Add(-25 * time.Hour) // this one has aged out
+		}
+		if err := history.Append(history.Record{
+			RunID: "run-" + string(rune('0'+i)), Task: "T", Agent: "dev",
+			Status: history.StatusDone, At: at, DurationSeconds: 60,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := fleet.Agent{Name: "dev", RunsPerDay: 6}
+	if u := history.UsageSince(now)["dev"]; OverBudget(a, u.Runs, u.Minutes) {
+		t.Fatalf("five runs inside the window must not spend a six-run budget: %+v", u)
 	}
 }

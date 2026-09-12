@@ -3,7 +3,9 @@
 package pick
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
 	"github.com/DnzzL/herdr-fleet/internal/work"
@@ -79,4 +81,33 @@ func AssigneeFor(it work.Task, defaultAgent string) string {
 		return it.Assignee
 	}
 	return defaultAgent
+}
+
+// OverBudget reports whether an agent has spent a configured budget in the
+// rolling window. A zero limit is unbounded: the fleet never invents one, and
+// an agent whose budget is unset schedules exactly as it did before budgets
+// existed. Reaching a limit spends it — the run that would hit the quota is
+// the one that waits.
+func OverBudget(a fleet.Agent, runs, minutes int) bool {
+	if a.RunsPerDay > 0 && runs >= a.RunsPerDay {
+		return true
+	}
+	if a.MinutesPerDay > 0 && minutes >= a.MinutesPerDay {
+		return true
+	}
+	return false
+}
+
+// BudgetLine renders an agent's spend against its limits for the roster and
+// the board, e.g. "4/6 runs today, 130/180 min". Empty for an agent with no
+// budget, because unbounded is not a number to show.
+func BudgetLine(a fleet.Agent, runs, minutes int) string {
+	var parts []string
+	if a.RunsPerDay > 0 {
+		parts = append(parts, fmt.Sprintf("%d/%d runs today", runs, a.RunsPerDay))
+	}
+	if a.MinutesPerDay > 0 {
+		parts = append(parts, fmt.Sprintf("%d/%d min", minutes, a.MinutesPerDay))
+	}
+	return strings.Join(parts, ", ")
 }

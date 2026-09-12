@@ -373,7 +373,7 @@ func runCmd(args []string) error {
 		return fmt.Errorf("%s: %w", it.ID, err)
 	}
 	fmt.Printf("running %s (%s) with agent %s\n", it.ID, it.Title, agent.Name)
-	return runner.New(host.New(), board, settings.Dir).Run(it, agent, history.TriggerManual)
+	return runner.New(host.New(), settings.Dir).Run(board, it, agent, history.TriggerManual)
 }
 
 // routedAgent resolves the agent a task runs with, for surfaces acting on one
@@ -427,8 +427,10 @@ func agentCmd(args []string) error {
 
 // agentList reports the agents as the fleet dir holds them: paused is a fact
 // about the persona file, so it stays true even with the daemon not running.
+// A budgeted agent also shows what it has spent in the rolling window.
 func agentList(dir string) error {
 	agents, diags := fleet.LoadAgents(dir)
+	usage := history.UsageSince(time.Now())
 	names := make([]string, 0, len(agents))
 	for name := range agents {
 		names = append(names, name)
@@ -440,7 +442,12 @@ func agentList(dir string) error {
 		if a.Disabled {
 			status = "paused"
 		}
-		fmt.Printf("%-14s %-8s %s\n", a.Name, status, a.Workdir)
+		u := usage[name]
+		line := fmt.Sprintf("%-14s %-8s %s", a.Name, status, a.Workdir)
+		if b := pick.BudgetLine(a, u.Runs, u.Minutes); b != "" {
+			line += "  " + b
+		}
+		fmt.Println(line)
 	}
 	for _, d := range diags {
 		fmt.Fprintf(os.Stderr, "herdr-fleet: %s\n", d)
@@ -458,11 +465,25 @@ func historyCmd(args []string) error {
 		return err
 	}
 	for _, r := range runs {
-		line := fmt.Sprintf("%s  %-9s %-10s %s", r.At.Format(time.DateTime), r.Status, r.Task, r.Trigger)
-		if r.Error != "" {
-			line += "  " + r.Error
-		}
-		fmt.Println(line)
+		fmt.Println(formatHistory(r))
 	}
 	return nil
+}
+
+// formatHistory is one run's line: when, how the mechanics ended it, which
+// task and trigger, then how long it took and the verdict the agent reported.
+// Duration and verdict are on the closing record only, so an in-flight run
+// shows neither.
+func formatHistory(r history.Record) string {
+	line := fmt.Sprintf("%s  %-9s %-10s %s", r.At.Format(time.DateTime), r.Status, r.Task, r.Trigger)
+	if r.DurationSeconds > 0 {
+		line += "  " + (time.Duration(r.DurationSeconds) * time.Second).String()
+	}
+	if r.Verdict != "" {
+		line += "  " + r.Verdict
+	}
+	if r.Error != "" {
+		line += "  " + r.Error
+	}
+	return line
 }

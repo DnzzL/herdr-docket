@@ -32,15 +32,17 @@ import (
 // from racing the daemon into the same agent or the same checkout.
 type Runner struct {
 	host     host.Host
-	board    work.Source
 	fleetDir string
 	busy     map[string]*os.File
 	mu       sync.Mutex
 }
 
-// New returns a Runner working through h against the board.
-func New(h host.Host, b work.Source, fleetDir string) *Runner {
-	return &Runner{host: h, board: b, fleetDir: fleetDir, busy: map[string]*os.File{}}
+// New returns a Runner working through h. The queue is not held here: it is
+// passed to Run, so the task a run reads and the queue it writes back to are
+// the same value by construction, even as the daemon rebuilds its source
+// between ticks.
+func New(h host.Host, fleetDir string) *Runner {
+	return &Runner{host: h, fleetDir: fleetDir, busy: map[string]*os.File{}}
 }
 
 // LockKey names what a run of this agent would mutate: the shared checkout
@@ -126,20 +128,20 @@ func sanitize(s string) string {
 // in root mode, its checkout) is in flight is refused, not queued — it stays
 // open and the next tick sees it. The lock is the whole claim: a task routes
 // to exactly one agent, so holding that agent's slot is holding the task.
-func (r *Runner) Run(t work.Task, a fleet.Agent, trigger history.Trigger) error {
+func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger) error {
 	key := LockKey(a)
 	if !r.acquire(key) {
 		return fmt.Errorf("%s: a run is already in flight for %s", t.ID, key)
 	}
 	defer r.release(key)
 
-	rec := recorder{id: history.NewID(t.ID), task: t.ID, trigger: trigger}
-	v, err := r.board.Get(t.ID)
+	rec := recorder{id: history.NewID(t.ID), task: t.ID, agent: a.Name, trigger: trigger, started: time.Now()}
+	v, err := src.Get(t.ID)
 	if err != nil {
 		rec.record(history.StatusFailed, host.Session{}, err.Error())
 		return err
 	}
-	r.claim(t.ID)
+	r.claim(src, t.ID)
 	rec.record(history.StatusScheduled, host.Session{}, "")
 
 	spec := host.Spec{
@@ -155,28 +157,28 @@ func (r *Runner) Run(t work.Task, a fleet.Agent, trigger history.Trigger) error 
 	}
 	session, err := r.host.Provision(spec)
 	if err != nil {
-		r.reconcile(t.ID, err)
-		rec.record(history.StatusFailed, session, err.Error())
+		v := r.reconcile(src, t.ID, err)
+		rec.close(history.StatusFailed, session, v, err.Error())
 		return err
 	}
 	rec.record(history.StatusRunning, session, "")
 
 	err = r.host.Do(session, spec, time.Duration(a.TimeoutMinutes)*time.Minute)
-	final := r.reconcile(t.ID, err)
-	r.cleanup(t.ID, session, final)
+	final := r.reconcile(src, t.ID, err)
+	r.cleanup(src, t.ID, session, final)
 	switch {
 	case errors.Is(err, host.ErrCancelled):
-		rec.record(history.StatusCancelled, session, err.Error())
+		rec.close(history.StatusCancelled, session, final, err.Error())
 	case err != nil:
-		rec.record(history.StatusFailed, session, err.Error())
+		rec.close(history.StatusFailed, session, final, err.Error())
 	case final == work.Failed:
 		// The run mechanics worked, but "the agent settled" is only a success
 		// if it reported a verdict; reconcile turned silence into Failed and
 		// the history must say the same.
 		err = fmt.Errorf("%s: the agent settled without reporting a verdict", t.ID)
-		rec.record(history.StatusFailed, session, err.Error())
+		rec.close(history.StatusFailed, session, final, err.Error())
 	default:
-		rec.record(history.StatusDone, session, "")
+		rec.close(history.StatusDone, session, final, "")
 	}
 	return err
 }
@@ -185,8 +187,8 @@ func (r *Runner) Run(t work.Task, a fleet.Agent, trigger history.Trigger) error 
 // write is display only and best-effort: a binary backend has no such state,
 // and the run lock — not this — is what keeps two runs apart, so a backend
 // that cannot say it is not a reason to refuse the run.
-func (r *Runner) claim(id string) {
-	p, ok := r.board.(work.Phaser)
+func (r *Runner) claim(src work.Source, id string) {
+	p, ok := src.(work.Phaser)
 	if !ok {
 		return
 	}
@@ -201,8 +203,8 @@ func (r *Runner) claim(id string) {
 // mechanics imply — a cancelled run (workspace closed under it) goes Blocked,
 // because somebody decided and a human should say what happens next; anything
 // else that leaves the task unreported is Failed.
-func (r *Runner) reconcile(taskID string, runErr error) work.Verdict {
-	v, err := r.board.Get(taskID)
+func (r *Runner) reconcile(src work.Source, taskID string, runErr error) work.Verdict {
+	v, err := src.Get(taskID)
 	if err != nil {
 		log.Printf("%s: cannot re-read the task after the run: %v", taskID, err)
 		return ""
@@ -217,10 +219,10 @@ func (r *Runner) reconcile(taskID string, runErr error) work.Verdict {
 	case runErr != nil:
 		note = "fleet: run failed: " + runErr.Error()
 	}
-	if err := r.board.Comment(taskID, note); err != nil {
+	if err := src.Comment(taskID, note); err != nil {
 		log.Printf("%s: append note: %v", taskID, err)
 	}
-	if err := r.board.Close(taskID, verdict); err != nil {
+	if err := src.Close(taskID, verdict); err != nil {
 		log.Printf("%s: close as %s: %v", taskID, verdict, err)
 	}
 	return verdict
@@ -231,7 +233,7 @@ func (r *Runner) reconcile(taskID string, runErr error) work.Verdict {
 // workspace is torn down. Anything else keeps its workspace open as the place
 // to resume: the board's enter-jump lands there, and the note names it for
 // anyone reading the ticket instead of the board.
-func (r *Runner) cleanup(taskID string, s host.Session, final work.Verdict) {
+func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict) {
 	if s.WorkspaceID == "" {
 		return
 	}
@@ -242,7 +244,7 @@ func (r *Runner) cleanup(taskID string, s host.Session, final work.Verdict) {
 		return
 	}
 	note := fmt.Sprintf("fleet: the run's workspace %s (pane %s) is left open — jump in to resume.", s.WorkspaceID, s.PaneID)
-	if err := r.board.Comment(taskID, note); err != nil {
+	if err := src.Comment(taskID, note); err != nil {
 		log.Printf("%s: append note: %v", taskID, err)
 	}
 }
@@ -251,13 +253,28 @@ func (r *Runner) cleanup(taskID string, s host.Session, final work.Verdict) {
 type recorder struct {
 	id      string
 	task    string
+	agent   string
 	trigger history.Trigger
+	started time.Time
 }
 
 func (r recorder) record(status history.Status, s host.Session, errText string) {
+	r.append(status, s, "", 0, errText)
+}
+
+// close is record for the run's final transition: it is where the duration and
+// the verdict are known, so it is where they are written down. Append-only
+// stays append-only — a record from before these fields existed reads as zero
+// and empty.
+func (r recorder) close(status history.Status, s host.Session, verdict work.Verdict, errText string) {
+	r.append(status, s, string(verdict), int(time.Since(r.started).Seconds()), errText)
+}
+
+func (r recorder) append(status history.Status, s host.Session, verdict string, seconds int, errText string) {
 	err := history.Append(history.Record{
-		RunID: r.id, Task: r.task, Trigger: r.trigger, Status: status,
-		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, Error: errText,
+		RunID: r.id, Task: r.task, Agent: r.agent, Trigger: r.trigger, Status: status,
+		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID,
+		DurationSeconds: seconds, Verdict: verdict, Error: errText,
 	})
 	if err != nil {
 		log.Printf("history append failed: %v", err)

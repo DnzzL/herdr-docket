@@ -122,6 +122,7 @@ type model struct {
 	defaultAgent string
 	tasks        []work.Task
 	last         map[string]*history.Record
+	usage        map[string]history.Usage
 	rows         []row
 	agents       map[string]fleet.Agent
 	sel          int
@@ -139,6 +140,7 @@ type model struct {
 type refreshMsg struct {
 	tasks  []work.Task
 	last   map[string]*history.Record
+	usage  map[string]history.Usage
 	agents map[string]fleet.Agent
 	err    error
 }
@@ -159,7 +161,7 @@ func Run() error {
 		dir:          settings.Dir,
 		src:          src,
 		defaultAgent: settings.DefaultAgent,
-		runs:         runner.New(host.New(), src, settings.Dir),
+		runs:         runner.New(host.New(), settings.Dir),
 	}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
@@ -182,7 +184,7 @@ func refresh(src work.Source, dir string) tea.Cmd {
 			last[it.ID], _ = history.LastRun(it.ID)
 		}
 		agents, _ := fleet.LoadAgents(dir)
-		return refreshMsg{tasks: items, last: last, agents: agents}
+		return refreshMsg{tasks: items, last: last, usage: history.UsageSince(time.Now()), agents: agents}
 	}
 }
 
@@ -202,6 +204,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tasks, m.last, m.agents = msg.tasks, msg.last, msg.agents
+		m.usage = msg.usage
 		m.rebuildRows()
 		m.clampSel()
 	case tickMsg:
@@ -380,9 +383,9 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("%s: assignee %q is not a fleet agent", r.task.ID, name)
 		return m, nil
 	}
-	task, runs := r.task, m.runs
+	task, runs, src := r.task, m.runs, m.src
 	m.status = "running " + task.ID
-	return m, func() tea.Msg { return ranMsg{err: runs.Run(task, agent, history.TriggerManual)} }
+	return m, func() tea.Msg { return ranMsg{err: runs.Run(src, task, agent, history.TriggerManual)} }
 }
 
 func (m *model) jumpSelected() tea.Cmd {
@@ -523,6 +526,9 @@ func (m model) agentsView() string {
 			status = warnStyle.Render("disabled")
 		}
 		line := fmt.Sprintf("  %-16s %-10s %-24s %-9s %s", name, a.Kind, text.Truncate(a.Model, 24), a.Workspace, status)
+		if u := m.usage[name]; pick.BudgetLine(a, u.Runs, u.Minutes) != "" {
+			line += "  " + dimStyle.Render(pick.BudgetLine(a, u.Runs, u.Minutes))
+		}
 		b.WriteString(line + "\n")
 	}
 	b.WriteString("\n")

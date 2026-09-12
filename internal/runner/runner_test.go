@@ -96,8 +96,8 @@ func (b *fakeBoard) open(id string) bool            { return b.items[id].Open }
 func run(t *testing.T, h *fakeHost, b *fakeBoard) error {
 	t.Helper()
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
-	r := New(h, b, "/fleet")
-	return r.Run(work.Task{ID: "TASK-1", Title: "T", Open: true}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
+	r := New(h, "/fleet")
+	return r.Run(b, work.Task{ID: "TASK-1", Title: "T", Open: true}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
 }
 
 func TestHappyPathAgentReportsDone(t *testing.T) {
@@ -206,22 +206,22 @@ func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	b.items["TASK-3"] = work.Task{ID: "TASK-3", Open: true, Phase: "To Do"}
 	started, release := make(chan struct{}), make(chan struct{})
 	h := &fakeHost{after: func() { close(started); <-release }}
-	r := New(h, b, "/fleet")
+	r := New(h, "/fleet")
 	rootA := fleet.Agent{Name: "pm", Workdir: "/repo", Workspace: "root", TimeoutMinutes: 1}
 	rootB := fleet.Agent{Name: "docs", Workdir: "/repo", Workspace: "root", TimeoutMinutes: 1}
 	tree := fleet.Agent{Name: "dev", Workdir: "/repo", Workspace: "worktree", TimeoutMinutes: 1}
 
 	first := make(chan struct{})
-	go func() { defer close(first); r.Run(work.Task{ID: "TASK-1"}, rootA, "poll") }()
+	go func() { defer close(first); r.Run(b, work.Task{ID: "TASK-1"}, rootA, "poll") }()
 	<-started
 	if !r.Busy() || r.CanRun(rootA) {
 		t.Fatal("rootA's slot must be taken")
 	}
 	// Same agent again, and a different root agent on the same checkout: refused.
-	if err := r.Run(work.Task{ID: "TASK-2"}, rootA, "poll"); err == nil {
+	if err := r.Run(b, work.Task{ID: "TASK-2"}, rootA, "poll"); err == nil {
 		t.Fatal("same agent must be refused")
 	}
-	if err := r.Run(work.Task{ID: "TASK-2"}, rootB, "poll"); err == nil || r.CanRun(rootB) {
+	if err := r.Run(b, work.Task{ID: "TASK-2"}, rootB, "poll"); err == nil || r.CanRun(rootB) {
 		t.Fatal("a root-mode agent sharing the checkout must be refused")
 	}
 	// A worktree agent on the same repo gets its own checkout: allowed.
@@ -230,7 +230,7 @@ func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	}
 	h2 := &fakeHost{after: func() { b.Close("TASK-3", work.Done) }}
 	r.host = h2
-	if err := r.Run(work.Task{ID: "TASK-3"}, tree, "poll"); err != nil {
+	if err := r.Run(b, work.Task{ID: "TASK-3"}, tree, "poll"); err != nil {
 		t.Fatalf("worktree run alongside a root run: %v", err)
 	}
 	close(release)

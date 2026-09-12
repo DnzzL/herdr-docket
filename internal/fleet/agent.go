@@ -23,6 +23,9 @@ type Agent struct {
 	MCPConfig      string   `yaml:"mcp_config"`
 	AgentArgs      []string `yaml:"agent_args"`
 	TimeoutMinutes int      `yaml:"timeout_minutes"`
+	RunsPerDay     int      `yaml:"runs_per_day"`
+	// MinutesPerDay caps how long the agent may run over the same window.
+	MinutesPerDay int `yaml:"minutes_per_day"`
 	// Disabled keeps the agent in agents/ but out of scheduling: the daemon
 	// starts no new run for it. A run already in flight is untouched.
 	Disabled bool `yaml:"disabled"`

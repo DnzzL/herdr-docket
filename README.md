@@ -52,6 +52,11 @@ read, diff, and back up:
   `To Do → In Progress → Done | Failed | Blocked`.
 - **An agent** is one markdown file: YAML frontmatter for the run parameters,
   body for the persona every one of its runs opens with.
+- **A shared brief.** If `~/fleet/FLEET.md` exists, its body is prepended to
+  every agent's persona — the one place for what is true of the whole company:
+  what the product is, who the human is, what never to do. Absent, every prompt
+  is exactly what it would have been without it. `herdr-fleet init` writes a
+  commented example; delete it or fill it in.
 - **One at a time, per agent.** Agents work in parallel, but each agent runs
   a single task to completion — and root-mode agents sharing a checkout are
   serialized, because the thing to protect is the working copy, not a queue.
@@ -82,6 +87,8 @@ workdir: ~/Projects/myapp     # required — where the work happens
 workspace: worktree           # worktree (default): fresh branch per run
                               # root: work directly on the checkout
 timeout_minutes: 60           # optional — the run's time budget (default 60)
+runs_per_day: 6               # optional — cap poll-triggered runs per rolling 24h
+minutes_per_day: 180          # optional — cap their total minutes over that window
 agent: claude                 # optional — any kind `herdr agent start` supports
 disabled: false               # optional — true parks the agent: no new runs
 ---
@@ -95,6 +102,34 @@ the difference between a generic LLM and a colleague.
 a run that went sideways is a diff you throw away. `root` is for agents whose
 job *is* the working copy: backlog grooming, docs, anything that must see
 uncommitted state.
+
+### Budgeting an agent
+
+An agent that keeps creating follow-up work for itself — the marketer that
+decomposes its own plan, the reviewer's sweep — is the design working: a run
+hands on what it found instead of expanding its own scope. It is also an
+unbounded loop, and `timeout_minutes` caps one run, not the day. Two optional
+fields cap the day:
+
+- `runs_per_day` — how many poll-triggered runs the agent may complete in a
+  rolling 24 hours.
+- `minutes_per_day` — how many minutes of run time it may spend over the same
+  rolling window.
+
+Unset means unbounded, exactly as before. Reaching a limit spends it: the run
+that would cross the line waits. A spent agent is like a busy one — its `To Do`
+tasks stay open with nothing written on them, and the rest of the queue keeps
+moving — and because the window rolls, the budget re-opens on its own as old
+runs age out. `herdr-fleet agent list` (and the board's `g` view) shows the
+spend for any agent that has a budget:
+
+```bash
+herdr-fleet agent list           # dev  active  ~/Projects/myapp  4/6 runs today, 130/180 min
+```
+
+Budgets are scheduling policy, not a lock: `herdr-fleet run TASK-12` still
+starts a run for an over-budget agent, because pressing the button is human
+intent — the same rule that lets a manual run reach a paused agent.
 
 ### Parking an agent
 
