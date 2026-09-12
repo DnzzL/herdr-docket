@@ -17,21 +17,6 @@ type Result struct {
 	Unknown []work.Item
 }
 
-// priorityRank orders Backlog.md priorities; unset sorts last.
-func priorityRank(p string) int {
-	switch p {
-	case "critical":
-		return 0
-	case "high":
-		return 1
-	case "medium":
-		return 2
-	case "low":
-		return 3
-	}
-	return 4
-}
-
 // Next picks the most urgent open task whose assignee is a known agent.
 // Unassigned tasks go to defaultAgent when one is configured, and are left
 // alone otherwise — an unassigned task may be a human still drafting.
@@ -47,9 +32,12 @@ func Next(items []work.Item, agents map[string]fleet.Agent, defaultAgent string)
 			open = append(open, it)
 		}
 	}
+	// Most urgent first, then the backend's own order, then oldest first. The
+	// ranks are each backend's to compute and this comparison is the fleet's to
+	// own, so every backend gets the same policy rather than inventing one.
 	sort.SliceStable(open, func(i, j int) bool {
-		if a, b := priorityRank(open[i].Priority), priorityRank(open[j].Priority); a != b {
-			return a < b
+		if a, b := open[i].Priority, open[j].Priority; a != b {
+			return a > b
 		}
 		if open[i].Ordinal != open[j].Ordinal {
 			return open[i].Ordinal < open[j].Ordinal

@@ -14,8 +14,10 @@ import "sort"
 // best-effort, never read back; the adapter is what translates its backend's
 // own label into one. Verdict is how a closed item ended, when the backend can
 // still say: a rich backend keeps the verdict, a binary one only knows the
-// item is closed and leaves it empty. Assignee is a plain routing key, not an
-// account: each adapter decides what carries it.
+// item is closed and leaves it empty. Priority is how urgent the backend says
+// this is, as a rank it computed: only the order matters, and zero is the
+// backend having no opinion, which is the least urgent there is. Assignee is a
+// plain routing key, not an account: each adapter decides what carries it.
 type Item struct {
 	ID        string
 	Title     string
@@ -25,7 +27,7 @@ type Item struct {
 	Open      bool
 	Phase     string
 	Verdict   Verdict
-	Priority  string
+	Priority  int
 	Ordinal   float64
 	CreatedAt string
 	Criteria  []Criterion

@@ -72,6 +72,24 @@ func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 	}
 }
 
+// The priority words are this adapter's business, and their order is the part
+// that matters: all the core does with a rank is compare it. A word Backlog.md
+// adds later, or no priority at all, is the zero rank — the backend having no
+// opinion — which has to sort behind every rank this adapter does know.
+func TestBacklogPrioritiesRankInOrder(t *testing.T) {
+	order := []string{"critical", "high", "medium", "low"}
+	for i := 1; i < len(order); i++ {
+		if a, b := rank(order[i-1]), rank(order[i]); a <= b {
+			t.Errorf("%q = %d should outrank %q = %d", order[i-1], a, order[i], b)
+		}
+	}
+	for _, p := range []string{"", "whenever"} {
+		if r := rank(p); r != 0 {
+			t.Errorf("rank(%q) = %d, want 0", p, r)
+		}
+	}
+}
+
 // The routing key is the first assignee: the one field pick reads to decide
 // whose work this is.
 func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
@@ -84,7 +102,9 @@ func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
 	}
 	want := work.Item{
 		ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "To Do",
-		Priority: "high", Ordinal: 2000, CreatedAt: "2026-08-30T10:00:00Z",
+		// "high", as a rank the core can compare rather than a word it knows.
+		Priority: 3,
+		Ordinal:  2000, CreatedAt: "2026-08-30T10:00:00Z",
 	}
 	if !reflect.DeepEqual(items[0], want) {
 		t.Fatalf("got %+v\nwant %+v", items[0], want)

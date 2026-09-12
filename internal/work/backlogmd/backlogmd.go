@@ -133,7 +133,7 @@ func item(t task) work.Item {
 		Open:      open(t.Status),
 		Phase:     phase(t.Status),
 		Verdict:   verdictOf(t.Status),
-		Priority:  t.Priority,
+		Priority:  rank(t.Priority),
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,
 	}
@@ -155,6 +155,24 @@ func phase(status string) string {
 		return string(work.PhaseRunning)
 	}
 	return status
+}
+
+// rank reads a Backlog.md priority as a rank the core can compare. Higher is
+// more urgent, and anything this adapter does not recognise — including no
+// priority at all — is zero, which is the backend having no opinion. These are
+// Backlog.md's own words, its built-in default, and they stop here.
+func rank(priority string) int {
+	switch priority {
+	case "critical":
+		return 4
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	case "low":
+		return 1
+	}
+	return 0
 }
 
 func open(status string) bool {

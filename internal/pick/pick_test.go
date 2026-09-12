@@ -16,8 +16,9 @@ func agents(names ...string) map[string]fleet.Agent {
 }
 
 // open is a task the fleet still owes work on, whatever phase it is showing.
-func open(id, priority, assignee string) work.Item {
-	return work.Item{ID: id, Title: id, Open: true, Priority: priority, Assignee: assignee}
+// urgency is the rank a backend computed, not a word this package understands.
+func open(id string, urgency int, assignee string) work.Item {
+	return work.Item{ID: id, Title: id, Open: true, Priority: urgency, Assignee: assignee}
 }
 
 func closed(id, phase string) work.Item {
@@ -26,8 +27,8 @@ func closed(id, phase string) work.Item {
 
 func TestPicksHighestPriorityOpenTaskWithKnownAssignee(t *testing.T) {
 	res := Next([]work.Item{
-		open("TASK-1", "low", "a"),
-		open("TASK-2", "high", "a"),
+		open("TASK-1", 1, "a"),
+		open("TASK-2", 3, "a"),
 		closed("TASK-4", "Done"),
 	}, agents("a"), "")
 	if res.Task == nil || res.Task.ID != "TASK-2" {
@@ -35,6 +36,19 @@ func TestPicksHighestPriorityOpenTaskWithKnownAssignee(t *testing.T) {
 	}
 	if res.Agent.Name != "a" {
 		t.Fatalf("agent = %+v", res.Agent)
+	}
+}
+
+// A rank is only ever compared, so the scale is the backend's business. What
+// this package owns is the rule that a higher rank is more urgent — and that
+// zero, the backend having no opinion, is the least urgent there is.
+func TestAHigherRankIsMoreUrgentAndNoOpinionSortsLast(t *testing.T) {
+	res := Next([]work.Item{
+		open("unranked", 0, "a"),
+		open("ranked", 1, "a"),
+	}, agents("a"), "")
+	if res.Task == nil || res.Task.ID != "ranked" {
+		t.Fatalf("a ranked task should beat an unranked one: %+v", res.Task)
 	}
 }
 
@@ -59,8 +73,8 @@ func TestPriorityBeatsOrdinalWhichBeatsAge(t *testing.T) {
 		t.Fatalf("ordinal should win: %v", res.Task.ID)
 	}
 	res = Next([]work.Item{
-		{ID: "T-1", Open: true, Priority: "medium", Assignee: "a", Ordinal: 1},
-		{ID: "T-2", Open: true, Priority: "high", Assignee: "a", Ordinal: 2},
+		{ID: "T-1", Open: true, Priority: 2, Assignee: "a", Ordinal: 1},
+		{ID: "T-2", Open: true, Priority: 3, Assignee: "a", Ordinal: 2},
 	}, agents("a"), "")
 	if res.Task.ID != "T-2" {
 		t.Fatalf("priority should win: %v", res.Task.ID)
@@ -68,7 +82,7 @@ func TestPriorityBeatsOrdinalWhichBeatsAge(t *testing.T) {
 }
 
 func TestUnassignedGoesToDefaultAgentWhenConfigured(t *testing.T) {
-	items := []work.Item{open("T-1", "", "")}
+	items := []work.Item{open("T-1", 0, "")}
 	if res := Next(items, agents("d"), "d"); res.Task == nil || res.Agent.Name != "d" {
 		t.Fatalf("want default agent, got %+v", res)
 	}
@@ -79,7 +93,7 @@ func TestUnassignedGoesToDefaultAgentWhenConfigured(t *testing.T) {
 }
 
 func TestUnknownAssigneeIsReportedNotRun(t *testing.T) {
-	res := Next([]work.Item{open("T-1", "", "ghost")}, agents("a"), "")
+	res := Next([]work.Item{open("T-1", 0, "ghost")}, agents("a"), "")
 	if res.Task != nil {
 		t.Fatal("must not run a task for an unknown agent")
 	}
@@ -93,7 +107,7 @@ func TestDisabledAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
 
 	// A parked agent exists: reporting it Unknown would make the daemon write
 	// "assignee is not a fleet agent" onto the ticket, which is false.
-	res := Next([]work.Item{open("T-1", "high", "dev")}, parked, "")
+	res := Next([]work.Item{open("T-1", 3, "dev")}, parked, "")
 	if res.Task != nil {
 		t.Fatalf("parked agent must not run work, got %v", res.Task.ID)
 	}
@@ -103,7 +117,7 @@ func TestDisabledAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
 
 	// The same holds through the default-agent path: an unassigned task must
 	// not be picked up by a parked default agent.
-	if res := Next([]work.Item{open("T-2", "", "")}, parked, "dev"); res.Task != nil {
+	if res := Next([]work.Item{open("T-2", 0, "")}, parked, "dev"); res.Task != nil {
 		t.Fatalf("parked default agent must not steal an unassigned task, got %v", res.Task.ID)
 	}
 }
@@ -115,7 +129,7 @@ func TestDisabledAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
 func TestUnavailableAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
 	busy := map[string]fleet.Agent{"reviewer": {Name: "reviewer", Unavailable: true}}
 
-	res := Next([]work.Item{open("T-1", "", "reviewer")}, busy, "")
+	res := Next([]work.Item{open("T-1", 0, "reviewer")}, busy, "")
 	if res.Task != nil {
 		t.Fatalf("busy agent must not run work, got %v", res.Task.ID)
 	}
@@ -123,7 +137,7 @@ func TestUnavailableAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
 		t.Fatalf("busy agent must not be reported unknown: %v", res.Unknown)
 	}
 
-	if res := Next([]work.Item{open("T-2", "", "")}, busy, "reviewer"); res.Task != nil || len(res.Unknown) != 0 {
+	if res := Next([]work.Item{open("T-2", 0, "")}, busy, "reviewer"); res.Task != nil || len(res.Unknown) != 0 {
 		t.Fatalf("busy default agent must not steal or be reported unknown: %+v", res)
 	}
 }
@@ -133,8 +147,8 @@ func TestUnavailableAgentLeavesTheRestOfTheQueueMoving(t *testing.T) {
 	m["reviewer"] = fleet.Agent{Name: "reviewer", Unavailable: true}
 
 	res := Next([]work.Item{
-		open("T-1", "", "reviewer"),
-		open("T-2", "high", "dev"),
+		open("T-1", 0, "reviewer"),
+		open("T-2", 3, "dev"),
 	}, m, "")
 	if res.Task == nil || res.Task.ID != "T-2" || res.Agent.Name != "dev" {
 		t.Fatalf("idle agent's work should still run: %+v", res)
@@ -146,8 +160,8 @@ func TestUnavailableAgentLeavesTheRestOfTheQueueMoving(t *testing.T) {
 
 func TestParkedAgentDoesNotBlockTheRestOfTheQueue(t *testing.T) {
 	res := Next([]work.Item{
-		open("T-1", "critical", "dev"),
-		open("T-2", "low", "scribe"),
+		open("T-1", 4, "dev"),
+		open("T-2", 1, "scribe"),
 	}, map[string]fleet.Agent{
 		"dev":    {Name: "dev", Disabled: true},
 		"scribe": {Name: "scribe"},
