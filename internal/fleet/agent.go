@@ -142,30 +142,43 @@ func SetDisabled(dir, name string, disabled bool) error {
 }
 
 // frontmatterRange returns the half-open span of the YAML header lines between
-// the two fences. The fences themselves belong to the caller's copy.
+// the two fences, plus whether the file has a header at all. It is the one
+// place the header's boundaries are decided — splitFrontmatter reads the same
+// span out of a whole file rather than looking for a fence of its own — so the
+// reader and the line editor cannot disagree about where the header ends. The
+// fences themselves belong to the caller's copy.
 func frontmatterRange(lines []string) (start, end int, ok bool) {
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	if len(lines) == 0 || !isFence(lines[0]) {
 		return 0, 0, false
 	}
 	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
+		if isFence(lines[i]) {
 			return 1, i, true
 		}
 	}
 	return 0, 0, false
 }
 
-// splitFrontmatter separates the YAML header from the markdown body.
+// isFence reports whether line is a frontmatter delimiter. Surrounding
+// whitespace — including the stray CR of a CRLF file — is not part of the
+// fence, so a fence written on another platform still bounds the header.
+func isFence(line string) bool { return strings.TrimSpace(line) == "---" }
+
+// splitFrontmatter separates the YAML header from the markdown body. It takes
+// its span from frontmatterRange, so the two agree on every input by
+// construction instead of by each happening to find a fence.
 func splitFrontmatter(s string) (front, body string, err error) {
-	if !strings.HasPrefix(s, "---\n") {
+	lines := strings.Split(s, "\n")
+	if !isFence(lines[0]) {
 		return "", "", fmt.Errorf("no frontmatter (file must start with ---)")
 	}
-	rest := s[4:]
-	i := strings.Index(rest, "\n---")
-	if i < 0 {
+	start, end, ok := frontmatterRange(lines)
+	if !ok {
 		return "", "", fmt.Errorf("unterminated frontmatter")
 	}
-	return rest[:i], strings.TrimPrefix(rest[i+4:], "\n"), nil
+	front = strings.Join(lines[start:end], "\n")
+	body = strings.Join(lines[end+1:], "\n")
+	return front, body, nil
 }
 
 // expandHome resolves a leading ~ against the user's home directory.

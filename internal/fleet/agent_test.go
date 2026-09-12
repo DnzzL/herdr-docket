@@ -198,3 +198,63 @@ func TestLoadAgentsMissingDirIsEmptyNotError(t *testing.T) {
 		t.Fatalf("want empty, got %v %v", agents, diags)
 	}
 }
+
+// The reader (splitFrontmatter) and the line editor (frontmatterRange) once
+// decided the header's end by two different rules, so a file one accepted the
+// other could reject — a pause that silently does nothing, or a persona read
+// as YAML. One rule now decides the span; this holds both helpers to it across
+// the edges where they used to differ.
+func TestFrontmatterHelpersAgree(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		raw  string
+	}{
+		{"plain", "---\nworkdir: /x\n---\nBody."},
+		{"trailing newline", "---\nworkdir: /x\n---\nBody.\n"},
+		{"empty body", "---\nworkdir: /x\n---\n"},
+		{"no body at all", "---\nworkdir: /x\n---"},
+		{"multi-line header", "---\nmodel: x\nworkdir: /x\n---\nBody."},
+		{"space after opening fence", "--- \nworkdir: /x\n---\nBody."},
+		{"space after closing fence", "---\nworkdir: /x\n--- \nBody."},
+		{"crlf", "---\r\nworkdir: /x\r\n---\r\nBody.\r\n"},
+		{"no frontmatter", "hello\n---\nBody."},
+		{"unterminated", "---\nworkdir: /x\nBody."},
+		{"only opening fence", "---"},
+		{"closing fence with junk", "---\nworkdir: /x\n---junk\nBody."},
+		{"empty", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			front, _, err := splitFrontmatter(tc.raw)
+			lines := strings.Split(tc.raw, "\n")
+			start, end, ok := frontmatterRange(lines)
+			switch {
+			case ok && err != nil:
+				t.Fatalf("frontmatterRange found lines %d:%d but splitFrontmatter failed: %v", start, end, err)
+			case !ok && err == nil:
+				t.Fatalf("frontmatterRange found no span but splitFrontmatter returned %q", front)
+			case ok:
+				if want := strings.Join(lines[start:end], "\n"); front != want {
+					t.Fatalf("front = %q, want the range's %q", front, want)
+				}
+			}
+		})
+	}
+}
+
+// The wording is the loader's contract with a human fixing their AGENT.md, so
+// the two failures stay distinct even though one function now reports both.
+func TestSplitFrontmatterErrorWordingKeepsItsMeaning(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw, want string
+	}{
+		{"missing", "no fences here", "no frontmatter"},
+		{"unterminated", "---\nworkdir: /x\n", "unterminated"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := splitFrontmatter(tc.raw)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want it to mention %q", err, tc.want)
+			}
+		})
+	}
+}
