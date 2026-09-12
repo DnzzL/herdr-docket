@@ -1,9 +1,10 @@
 ---
 id: TASK-15
 title: 'One word for a unit of work: Item becomes Task'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 08:26'
+updated_date: '2026-09-12 08:43'
 labels: []
 dependencies: []
 priority: low
@@ -19,7 +20,7 @@ The Go type for a task is called Task, matching CONTEXT.md and the CLI's task ve
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 work.Item is work.Task everywhere it is referenced
-- [ ] #2 no behaviour change
-- [ ] #3 go test ./... is green
+- [x] #1 work.Item is work.Task everywhere it is referenced
+- [x] #2 no behaviour change
+- [x] #3 go test ./... is green
 <!-- AC:END -->
