@@ -90,7 +90,7 @@ func matches(it work.Task, query string) bool {
 // nothing depends on this: the board is readable either way.
 func phaseStyle(phase string) lipgloss.Style {
 	switch phase {
-	case work.Done.Label(), string(work.PhaseRunning):
+	case work.Done.Label(), string(work.PhaseInProgress):
 		return okStyle
 	case work.Failed.Label():
 		return failStyle

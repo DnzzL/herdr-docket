@@ -98,9 +98,9 @@ type Phase string
 const (
 	// PhaseTodo is work nobody has started.
 	PhaseTodo Phase = "To Do"
-	// PhaseRunning is work a run has in hand right now, and the one phase the
-	// fleet writes.
-	PhaseRunning Phase = "In Progress"
+	// PhaseInProgress is work a run has in hand right now, and the one phase
+	// the fleet writes.
+	PhaseInProgress Phase = "In Progress"
 )
 
 // Phaser is the optional capability of a source that can show a task as
@@ -136,7 +136,7 @@ var closedOrder = []Verdict{Blocked, Failed, Done}
 var phaseOrder = buildPhaseOrder()
 
 func buildPhaseOrder() []string {
-	order := []string{string(PhaseTodo), string(PhaseRunning)}
+	order := []string{string(PhaseTodo), string(PhaseInProgress)}
 	for _, v := range closedOrder {
 		order = append(order, v.Label())
 	}

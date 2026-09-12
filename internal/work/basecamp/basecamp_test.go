@@ -400,6 +400,11 @@ func TestAClosedTodoRemembersHowItEnded(t *testing.T) {
 			if it.Verdict != v {
 				t.Fatalf("Verdict = %q, want %q", it.Verdict, v)
 			}
+			// Get has the verdict in hand, so it must not keep calling a
+			// failed task Done: the phase has to agree with the ending.
+			if it.Phase != v.Label() {
+				t.Fatalf("Phase = %q, want %q once the verdict is known", it.Phase, v.Label())
+			}
 		})
 	}
 }
@@ -420,6 +425,9 @@ func TestATodoClosedByHandHasNoVerdict(t *testing.T) {
 	}
 	if it.Verdict != "" {
 		t.Fatalf("Verdict = %q, want none: nobody recorded one", it.Verdict)
+	}
+	if it.Phase != work.Done.Label() {
+		t.Fatalf("Phase = %q, want %q: with no verdict, Done is all it says", it.Phase, work.Done.Label())
 	}
 }
 

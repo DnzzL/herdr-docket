@@ -119,7 +119,7 @@ func (s *Source) SetPhase(id string, phase work.Phase) error {
 }
 
 var phases = map[work.Phase]string{
-	work.PhaseRunning: statusInProgress,
+	work.PhaseInProgress: statusInProgress,
 }
 
 // asTask maps a Backlog.md task onto the fleet's vocabulary. A task is open
@@ -152,7 +152,7 @@ func phase(status string) string {
 	case statusToDo:
 		return string(work.PhaseTodo)
 	case statusInProgress:
-		return string(work.PhaseRunning)
+		return string(work.PhaseInProgress)
 	}
 	return status
 }

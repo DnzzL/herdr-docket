@@ -29,7 +29,7 @@ because a run that ends `Done` cleans its own workspace up.
 
 If you've wanted a tiny [paperclip.ing](https://paperclip.ing)-style company of
 agents without the org chart: this is the smallest version of that idea that
-still works. Named agents, a shared backlog, a human gate. Markdown all the way
+still works. Named agents, a shared queue, a human gate. Markdown all the way
 down.
 
 ## The model
@@ -48,7 +48,7 @@ read, diff, and back up:
 
 - **A task** is one unit of work in the queue: goal, description, acceptance
   criteria, priority, and an `assignee` that names the agent. By default that
-  queue is Backlog.md, and its statuses are the lifecycle:
+  queue is Backlog.md, and its phases are the lifecycle:
   `To Do → In Progress → Done | Failed | Blocked`.
 - **An agent** is one markdown file: YAML frontmatter for the run parameters,
   body for the persona every one of its runs opens with.
@@ -100,7 +100,7 @@ uncommitted state.
 
 `disabled: true` keeps the persona on disk but takes the agent out of
 scheduling: the daemon starts nothing new for it, and its `To Do` tasks wait
-in the backlog without a word written on them. Pause from the CLI instead of
+in the queue without a word written on them. Pause from the CLI instead of
 by hand:
 
 ```bash
@@ -116,7 +116,7 @@ agent, because pressing the button is human intent, not scheduling.
 
 ### Example 1 — a PM that triages your project's backlog
 
-The fleet backlog routes agents; your project's own `backlog/` tracks its dev
+The fleet queue routes agents; your project's own `backlog/` tracks its dev
 work. A PM agent bridges the two — this one is in production on a real app:
 
 ```markdown
@@ -188,7 +188,7 @@ workspace: root
 You own MyApp's publication strategy. Read docs/strategy.md first — it is
 your memory between runs; update it when the plan changes. Tone: concrete,
 no superlatives. When a task is too big for one run, split it into tasks
-assigned to yourself — the backlog is your plan.
+assigned to yourself — the queue is your plan.
 ```
 
 Seed it once — *"Write the publication strategy, then decompose it into
@@ -221,7 +221,7 @@ gates; taste is not, and a finding you would not block on files no task.
 The verdict is a PR review with one `VERDICT:` line. Every blocking finding
 carries the concrete fix and becomes a follow-up task assigned to `dev` — a PR
 comment is not a queue. You may uncheck an acceptance criterion you proved
-false; you may not change a ticket's status or edit the task the author closed.
+false; you may not change a ticket's phase or edit the task the author closed.
 ```
 
 Two shapes of task, both worth seeding: `dev` hands off one PR per run, and a
@@ -254,7 +254,7 @@ recording in the repo root, and say so in the persona.
 
 Runs have a time budget. The prompt tells the agent the honest way out of a
 task that won't fit: one coherent slice, a handoff note, a follow-up task —
-the backlog itself is the checkpoint mechanism.
+the queue itself is the checkpoint mechanism.
 
 ## Quick start
 
@@ -266,7 +266,7 @@ herdr-fleet task create "First task" -a example
 ```
 
 The board pane (overlay in Herdr, or `herdr-fleet pane`) shows the queue grouped
-by status: `r` runs a task now, `enter` jumps into the workspace a run opened,
+by phase: `r` runs a task now, `enter` jumps into the workspace a run opened,
 `a` adds a task. Bind it to a chord in `~/.config/herdr/config.toml`:
 
 ```toml
@@ -365,18 +365,18 @@ list the fleet doesn't know about is simply not its work.
   automation's prompt at `herdr-fleet task create` and the two plugins compose:
   automations decide *when*, fleet decides *what* and *who*.
 - **Not a workflow engine.** A task is one goal for one agent. Fan-out happens
-  the honest way: an agent creates follow-up tasks in the same backlog.
+  the honest way: an agent creates follow-up tasks in the same queue.
 - **Not a job scheduler with priorities and preemption.** One run per agent,
   serialized per shared checkout, nothing preempted: the concurrency model is
   what a git checkout can survive, with zero infrastructure.
-- **No store.** The backlog is markdown in a git repo, run history is one JSONL
-  file, and uninstalling leaves both behind.
+- **No store.** By default the queue is markdown in a git repo, run history is
+  one JSONL file, and uninstalling leaves both behind.
 
 ## Teaching your agents
 
 `skills/fleet-tasks/SKILL.md` teaches a coding agent to create well-formed fleet
 tasks — real descriptions, at least one acceptance criterion, and the rule that
-keeps the fleet backlog separate from a project's own. Symlink or copy it into
+keeps the fleet queue separate from a project's own. Symlink or copy it into
 `~/.claude/skills/`.
 
 ## License

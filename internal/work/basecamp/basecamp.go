@@ -106,6 +106,14 @@ func (s *Source) Get(id string) (work.Task, error) {
 	it.Criteria = criteria(t.Steps)
 	if !it.Open {
 		it.Verdict = verdictOf(comments)
+		// Get already fetches the comments, so reading the verdict costs
+		// nothing here — and a task the fleet closed as failed should not
+		// read as Done once we know better. List does not pay this request,
+		// so the board still stands a closed to-do under its phase word;
+		// that limit is recorded in docs/adr/0002.
+		if it.Verdict != "" {
+			it.Phase = it.Verdict.Label()
+		}
 	}
 	return it, nil
 }

@@ -190,7 +190,7 @@ func (r *Runner) claim(id string) {
 	if !ok {
 		return
 	}
-	if err := p.SetPhase(id, work.PhaseRunning); err != nil {
+	if err := p.SetPhase(id, work.PhaseInProgress); err != nil {
 		log.Printf("%s: mark as running: %v", id, err)
 	}
 }

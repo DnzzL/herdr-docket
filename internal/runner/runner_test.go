@@ -194,7 +194,7 @@ func TestAPhaseWriteIsBestEffort(t *testing.T) {
 	if b.verdict("TASK-1") != work.Done {
 		t.Fatalf("verdict = %q", b.verdict("TASK-1"))
 	}
-	if len(b.phaseSeen) != 1 || b.phaseSeen[0] != work.PhaseRunning {
+	if len(b.phaseSeen) != 1 || b.phaseSeen[0] != work.PhaseInProgress {
 		t.Fatalf("the run should have marked itself running once, saw %v", b.phaseSeen)
 	}
 }

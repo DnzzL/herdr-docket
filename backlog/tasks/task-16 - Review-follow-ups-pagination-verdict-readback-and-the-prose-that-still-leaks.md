@@ -3,9 +3,10 @@ id: TASK-16
 title: >-
   Review follow-ups: pagination, verdict readback, and the prose that still
   leaks
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 10:17'
+updated_date: '2026-09-12 10:21'
 labels: []
 dependencies: []
 priority: medium
@@ -27,9 +28,21 @@ And the prose: PhaseRunning's value is In Progress, which is Backlog.md's word f
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Basecamp List paginates its todolists, or the truncation limit is recorded in the ADR as a deliberate limit
-- [ ] #2 A Basecamp task closed as failed shows Failed, or the verdict-readback request is left unspent with the decision recorded
-- [ ] #3 PhaseRunning's name and its In Progress value agree, in one direction or the other
-- [ ] #4 README and skills/fleet-tasks speak the core's vocabulary where they describe the fleet, Backlog.md's product names kept where they are accurate
-- [ ] #5 go test ./... is green
+- [x] #1 Basecamp List paginates its todolists, or the truncation limit is recorded in the ADR as a deliberate limit
+- [x] #2 A Basecamp task closed as failed shows Failed, or the verdict-readback request is left unspent with the decision recorded
+- [x] #3 PhaseRunning's name and its In Progress value agree, in one direction or the other
+- [x] #4 README and skills/fleet-tasks speak the core's vocabulary where they describe the fleet, Backlog.md's product names kept where they are accurate
+- [x] #5 go test ./... is green
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+AC1+AC2 recorded in docs/adr/0002-list-is-a-page-and-a-verdict-costs-a-request.md: List stays one page (Basecamp truncates at the API default, ~50/list, accepted at personal scale); the per-task verdict readback is spent only in Get, which already fetches comments, so task view shows Failed while List deliberately does not, leaving the board under the phase word Done.
+
+AC3: PhaseRunning renamed to PhaseInProgress (value In Progress is the core's word per ADR 0001 / TASK-12) across internal/work, backlogmd, runner and pane.
+
+AC4: README says queue/phase where it describes the fleet; Backlog.md product names and a project's own backlog/ kept. skills/fleet-tasks already spoke the core's vocabulary (only accurate project-backlog mention remained).
+
+AC5: go test ./... green; go vet clean.
+<!-- SECTION:NOTES:END -->
