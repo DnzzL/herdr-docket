@@ -6,7 +6,7 @@
 // new backend is held to the same behaviour the fleet already depends on,
 // rather than to whatever its author happened to try by hand.
 //
-// What the suite deliberately does not check: how an task looks in the
+// What the suite deliberately does not check: how a task looks in the
 // backend, which status word records a verdict, or whether a phase survives.
 // Those are the backend's business. The port promises behaviour, not shape.
 package worktest

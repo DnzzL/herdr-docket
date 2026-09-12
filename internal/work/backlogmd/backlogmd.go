@@ -59,7 +59,7 @@ func (s *Source) Get(id string) (work.Task, error) {
 	return it, nil
 }
 
-// Create adds an task to the project and returns its new id.
+// Create adds a task to the project and returns its new id.
 func (s *Source) Create(title, body, assignee string) (string, error) {
 	return s.client.Create(title, body, assignee)
 }

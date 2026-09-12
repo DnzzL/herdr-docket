@@ -36,7 +36,7 @@ func (f *fakeHost) Do(s host.Session, a host.Spec, timeout time.Duration) error 
 	return f.doErr
 }
 
-// fakeBoard is a queue in memory: enough for the runner to read an task back,
+// fakeBoard is a queue in memory: enough for the runner to read a task back,
 // show it as running, and close it.
 type fakeBoard struct {
 	items     map[string]work.Task

@@ -360,7 +360,7 @@ func newInMemoryBasecampOn(t *testing.T, f *fakeServer) *Source {
 	return s
 }
 
-// Close is where a binary backend can throw an task away, because the fleet's
+// Close is where a binary backend can throw a task away, because the fleet's
 // only question is whether it is open. An unknown verdict is refused before
 // anything is written.
 func TestCloseRefusesAVerdictItDoesNotKnow(t *testing.T) {

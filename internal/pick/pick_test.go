@@ -171,7 +171,7 @@ func TestParkedAgentDoesNotBlockTheRestOfTheQueue(t *testing.T) {
 	}
 }
 
-// Closed is closed: however an task ended, the fleet leaves it alone.
+// Closed is closed: however a task ended, the fleet leaves it alone.
 func TestClosedWorkIsLeftAlone(t *testing.T) {
 	res := Next([]work.Task{
 		closed("T-1", "Blocked"),

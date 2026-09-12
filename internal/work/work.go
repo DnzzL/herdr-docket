@@ -1,6 +1,6 @@
 // Package work is the backend-blind task queue the fleet speaks. A Source is
 // wherever work actually lives — a Backlog.md project, a Basecamp list, or
-// something not written yet — and an Task is one unit of it, in the fleet's
+// something not written yet — and a Task is one unit of it, in the fleet's
 // own vocabulary. Nothing above an adapter knows which backend answered.
 package work
 
@@ -8,7 +8,7 @@ import "sort"
 
 // Task is one unit of work as the fleet sees it.
 //
-// Open is the only state the fleet reads: an task stays open until a verdict
+// Open is the only state the fleet reads: a task stays open until a verdict
 // closes it, which is all a binary backend (a Basecamp to-do) can express.
 // Phase is where it stands in the fleet's words, for display only — written
 // best-effort, never read back; the adapter is what translates its backend's
@@ -37,7 +37,7 @@ type Task struct {
 	Criteria  []Criterion
 }
 
-// Criterion is one acceptance criterion of an task. Criteria are read-only to
+// Criterion is one acceptance criterion of a task. Criteria are read-only to
 // the fleet: an adapter fills them in for the prompt, and the agent's verdict
 // and evidence go in its closing comment, not back onto the boxes.
 type Criterion struct {
@@ -59,7 +59,7 @@ const (
 
 // Known reports whether v is one of the verdicts the port writes. An adapter
 // must refuse anything else rather than treat a typo as a close: the fleet's
-// only question about an task is whether it is open, so a closed task is one
+// only question about a task is whether it is open, so a closed task is one
 // it will never look at again — and a mistyped verdict would quietly throw
 // the work away.
 func (v Verdict) Known() bool {
@@ -103,7 +103,7 @@ const (
 	PhaseRunning Phase = "In Progress"
 )
 
-// Phaser is the optional capability of a source that can show an task as
+// Phaser is the optional capability of a source that can show a task as
 // being worked on. Backlog.md has an In Progress state to write; a Basecamp
 // to-do is simply done or not, and the run lock is what actually keeps two
 // runs apart — so a source without this is not a lesser source, just a

@@ -135,7 +135,7 @@ func (s *Source) Comment(id, text string) error {
 // for an ending — completed — so a failed or blocked task would otherwise
 // look exactly like a finished one; the comment is the only place left to say
 // which it was. The completion comes first so that a failure to comment
-// leaves an task the fleet has closed, not one it will run again.
+// leaves a task the fleet has closed, not one it will run again.
 //
 // An unknown verdict is refused before anything is written. Treating a typo as
 // a close would quietly throw away the task: the fleet reads Open, so a closed
