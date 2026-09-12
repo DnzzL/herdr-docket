@@ -41,8 +41,10 @@ func (f *fakeClient) AppendNote(id, note string) error {
 	return f.err
 }
 
-// The native status word decides openness: a verdict closed Done, Failed or
-// Blocked, and only the word survives for the board.
+// The status word decides both things: whether the task is open, and which
+// phase the board stands it under. The phases are written out as the fleet's
+// words rather than read back off the task, so a change on either side of the
+// translation has to be a deliberate one.
 func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 	tasks := []task{
 		{ID: "T-1", Title: "queued", Status: "To Do"},
@@ -56,6 +58,7 @@ func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []bool{true, true, false, false, false}
+	wantPhase := []string{"To Do", "In Progress", "Blocked", "Failed", "Done"}
 	if len(items) != len(want) {
 		t.Fatalf("got %d items, want %d", len(items), len(want))
 	}
@@ -63,8 +66,8 @@ func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 		if it.Open != want[i] {
 			t.Errorf("%s (%s): Open = %v, want %v", it.ID, it.Phase, it.Open, want[i])
 		}
-		if it.Phase != tasks[i].Status {
-			t.Errorf("%s: Phase = %q, want the native word %q", it.ID, it.Phase, tasks[i].Status)
+		if it.Phase != wantPhase[i] {
+			t.Errorf("%s: Phase = %q, want the fleet's word %q", it.ID, it.Phase, wantPhase[i])
 		}
 	}
 }

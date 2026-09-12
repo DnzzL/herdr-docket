@@ -196,22 +196,17 @@ func closed(t todo) bool {
 	return t.Completed
 }
 
-// The fleet's display words for the two states Basecamp can express. A
-// to-do is open or it is closed, and these are the words the board already
-// uses for those two conditions.
-const (
-	phaseOpen   = "To Do"
-	phaseClosed = "Done"
-)
-
-// phase renders Basecamp's status in the fleet's vocabulary. Calling an open
-// to-do "To Do" is not a claim that nobody has started it — Basecamp simply
-// has no word for started, which is why this adapter writes no phase at all.
+// phase renders Basecamp's status in the fleet's words. Calling an open to-do
+// "To Do" is not a claim that nobody has started it — Basecamp simply has no
+// word for started, which is why this adapter writes no phase at all. A closed
+// to-do stands under the fleet's word for a finished task, because that is all
+// Basecamp's completed flag means: when the fleet closed it, the verdict Close
+// wrote is what says which ending it really was.
 func phase(t todo) string {
 	if closed(t) {
-		return phaseClosed
+		return work.Done.Label()
 	}
-	return phaseOpen
+	return string(work.PhaseTodo)
 }
 
 // body is the to-do's description in the fleet's words. Basecamp sends the

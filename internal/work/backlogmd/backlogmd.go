@@ -124,19 +124,37 @@ var phases = map[work.Phase]string{
 
 // item maps a Backlog.md task onto the fleet's vocabulary. A task is open
 // until a verdict has closed it: Done, Failed and Blocked are all closed to
-// the fleet, and the native word survives in Phase for the board to show.
+// the fleet, and Phase carries the fleet's word for wherever it stands.
 func item(t task) work.Item {
 	return work.Item{
 		ID:        t.ID,
 		Title:     t.Title,
 		Assignee:  first(t.Assignees),
 		Open:      open(t.Status),
-		Phase:     t.Status,
+		Phase:     phase(t.Status),
 		Verdict:   verdictOf(t.Status),
 		Priority:  t.Priority,
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,
 	}
+}
+
+// phase reads a Backlog.md status in the fleet's words. A closed status stands
+// under its verdict's word, because the three endings are one vocabulary and
+// not two; an open one under the fleet's name for it. A status this adapter
+// has never seen still shows: the board renders the phases it does not know by
+// name after the ones it does.
+func phase(status string) string {
+	if v := verdictOf(status); v != "" {
+		return v.Label()
+	}
+	switch status {
+	case statusToDo:
+		return string(work.PhaseTodo)
+	case statusInProgress:
+		return string(work.PhaseRunning)
+	}
+	return status
 }
 
 func open(status string) bool {

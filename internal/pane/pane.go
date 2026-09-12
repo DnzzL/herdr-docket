@@ -85,15 +85,16 @@ func matches(it work.Item, query string) bool {
 }
 
 // phaseStyle colours a group heading by the fleet's own words for the common
-// phases. A backend with phases of its own — or none — renders plain, which is
-// why nothing depends on this: the board is readable either way.
+// phases — the port owns those words, so this file spells none of them itself.
+// A backend with phases of its own — or none — renders plain, which is why
+// nothing depends on this: the board is readable either way.
 func phaseStyle(phase string) lipgloss.Style {
 	switch phase {
-	case "Done", "In Progress":
+	case work.Done.Label(), string(work.PhaseRunning):
 		return okStyle
-	case "Failed":
+	case work.Failed.Label():
 		return failStyle
-	case "Blocked":
+	case work.Blocked.Label():
 		return warnStyle
 	}
 	return lipgloss.NewStyle()

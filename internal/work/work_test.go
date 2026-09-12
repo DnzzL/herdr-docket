@@ -32,6 +32,35 @@ func TestPhasesOfKeepsTheEmptyPhase(t *testing.T) {
 	}
 }
 
+// The three endings are one vocabulary: the board stands a closed task under
+// the same words the fleet writes its verdicts in. The order is built from the
+// verdicts rather than retyped beside them, so the two cannot drift.
+func TestPhaseOrderIsTheOpenPhasesThenTheVerdicts(t *testing.T) {
+	want := []string{"To Do", "In Progress", "Blocked", "Failed", "Done"}
+	if !reflect.DeepEqual(phaseOrder, want) {
+		t.Fatalf("phaseOrder = %v, want %v", phaseOrder, want)
+	}
+}
+
+// A verdict with no phase word to stand under would drop a closed task off the
+// board entirely. Adding a verdict means giving it one, which is why this list
+// exists and why phaseOrder is derived rather than hand-written.
+func TestEveryKnownVerdictHasAPhaseToStandUnder(t *testing.T) {
+	for _, v := range []Verdict{Done, Failed, Blocked} {
+		if !v.Known() {
+			t.Errorf("%q is not a verdict the port writes", v)
+		}
+		label := v.Label()
+		if label == "" {
+			t.Errorf("%q has no phase word to stand under", v)
+			continue
+		}
+		if rank := phaseRank(label); rank >= len(phaseOrder) {
+			t.Errorf("%q stands under %q, which the board has no place for: %v", v, label, phaseOrder)
+		}
+	}
+}
+
 func TestPhasesOfOnNothingIsNothing(t *testing.T) {
 	if got := PhasesOf(nil); len(got) != 0 {
 		t.Fatalf("PhasesOf(nil) = %v, want empty", got)

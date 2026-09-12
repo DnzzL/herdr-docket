@@ -10,11 +10,12 @@ import "sort"
 //
 // Open is the only state the fleet reads: an item stays open until a verdict
 // closes it, which is all a binary backend (a Basecamp to-do) can express.
-// Phase is the backend's own status word, carried for display only — written
-// best-effort, never read back. Verdict is how a closed item ended, when the
-// backend can still say: a rich backend keeps the verdict, a binary one only
-// knows the item is closed and leaves it empty. Assignee is a plain routing
-// key, not an account: each adapter decides what carries it.
+// Phase is where it stands in the fleet's words, for display only — written
+// best-effort, never read back; the adapter is what translates its backend's
+// own label into one. Verdict is how a closed item ended, when the backend can
+// still say: a rich backend keeps the verdict, a binary one only knows the
+// item is closed and leaves it empty. Assignee is a plain routing key, not an
+// account: each adapter decides what carries it.
 type Item struct {
 	ID        string
 	Title     string
@@ -63,13 +64,38 @@ func (v Verdict) Known() bool {
 	return false
 }
 
-// Phase is the fleet's word for what a run is doing, for the backends that
-// can show it. Display only, written best-effort, never read back.
+// Label is how the board shows a verdict: the phase word a closed task stands
+// under. A verdict is the word an agent types; this is the word a human reads.
+// The two are joined here, which is why the phase order is built out of this
+// rather than retyping the three endings beside it.
+func (v Verdict) Label() string {
+	switch v {
+	case Done:
+		return "Done"
+	case Failed:
+		return "Failed"
+	case Blocked:
+		return "Blocked"
+	}
+	return ""
+}
+
+// Phase is the fleet's word for where a task stands. It is shown to a human
+// and decides nothing — Open is what the fleet reads — and an adapter
+// translates its backend's own label into one of these on the way in. Display
+// only, written best-effort, never read back.
 type Phase string
 
-// PhaseRunning is the one phase the fleet writes: this item is being worked
-// on right now.
-const PhaseRunning Phase = "running"
+// The two phases of queued work, in the fleet's words. How a task ended is a
+// Verdict, and the board stands a closed task under its verdict's label, so
+// the three endings are one vocabulary rather than two.
+const (
+	// PhaseTodo is work nobody has started.
+	PhaseTodo Phase = "To Do"
+	// PhaseRunning is work a run has in hand right now, and the one phase the
+	// fleet writes.
+	PhaseRunning Phase = "In Progress"
+)
 
 // Phaser is the optional capability of a source that can show an item as
 // being worked on. Backlog.md has an In Progress state to write; a Basecamp
@@ -90,21 +116,36 @@ type Source interface {
 	Close(id string, verdict Verdict) error
 }
 
-// PhaseOrder is the order the fleet shows phases in, most actionable first.
-// A default rather than a closed set: a backend with phases of its own gets
-// them listed after these, in the order it reports them. Display only —
-// nothing here decides what runs; Open does.
-var PhaseOrder = []string{"To Do", "In Progress", "Blocked", "Failed", "Done"}
+// closedOrder is the order the board shows endings in: the ones that still
+// want a human first, so they are seen, and the finished ones last. It is the
+// fleet's own list of verdicts, which is what makes phaseOrder below derived
+// rather than a second spelling of the same three words.
+var closedOrder = []Verdict{Blocked, Failed, Done}
 
-// PhaseRank sorts a phase for display. Phases the fleet does not know tie,
-// and keep the order they arrived in.
-func PhaseRank(phase string) int {
-	for i, p := range PhaseOrder {
+// phaseOrder is the order the fleet shows phases in, most actionable first:
+// the work still to do, then how things ended. A default rather than a closed
+// set — a backend with phases of its own gets them listed after these, in the
+// order it reports them. Display only: nothing here decides what runs; Open
+// does.
+var phaseOrder = buildPhaseOrder()
+
+func buildPhaseOrder() []string {
+	order := []string{string(PhaseTodo), string(PhaseRunning)}
+	for _, v := range closedOrder {
+		order = append(order, v.Label())
+	}
+	return order
+}
+
+// phaseRank sorts a phase for display. Phases the fleet does not know tie, and
+// keep the order they arrived in.
+func phaseRank(phase string) int {
+	for i, p := range phaseOrder {
 		if p == phase {
 			return i
 		}
 	}
-	return len(PhaseOrder)
+	return len(phaseOrder)
 }
 
 // PhasesOf lists the phases these items actually use, most actionable first —
@@ -120,6 +161,6 @@ func PhasesOf(items []Item) []string {
 			phases = append(phases, it.Phase)
 		}
 	}
-	sort.SliceStable(phases, func(i, j int) bool { return PhaseRank(phases[i]) < PhaseRank(phases[j]) })
+	sort.SliceStable(phases, func(i, j int) bool { return phaseRank(phases[i]) < phaseRank(phases[j]) })
 	return phases
 }
