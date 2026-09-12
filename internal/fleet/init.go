@@ -40,6 +40,26 @@ Delete this folder or rename it to create your first real agent, then assign
 it a task with the fleet CLI:  herdr-fleet task create "..." -a <agent-name>
 `
 
+// exampleFleet is the scaffold written once, as FLEET.md, so the shared
+// brief's existence is discoverable. Every line is a comment: an untouched
+// scaffold is invisible to the prompt, and the brief starts speaking only once
+// a human writes real prose into it.
+const exampleFleet = `# FLEET.md — the fleet's shared brief
+#
+# The body of this file is prepended to every agent's persona. Put here what
+# is true of the whole fleet, not of one agent: what the product is, who the
+# human is, and the rules that never change.
+#
+# An absent, empty, or entirely commented file changes nothing — this scaffold
+# does not reach any agent until you write an uncommented line into it.
+#
+# A brief might read:
+#
+#   We build acme, a tiny CRM for freelancers. The human is Dana; talk to them
+#   plainly. Never push to main, and always leave the queue truer than you
+#   found it.
+`
+
 // Init bootstraps the fleet directory: a git repo, an example agent, and —
 // when the queue is a local one — the Backlog.md project itself. Safe to
 // re-run: existing pieces are left alone.
@@ -58,6 +78,9 @@ func Init(s Settings) error {
 			return err
 		}
 	}
+	if err := initBrief(dir); err != nil {
+		return err
+	}
 	example := filepath.Join(dir, "agents", "example")
 	if _, err := os.Stat(filepath.Join(dir, "agents")); os.IsNotExist(err) {
 		if err := os.MkdirAll(example, 0o755); err != nil {
@@ -68,6 +91,16 @@ func Init(s Settings) error {
 		}
 	}
 	return nil
+}
+
+// initBrief lays down the commented FLEET.md scaffold the first time init
+// runs. An existing brief — the human's — is left alone.
+func initBrief(dir string) error {
+	path := filepath.Join(dir, "FLEET.md")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	return os.WriteFile(path, []byte(exampleFleet), 0o644)
 }
 
 // initBacklog lays down the Backlog.md project and makes sure the project

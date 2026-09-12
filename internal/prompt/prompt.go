@@ -1,11 +1,13 @@
-// Package prompt assembles what the agent is told: the agent's persona, the
-// task in full, and the closing protocol — how to report back into the
-// queue. Pure text in, text out, so the one contract the whole system
-// depends on is pinned by a test.
+// Package prompt assembles what the agent is told: the fleet's shared brief,
+// the agent's persona, the task in full, and the closing protocol — how to
+// report back into the queue. Its core is pure text in, text out, so the one
+// contract the whole system depends on is pinned by a test.
 package prompt
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/DnzzL/herdr-fleet/internal/fleet"
@@ -13,11 +15,58 @@ import (
 )
 
 // Assemble builds the run prompt for one task. fleetDir is where the fleet
-// lives — roster, wiring and backend config. The agent works in its own
-// workdir, so the prompt names the fleet dir for context only: every call it
-// makes goes through the fleet CLI, which finds the queue on its own.
+// lives — roster, wiring, backend config, and the optional shared brief
+// (FLEET.md). The agent works in its own workdir, so the prompt names the
+// fleet dir for context only: every call it makes goes through the fleet CLI,
+// which finds the queue on its own.
+//
+// FLEET.md, when present, is the company-wide brief: its body is prepended to
+// the persona, so what is true of every agent lives in one file instead of
+// being repeated in each AGENT.md. No file, or an empty one, and the prompt is
+// exactly what it was before the file existed.
 func Assemble(a fleet.Agent, v work.Task, fleetDir string) string {
+	return assemble(a, v, readBrief(fleetDir), fleetDir)
+}
+
+// readBrief is FLEET.md's body, or "" when there is none worth reading. A
+// missing, empty or all-comment brief is no brief: it is optional, and never a
+// reason a run cannot be assembled.
+func readBrief(fleetDir string) string {
+	raw, err := os.ReadFile(filepath.Join(fleetDir, "FLEET.md"))
+	if err != nil {
+		return ""
+	}
+	brief := strings.TrimSpace(string(raw))
+	if brief == "" || allComments(brief) {
+		return ""
+	}
+	return brief
+}
+
+// allComments reports whether every line is a comment. The file `init`
+// scaffolds is nothing but comments, and an untouched scaffold is meant to be
+// invisible: the brief starts speaking only once a human writes real prose
+// into it.
+func allComments(s string) bool {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// assemble is the pure core: the brief in, the prompt out. Reading the file
+// outside it is what keeps the one contract the whole system depends on
+// pinned by a test.
+func assemble(a fleet.Agent, v work.Task, brief, fleetDir string) string {
 	var b strings.Builder
+	if brief != "" {
+		b.WriteString(brief)
+		b.WriteString("\n\n")
+	}
 	b.WriteString(a.Persona)
 	b.WriteString("\n\n")
 

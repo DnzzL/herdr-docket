@@ -57,6 +57,42 @@ func TestPatchStatusesRefusesAConfigItCannotPatch(t *testing.T) {
 	}
 }
 
+// init writes a commented FLEET.md the first time it runs, so the shared
+// brief's existence is discoverable. Every line is a comment: an untouched
+// scaffold must never reach an agent.
+func TestInitBriefScaffoldsACommentedExample(t *testing.T) {
+	dir := t.TempDir()
+	if err := initBrief(dir); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, filepath.Join(dir, "FLEET.md"))
+	if !strings.Contains(got, "FLEET.md") {
+		t.Fatalf("the scaffold does not say what the file is:\n%s", got)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			t.Fatalf("scaffold line is not a comment: %q", line)
+		}
+	}
+}
+
+// A human's brief is not init's to overwrite: re-running init is normal and
+// must leave what is already there alone.
+func TestInitBriefLeavesAnExistingBriefAlone(t *testing.T) {
+	dir := t.TempDir()
+	mine := "We are Acme.\n"
+	path := filepath.Join(dir, "FLEET.md")
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := initBrief(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, path); got != mine {
+		t.Fatalf("init changed an existing brief:\n%q", got)
+	}
+}
+
 func configWith(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yml")
