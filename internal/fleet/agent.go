@@ -1,4 +1,4 @@
-// Package fleet reads the fleet directory: where the platform backlog lives
+// Package fleet reads the fleet directory: where the platform queue lives
 // and who the agents are. Agents are folders of AGENT.md files — a YAML
 // frontmatter for the run parameters, a markdown body for the persona.
 package fleet

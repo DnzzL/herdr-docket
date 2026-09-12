@@ -173,7 +173,7 @@ func (r *Runner) Run(t work.Item, a fleet.Agent, trigger history.Trigger) error 
 		// The run mechanics worked, but "the agent settled" is only a success
 		// if it reported a verdict; reconcile turned silence into Failed and
 		// the history must say the same.
-		err = fmt.Errorf("%s: the agent settled without reporting a status", t.ID)
+		err = fmt.Errorf("%s: the agent settled without reporting a verdict", t.ID)
 		rec.record(history.StatusFailed, session, err.Error())
 	default:
 		rec.record(history.StatusDone, session, "")
@@ -210,7 +210,7 @@ func (r *Runner) reconcile(taskID string, runErr error) work.Verdict {
 	if !v.Open {
 		return v.Verdict // the agent reported; its verdict stands
 	}
-	verdict, note := work.Failed, "fleet: the agent settled without reporting a status."
+	verdict, note := work.Failed, "fleet: the agent settled without reporting a verdict."
 	switch {
 	case errors.Is(runErr, host.ErrCancelled):
 		verdict, note = work.Blocked, "fleet: the run's workspace was closed — called off by a human."

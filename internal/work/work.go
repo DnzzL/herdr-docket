@@ -18,6 +18,10 @@ import "sort"
 // this is, as a rank it computed: only the order matters, and zero is the
 // backend having no opinion, which is the least urgent there is. Assignee is a
 // plain routing key, not an account: each adapter decides what carries it.
+// CreatedAt is the backend's own timestamp, kept as it was sent and compared as
+// bytes: it is only the last tie-break, so a format that sorts chronologically
+// as text is enough, and parsing it would only add a way for a bad date to lose
+// a task.
 type Item struct {
 	ID        string
 	Title     string

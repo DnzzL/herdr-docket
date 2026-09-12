@@ -1,5 +1,5 @@
 // Package pane is the plugin's Herdr overlay pane: a live board of the fleet
-// backlog grouped by status, with one-key "run now", "jump to the run's
+// queue grouped by phase, with one-key "run now", "jump to the run's
 // workspace", and a minimal add-task flow.
 package pane
 

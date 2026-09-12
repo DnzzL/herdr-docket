@@ -1,4 +1,4 @@
-// herdr-fleet — the backlog layer for Herdr agents: a shared task queue,
+// herdr-fleet — the queue layer for Herdr agents: a shared task queue,
 // AGENT.md personas as the workers, and a daemon that routes open tasks to
 // real coding agents, one run at a time. The queue is a Backlog.md project or
 // a Basecamp project; which one is configuration, and nothing above the
@@ -32,10 +32,10 @@ const usage = `herdr-fleet — a task queue worked by your Herdr agents
 
 Usage:
   herdr-fleet daemon           Run the worker (started by the plugin startup hook)
-  herdr-fleet init             Bootstrap the fleet dir (backlog project + example agent)
+  herdr-fleet init             Bootstrap the fleet dir (the local Backlog.md project + example agent)
   herdr-fleet auth <queue>     Sign in to a hosted queue and store its credentials
   herdr-fleet list             List the queue, grouped by phase
-  herdr-fleet run <task-id>    Run one open task now, whatever its status
+  herdr-fleet run <task-id>    Run one open task now, whatever its phase
   herdr-fleet task list        List open work from the queue (--all for closed)
   herdr-fleet task view <id>   Show one task: body, notes and criteria
   herdr-fleet task create      Add work: "<title>" [-a <agent>] [-d "<body>"]

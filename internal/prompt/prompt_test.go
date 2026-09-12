@@ -43,8 +43,8 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 
 // The agent talks to the queue through the fleet's own CLI. It has no reason
 // to know the backend, its credentials, or where its files live — and it must
-// not be handed the backlog CLI again, because that is how the two backlogs in
-// the Quick start get confused.
+// not be handed the backend CLI again, because that is how the queue gets
+// mistaken for Backlog.md.
 func TestAssembleNeverNamesTheBackend(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
 		work.Item{ID: "T-1", Title: "t", Open: true, Body: "b"}, "/d")

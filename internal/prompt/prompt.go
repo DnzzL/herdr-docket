@@ -1,6 +1,6 @@
 // Package prompt assembles what the agent is told: the agent's persona, the
 // task in full, and the closing protocol — how to report back into the
-// backlog. Pure text in, text out, so the one contract the whole system
+// queue. Pure text in, text out, so the one contract the whole system
 // depends on is pinned by a test.
 package prompt
 
@@ -34,7 +34,7 @@ func Assemble(a fleet.Agent, v work.Item, fleetDir string) string {
 			}
 			fmt.Fprintf(&b, "- %s #%d %s\n", box, c.Index, c.Text)
 		}
-		b.WriteString("\nThese boxes are the backlog's record, not yours to edit. Your verdict on\neach one — met or not, and the evidence — belongs in the note that closes the\ntask.\n\n")
+		b.WriteString("\nThese boxes are the queue's record, not yours to edit. Your verdict on\neach one — met or not, and the evidence — belongs in the note that closes the\ntask.\n\n")
 	}
 	if v.Notes != "" {
 		fmt.Fprintf(&b, "## Notes from previous runs\n\n%s\n\n", v.Notes)
@@ -49,7 +49,7 @@ Say what happened as you go:
 
   herdr-fleet task note %s "<what you did and why>"
 
-Then close the task exactly once, with exactly one of:
+Then close the task exactly once, reporting exactly one verdict:
 
   herdr-fleet task done %s --note "<what you did, which criteria you met, and how you know>"
   herdr-fleet task fail %s --note "<why you could not do it>"

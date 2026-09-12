@@ -1,6 +1,6 @@
 // Package daemon is the long-running worker started by the plugin's startup
 // hook. Every tick it re-reads the fleet (agents and settings), polls the
-// platform backlog, and runs the most urgent routed task — one at a time.
+// platform queue, and runs the most urgent routed task — one at a time.
 // It re-executes itself when the plugin binary is upgraded underneath it.
 //
 // Deciding is pick's job; this package is the part with the side effects.
@@ -21,7 +21,7 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/runner"
 )
 
-// tickInterval is how often the backlog is polled. Short enough that a task
+// tickInterval is how often the queue is polled. Short enough that a task
 // you just wrote is picked up while you are still watching the board.
 const tickInterval = 15 * time.Second
 
@@ -72,7 +72,7 @@ func Run() error {
 	}
 }
 
-// evaluate polls the backlog and starts every run that can start now: at
+// evaluate polls the queue and starts every run that can start now: at
 // most one per agent (and one per shared checkout for root-mode agents).
 // reported keeps the unknown-assignee noise down to one comment per task per
 // daemon lifetime: re-noting an unfixed typo every 15 seconds would bury the
@@ -98,7 +98,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	}
 	tasks, err := board.List()
 	if err != nil {
-		log.Printf("backlog poll failed: %v", err)
+		log.Printf("queue poll failed: %v", err)
 		return
 	}
 
