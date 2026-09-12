@@ -20,7 +20,6 @@ const (
 	StatusRunning   Status = "running"
 	StatusDone      Status = "done"
 	StatusFailed    Status = "failed"
-	StatusSkipped   Status = "skipped"
 	// StatusCancelled records a run whose workspace was closed under it.
 	// Closing a run's workspace is how you call one off, so it is not a
 	// failure: nothing broke, somebody decided.
