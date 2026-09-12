@@ -1,9 +1,10 @@
 ---
 id: TASK-13
 title: 'Urgency is a rank, not a word'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 08:26'
+updated_date: '2026-09-12 08:40'
 labels: []
 dependencies: []
 priority: high
@@ -19,9 +20,9 @@ Which task runs next is decided by comparing ranks the backend computed, so the 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Priority carries an orderable rank, not a backend word; its zero value means the backend has no opinion and unprioritised work sorts last
-- [ ] #2 Backlog.md's priority words exist only inside the Backlog.md adapter, which turns them into ranks
-- [ ] #3 the decision package compares ranks and still states the fleet's ordering policy: urgency, then the backend's position, then oldest
-- [ ] #4 Backlog.md ordering is identical to before; Basecamp ties and falls through exactly as before
-- [ ] #5 go test ./... is green
+- [x] #1 Priority carries an orderable rank, not a backend word; its zero value means the backend has no opinion and unprioritised work sorts last
+- [x] #2 Backlog.md's priority words exist only inside the Backlog.md adapter, which turns them into ranks
+- [x] #3 the decision package compares ranks and still states the fleet's ordering policy: urgency, then the backend's position, then oldest
+- [x] #4 Backlog.md ordering is identical to before; Basecamp ties and falls through exactly as before
+- [x] #5 go test ./... is green
 <!-- AC:END -->
