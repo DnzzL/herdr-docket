@@ -1,9 +1,10 @@
 ---
 id: TASK-17
 title: 'One source per process: the runner writes to the queue the daemon read'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 15:08'
+updated_date: '2026-09-12 15:26'
 labels: []
 dependencies: []
 priority: high

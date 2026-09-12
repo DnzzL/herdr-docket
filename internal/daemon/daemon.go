@@ -121,6 +121,9 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	// is what used to write "is not a fleet agent" onto a ticket whose agent was
 	// still working — which is every self-queueing sweep, seconds after it
 	// creates its own next task.
+	// Budget is state, not config: a spent agent is marked unavailable for
+	// this tick only, exactly like a busy one, and the window rolls it back
+	// open on its own. The fleet never writes disabled: true on a human's file.
 	usage := history.UsageSince(time.Now())
 	for name, a := range agents {
 		u := usage[name]

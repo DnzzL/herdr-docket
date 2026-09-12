@@ -1,9 +1,10 @@
 ---
 id: TASK-18
 title: 'Several queues behind one port: a composite Source, one per project'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 15:08'
+updated_date: '2026-09-12 15:26'
 labels: []
 dependencies:
   - TASK-17

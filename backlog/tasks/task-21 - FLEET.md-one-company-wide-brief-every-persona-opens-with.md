@@ -1,9 +1,10 @@
 ---
 id: TASK-21
 title: 'FLEET.md: one company-wide brief every persona opens with'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 15:09'
+updated_date: '2026-09-12 15:26'
 labels: []
 dependencies: []
 priority: low

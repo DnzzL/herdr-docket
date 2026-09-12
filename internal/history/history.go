@@ -166,6 +166,8 @@ const Window = 24 * time.Hour
 func UsageSince(now time.Time) map[string]Usage {
 	cutoff := now.Add(-Window)
 	usage := map[string]Usage{}
+	// A read failure is not this function's to report: a caller treats an empty
+	// window as "no spend recorded", which is the safe default for a budget.
 	_ = each(func(r Record) {
 		if r.Agent == "" || !r.Status.closes() || r.At.Before(cutoff) {
 			return

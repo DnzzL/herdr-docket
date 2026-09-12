@@ -3,9 +3,10 @@ id: TASK-20
 title: >-
   A budget per agent: runs or minutes per day, and the queue waits when it is
   spent
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 15:09'
+updated_date: '2026-09-12 15:26'
 labels: []
 dependencies:
   - TASK-19

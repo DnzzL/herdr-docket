@@ -270,6 +270,9 @@ func (r recorder) close(status history.Status, s host.Session, verdict work.Verd
 	r.append(status, s, string(verdict), int(time.Since(r.started).Seconds()), errText)
 }
 
+// append is the one writer: every transition of a run is this call with the
+// fields known at that moment, so the record shape lives in exactly one place
+// and an in-flight run can only ever differ by what its caller passed.
 func (r recorder) append(status history.Status, s host.Session, verdict string, seconds int, errText string) {
 	err := history.Append(history.Record{
 		RunID: r.id, Task: r.task, Agent: r.agent, Trigger: r.trigger, Status: status,
