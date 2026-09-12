@@ -1,9 +1,10 @@
 ---
 id: TASK-14
 title: 'The core''s prose says queue, phase and verdict'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-12 08:26'
+updated_date: '2026-09-12 08:41'
 labels: []
 dependencies: []
 priority: low
@@ -19,10 +20,10 @@ Everything the fleet prints, logs, or hands an agent uses the fleet's words inst
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the daemon's messages and package doc say queue, not backlog
-- [ ] #2 the prompt no longer calls the queue a backlog, and the closing protocol calls a settled run a verdict
-- [ ] #3 the CLI's tagline and usage text say queue and phase
-- [ ] #4 the port documents that a task's creation timestamp sorts chronologically as bytes
-- [ ] #5 the code that genuinely scaffolds a Backlog.md project keeps its accurate Backlog.md names
-- [ ] #6 go test ./... is green
+- [x] #1 the daemon's messages and package doc say queue, not backlog
+- [x] #2 the prompt no longer calls the queue a backlog, and the closing protocol calls a settled run a verdict
+- [x] #3 the CLI's tagline and usage text say queue and phase
+- [x] #4 the port documents that a task's creation timestamp sorts chronologically as bytes
+- [x] #5 the code that genuinely scaffolds a Backlog.md project keeps its accurate Backlog.md names
+- [x] #6 go test ./... is green
 <!-- AC:END -->
