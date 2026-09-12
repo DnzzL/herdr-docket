@@ -7,6 +7,7 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/work"
 	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 	"github.com/DnzzL/herdr-fleet/internal/work/basecamp"
+	"github.com/DnzzL/herdr-fleet/internal/work/multi"
 )
 
 // The queues the fleet knows how to speak to.
@@ -39,14 +40,35 @@ func (c SourceConfig) local() bool { return c.kind() == kindBacklogmd }
 // NewSource builds the queue the fleet works from. This is the one place an
 // adapter is constructed: the daemon, the CLI and the board all come through
 // here, so they cannot disagree about which queue they are looking at.
+//
+// One named source: is one unnamed queue, exactly as before and with no id
+// prefix anywhere. Several sources: are a composite, whose tasks carry their
+// source's name as an id prefix.
 func NewSource(s Settings) (work.Source, error) {
-	switch s.Source.kind() {
-	case kindBacklogmd:
-		return backlogmd.New(s.Dir), nil
-	case kindBasecamp:
-		return basecamp.New(s.Source.Basecamp)
+	if len(s.Sources) > 0 {
+		subs := make(map[string]work.Source, len(s.Sources))
+		for name, cfg := range s.Sources {
+			sub, err := newQueue(cfg, s.Dir)
+			if err != nil {
+				return nil, fmt.Errorf("source %q: %w", name, err)
+			}
+			subs[name] = sub
+		}
+		return multi.New(subs), nil
 	}
-	return nil, unknownQueue(s.Source.Kind)
+	return newQueue(s.Source, s.Dir)
+}
+
+// newQueue builds one adapter from one source block. Every adapter is
+// constructed here and nowhere else.
+func newQueue(c SourceConfig, dir string) (work.Source, error) {
+	switch c.kind() {
+	case kindBacklogmd:
+		return backlogmd.New(dir), nil
+	case kindBasecamp:
+		return basecamp.New(c.Basecamp)
+	}
+	return nil, unknownQueue(c.Kind)
 }
 
 // unknownQueue is the one wording for a queue the fleet has never heard of.

@@ -121,6 +121,67 @@ func TestTaskCreateNeedsATitle(t *testing.T) {
 	}
 }
 
+// multiSource is a composite queue for the CLI tests: it records which source
+// a create targeted, so -s/--source can be checked without a backend.
+func (m *multiSource) List() ([]work.Task, error)       { return nil, m.err }
+func (m *multiSource) Get(id string) (work.Task, error) { return work.Task{}, m.err }
+func (m *multiSource) Comment(id, text string) error    { return m.err }
+func (m *multiSource) Close(id string, v work.Verdict) error {
+	return m.err
+}
+func (m *multiSource) Create(title, body, assignee string) (string, error) {
+	return m.CreateIn("", title, body, assignee)
+}
+func (m *multiSource) Names() []string { return m.names }
+func (m *multiSource) CreateIn(source, title, body, assignee string) (string, error) {
+	m.createdIn = []string{source, title, body, assignee}
+	return source + "/TASK-9", m.err
+}
+
+type multiSource struct {
+	names     []string
+	createdIn []string
+	err       error
+}
+
+// With several queues a create has to name one; with one it is implied; and a
+// -s on a fleet that has no queues to choose between is a mistake, not a
+// silent ignore.
+func TestTaskCreateChoosesTheSource(t *testing.T) {
+	t.Run("several queues need -s", func(t *testing.T) {
+		src := &multiSource{names: []string{"alpha", "beta"}}
+		if _, err := runTask(t, src, "create", "T", "-a", "dev"); err == nil {
+			t.Fatal("a create with several queues and no -s must refuse")
+		}
+		got, err := runTask(t, src, "create", "T", "-a", "dev", "-s", "beta")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"beta", "T", "", "dev"}; !reflect.DeepEqual(src.createdIn, want) {
+			t.Fatalf("created in %v, want %v", src.createdIn, want)
+		}
+		if !strings.Contains(got, "beta/TASK-9") {
+			t.Fatalf("create should name the prefixed id:\n%s", got)
+		}
+	})
+
+	t.Run("one queue is implied", func(t *testing.T) {
+		src := &multiSource{names: []string{"solo"}}
+		if _, err := runTask(t, src, "create", "T", "-a", "dev"); err != nil {
+			t.Fatal(err)
+		}
+		if src.createdIn[0] != "solo" {
+			t.Fatalf("the sole queue should be implied, got %q", src.createdIn[0])
+		}
+	})
+
+	t.Run("-s is refused when there is nothing to choose", func(t *testing.T) {
+		if _, err := runTask(t, &fakeSource{}, "create", "T", "-s", "nope"); err == nil {
+			t.Fatal("-s on a single, unnamed queue must error")
+		}
+	})
+}
+
 // The three closing verbs are the verdict vocabulary: one word each, and the
 // task is closed whatever it is.
 func TestTaskCloseVerbsMapToVerdicts(t *testing.T) {

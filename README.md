@@ -374,6 +374,39 @@ the assignee), no priority, and one word for an ending — so a `fail` or
 `block` completes the to-do and says which it was in a comment. A to-do in a
 list the fleet doesn't know about is simply not its work.
 
+### Several queues at once
+
+One fleet can work several projects, each keeping the tool it already uses.
+Use `sources:` — a map of name → the same block `source:` takes — instead of
+`source:`:
+
+```yaml
+sources:
+  myapp:                    # a markdown project in the fleet dir
+    kind: backlogmd
+  agency:                   # a client's Basecamp, worked alongside it
+    kind: basecamp
+    basecamp:
+      account_id: "9999999"
+      lists:
+        dev: "1111111"
+```
+
+Each source's tasks carry its name as an id prefix — `myapp/TASK-12`,
+`agency/987654` — so every command that takes an id (`task view`, `note`,
+`done|fail|block`) routes to the right project, and `herdr-fleet list` and the
+board show them all together. Creating work then names the project, because a
+bare `task create` cannot guess:
+
+```bash
+herdr-fleet task create "Triage the backlog" -a pm -s myapp
+```
+
+The prefix *is* the source, so an agent's follow-up task inherits it without
+the agent knowing a second queue exists. `source:` and `sources:` are mutually
+exclusive; `source:` stays exactly what it was — one unnamed queue, no prefix
+anywhere.
+
 ## Commands
 
 | | |
@@ -385,7 +418,7 @@ list the fleet doesn't know about is simply not its work.
 | `herdr-fleet run TASK-12` | run one task now |
 | `herdr-fleet task list` | the queue as the agent sees it (`--all` includes closed work) |
 | `herdr-fleet task view ID` | one task: body, notes, criteria, and who it is routed to |
-| `herdr-fleet task create "…" -a AGENT` | add work to the queue |
+| `herdr-fleet task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several) |
 | `herdr-fleet task note ID "…"` | say where things stand without closing |
 | `herdr-fleet task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence) |
 | `herdr-fleet agent list` | the agents, and which are parked |

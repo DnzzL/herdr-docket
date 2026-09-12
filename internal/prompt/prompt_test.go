@@ -78,3 +78,25 @@ func TestAssembleOmitsEmptySections(t *testing.T) {
 		}
 	}
 }
+
+// A prefixed id means the fleet works several queues. The follow-up command
+// has to carry the source, or the agent's next task lands in whichever queue
+// happens to be first — so the prompt derives it from the id and the agent
+// never has to know a second queue exists.
+func TestAssembleRoutesTheFollowUpToTheTasksOwnSource(t *testing.T) {
+	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
+		work.Task{ID: "myapp/TASK-12", Title: "t", Open: true}, "/d")
+	if !strings.Contains(got, "task create \"<title>\" -d \"<what and why>\" -a a -s myapp") {
+		t.Fatalf("follow-up create must carry -s myapp:\n%s", got)
+	}
+}
+
+// A single queue has no prefix and no source to name: the follow-up command
+// must stay exactly as it was, with no -s on it.
+func TestAssembleLeavesTheFollowUpAloneForAQueueWithNoPrefix(t *testing.T) {
+	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
+		work.Task{ID: "TASK-12", Title: "t", Open: true}, "/d")
+	if strings.Contains(got, " -s ") {
+		t.Fatalf("an unprefixed task must not name a source:\n%s", got)
+	}
+}

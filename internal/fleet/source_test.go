@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DnzzL/herdr-fleet/internal/work"
 	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
 	"github.com/DnzzL/herdr-fleet/internal/work/basecamp"
 )
@@ -165,4 +166,75 @@ func writeFleetYAML(t *testing.T, body string) {
 		t.Fatal(err)
 	}
 	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", dir)
+}
+
+// Several sources: are a composite, one queue per name, and the names come
+// back in a stable order so two projects' tasks do not reshuffle between
+// polls.
+func TestSeveralSourcesBecomeAComposite(t *testing.T) {
+	writeFleetYAML(t, `sources:
+  myapp:
+    kind: backlogmd
+  bc:
+    kind: basecamp
+    basecamp:
+      account_id: "999"
+      lists:
+        dev: "111"
+`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewSource(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, ok := src.(work.MultiSource)
+	if !ok {
+		t.Fatalf("several sources must be a composite, got %T", src)
+	}
+	if names := ms.Names(); len(names) != 2 || names[0] != "bc" || names[1] != "myapp" {
+		t.Fatalf("Names = %v, want the sorted [bc myapp]", names)
+	}
+}
+
+// A composite is a composite even with one name: the prefix appears the
+// moment a queue has a name, and one name is still a name.
+func TestOneNamedSourceIsAComposite(t *testing.T) {
+	writeFleetYAML(t, "sources:\n  solo:\n    kind: backlogmd\n")
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewSource(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := src.(work.MultiSource); !ok {
+		t.Fatalf("sources: with one entry is still a composite, got %T", src)
+	}
+}
+
+// source: and sources: together is two arrangements of queues in one file,
+// which is a decision the fleet refuses to make for you.
+func TestSourceAndSourcesTogetherAreRefused(t *testing.T) {
+	writeFleetYAML(t, "source:\n  kind: backlogmd\nsources:\n  a:\n    kind: backlogmd\n")
+	if _, err := LoadSettings(); err == nil {
+		t.Fatal("source: and sources: together must be refused")
+	}
+}
+
+// A bad kind inside a named source names the source that is broken, so one
+// wrong queue in a composite is obvious rather than a mystery to bisect.
+func TestABadKindInsideANamedSourceNamesTheSource(t *testing.T) {
+	writeFleetYAML(t, "sources:\n  myapp:\n    kind: trello\n")
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewSource(s)
+	if err == nil || !strings.Contains(err.Error(), "myapp") || !strings.Contains(err.Error(), "trello") {
+		t.Fatalf("the error must name the source and the kind, got %v", err)
+	}
 }

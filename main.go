@@ -208,8 +208,8 @@ func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 }
 
 func taskCreate(src work.Source, args []string, out io.Writer) error {
-	const usage = `usage: herdr-fleet task create "<title>" [-a <agent>] [-d "<body>"]`
-	var title, body, assignee string
+	const usage = `usage: herdr-fleet task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>]`
+	var title, body, assignee, queue string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-a", "--assignee":
@@ -224,6 +224,12 @@ func taskCreate(src work.Source, args []string, out io.Writer) error {
 				return err
 			}
 			body = v
+		case "-s", "--source":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			queue = v
 		default:
 			if title != "" {
 				return fmt.Errorf("task create: unexpected argument %q\n%s", args[i], usage)
@@ -234,7 +240,7 @@ func taskCreate(src work.Source, args []string, out io.Writer) error {
 	if title == "" {
 		return fmt.Errorf("task create: a title is required\n%s", usage)
 	}
-	id, err := src.Create(title, body, assignee)
+	id, err := createTask(src, queue, title, body, assignee)
 	if err != nil {
 		return err
 	}
@@ -244,6 +250,28 @@ func taskCreate(src work.Source, args []string, out io.Writer) error {
 	}
 	fmt.Fprintf(out, "created %s\n", id)
 	return nil
+}
+
+// createTask chooses the queue a new task lands in. A fleet with several
+// queues routes by -s/--source: required when there is more than one, implied
+// when there is a single named one, and refused when the queue is not a
+// composite at all (a lone source has nothing to choose).
+func createTask(src work.Source, queue, title, body, assignee string) (string, error) {
+	ms, ok := src.(work.MultiSource)
+	if !ok {
+		if queue != "" {
+			return "", fmt.Errorf("task create: -s/--source is only for a fleet with several queues")
+		}
+		return src.Create(title, body, assignee)
+	}
+	if queue == "" {
+		names := ms.Names()
+		if len(names) != 1 {
+			return "", fmt.Errorf("task create: this fleet has %d queues (%s) — choose one with -s/--source", len(names), strings.Join(names, ", "))
+		}
+		queue = names[0]
+	}
+	return ms.CreateIn(queue, title, body, assignee)
 }
 
 // closeVerbs is the CLI's spelling of the verdict vocabulary: the verbs are

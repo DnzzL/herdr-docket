@@ -40,6 +40,15 @@ func Assemble(a fleet.Agent, v work.Task, fleetDir string) string {
 		fmt.Fprintf(&b, "## Notes from previous runs\n\n%s\n\n", v.Notes)
 	}
 
+	// A prefixed id (myapp/TASK-12) means the fleet works several queues, and
+	// a follow-up has to land in the queue this task came from. The prefix is
+	// the source, so the prompt writes it in and the agent never has to know a
+	// second queue exists.
+	createSource := ""
+	if i := strings.IndexByte(v.ID, '/'); i > 0 {
+		createSource = " -s " + v.ID[:i]
+	}
+
 	fmt.Fprintf(&b, `## When you are done — required
 
 The task lives in the fleet queue (fleet dir: %s), not in this repo. The
@@ -65,7 +74,7 @@ finished slice with a good handoff beats a timed-out marathon.
 
 If you find follow-up work, create a task for it instead of expanding this one:
 
-  herdr-fleet task create "<title>" -d "<what and why>" -a %s
-`, fleetDir, v.ID, v.ID, v.ID, v.ID, a.Name)
+  herdr-fleet task create "<title>" -d "<what and why>" -a %s%s
+`, fleetDir, v.ID, v.ID, v.ID, v.ID, a.Name, createSource)
 	return b.String()
 }

@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -20,6 +21,10 @@ type Settings struct {
 	// Source is where the queue lives. Absent, it is the Backlog.md project
 	// in Dir.
 	Source SourceConfig `yaml:"source"`
+	// Sources is several queues at once, name → the same block Source takes.
+	// Each name becomes the prefix on its tasks' ids. Setting both Source and
+	// Sources is an error: one fleet works one arrangement of queues.
+	Sources map[string]SourceConfig `yaml:"sources"`
 }
 
 // LoadSettings reads fleet.yaml, fills defaults, expands ~. A missing file is
@@ -31,6 +36,18 @@ func LoadSettings() (Settings, error) {
 	if err == nil {
 		if err := yaml.Unmarshal(raw, &s); err != nil {
 			return Settings{}, err
+		}
+		// Presence, not emptiness: a source: block that happens to be blank
+		// still contradicts sources:. Two arrangements is a decision, and the
+		// fleet will not pick one for you.
+		var keys map[string]any
+		if err := yaml.Unmarshal(raw, &keys); err != nil {
+			return Settings{}, err
+		}
+		_, hasSource := keys["source"]
+		_, hasSources := keys["sources"]
+		if hasSource && hasSources {
+			return Settings{}, fmt.Errorf("fleet.yaml sets both source: and sources: — use one arrangement of queues, not both")
 		}
 	} else if !os.IsNotExist(err) {
 		return Settings{}, err

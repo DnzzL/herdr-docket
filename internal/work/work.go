@@ -122,6 +122,23 @@ type Source interface {
 	Close(id string, verdict Verdict) error
 }
 
+// MultiSource is a Source over several named queues — the shape one fleet has
+// when its projects keep their work in different places. A surface that must
+// choose where work goes (the CLI's -s/--source) speaks it; a fleet with one
+// queue is an ordinary Source and never sees a name.
+//
+// The names are routing, not decoration: every task a MultiSource returns
+// carries a prefixed id ("myapp/TASK-12"), and Get, Comment, Close and
+// SetPhase take that same id back. A prefixed id is the only id such a
+// surface ever holds, so the prefix travels with the task.
+type MultiSource interface {
+	Source
+	// Names lists the configured queues, in a stable order.
+	Names() []string
+	// CreateIn creates work in the named queue, returning its prefixed id.
+	CreateIn(source, title, body, assignee string) (string, error)
+}
+
 // closedOrder is the order the board shows endings in: the ones that still
 // want a human first, so they are seen, and the finished ones last. It is the
 // fleet's own list of verdicts, which is what makes phaseOrder below derived
