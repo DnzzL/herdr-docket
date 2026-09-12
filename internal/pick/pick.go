@@ -12,9 +12,9 @@ import (
 // Result is what should happen now: at most one task to run (the worker is
 // strictly one-at-a-time), plus the open tasks that name an agent nobody has.
 type Result struct {
-	Task    *work.Item
+	Task    *work.Task
 	Agent   fleet.Agent
-	Unknown []work.Item
+	Unknown []work.Task
 }
 
 // Next picks the most urgent open task whose assignee is a known agent.
@@ -25,8 +25,8 @@ type Result struct {
 // owes work, and picking it up again is what makes a crashed run self-heal.
 // A task whose agent is mid-run is not re-picked — its agent is simply not
 // free — and the run lock is what actually keeps two runs off the same task.
-func Next(items []work.Item, agents map[string]fleet.Agent, defaultAgent string) Result {
-	open := make([]work.Item, 0, len(items))
+func Next(items []work.Task, agents map[string]fleet.Agent, defaultAgent string) Result {
+	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
 		if it.Open {
 			open = append(open, it)
@@ -74,7 +74,7 @@ func Next(items []work.Item, agents map[string]fleet.Agent, defaultAgent string)
 // AssigneeFor is the one routing rule: the task's assignee, or the configured
 // default agent when it has none. Every surface that routes a task (daemon,
 // board, CLI) must go through this, or they drift apart.
-func AssigneeFor(it work.Item, defaultAgent string) string {
+func AssigneeFor(it work.Task, defaultAgent string) string {
 	if it.Assignee != "" {
 		return it.Assignee
 	}

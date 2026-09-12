@@ -135,7 +135,7 @@ func TestListMapsBasecampOntoTheFleetsVocabulary(t *testing.T) {
 		}
 	}
 	if items[0].Verdict != "" {
-		t.Errorf("Verdict = %q: Basecamp cannot say how an item ended, so the adapter must not guess", items[0].Verdict)
+		t.Errorf("Verdict = %q: Basecamp cannot say how a task ended, so the adapter must not guess", items[0].Verdict)
 	}
 }
 
@@ -292,7 +292,7 @@ func TestCommentPostsRichText(t *testing.T) {
 	}
 }
 
-// Basecamp has one word for an ending, so a failed or blocked item would
+// Basecamp has one word for an ending, so a failed or blocked task would
 // otherwise be indistinguishable from a finished one. The comment is the only
 // place left to say which it was.
 func TestCloseCompletesTheTodoThenRecordsTheVerdict(t *testing.T) {
@@ -314,7 +314,7 @@ func TestCloseCompletesTheTodoThenRecordsTheVerdict(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !strings.Contains(sent.Content, string(v)) {
-				t.Fatalf("comment %q does not say how the item ended", sent.Content)
+				t.Fatalf("comment %q does not say how the task ended", sent.Content)
 			}
 		})
 	}
@@ -360,7 +360,7 @@ func newInMemoryBasecampOn(t *testing.T, f *fakeServer) *Source {
 	return s
 }
 
-// Close is where a binary backend can throw an item away, because the fleet's
+// Close is where a binary backend can throw an task away, because the fleet's
 // only question is whether it is open. An unknown verdict is refused before
 // anything is written.
 func TestCloseRefusesAVerdictItDoesNotKnow(t *testing.T) {
@@ -375,7 +375,7 @@ func TestCloseRefusesAVerdictItDoesNotKnow(t *testing.T) {
 }
 
 // The runner decides whether to tear a successful run's workspace down by
-// reading how the item ended. Basecamp has no field for that, so Verdict would
+// reading how the task ended. Basecamp has no field for that, so Verdict would
 // be empty for every closed to-do and every run — including the successful
 // ones — would look unfinished and keep its workspace open. The adapter puts
 // the verdict in the comment it writes on close, and reads it back.

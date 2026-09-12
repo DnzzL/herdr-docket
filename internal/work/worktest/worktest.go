@@ -6,7 +6,7 @@
 // new backend is held to the same behaviour the fleet already depends on,
 // rather than to whatever its author happened to try by hand.
 //
-// What the suite deliberately does not check: how an item looks in the
+// What the suite deliberately does not check: how an task looks in the
 // backend, which status word records a verdict, or whether a phase survives.
 // Those are the backend's business. The port promises behaviour, not shape.
 package worktest
@@ -33,7 +33,7 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 			t.Fatalf("List: %v", err)
 		}
 		if len(items) != 0 {
-			t.Fatalf("a fresh backend listed %d items, want none", len(items))
+			t.Fatalf("a fresh backend listed %d tasks, want none", len(items))
 		}
 	})
 
@@ -44,7 +44,7 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 			t.Fatalf("Create: %v", err)
 		}
 		if id == "" {
-			t.Fatal("Create must hand back the new item's id")
+			t.Fatal("Create must hand back the new task's id")
 		}
 		it, err := src.Get(id)
 		if err != nil {
@@ -60,7 +60,7 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 			t.Errorf("body lost the description: %q", it.Body)
 		}
 		if !it.Open {
-			t.Error("a freshly created item must be open")
+			t.Error("a freshly created task must be open")
 		}
 	})
 
@@ -127,9 +127,9 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 		}
 	})
 
-	// Every verdict closes. A blocked or failed item left open would be picked
+	// Every verdict closes. A blocked or failed task left open would be picked
 	// up again on the next tick and run forever.
-	t.Run("every verdict closes the item", func(t *testing.T) {
+	t.Run("every verdict closes the task", func(t *testing.T) {
 		for _, v := range []work.Verdict{work.Done, work.Failed, work.Blocked} {
 			t.Run(string(v), func(t *testing.T) {
 				src := newSource(t)
@@ -142,7 +142,7 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 					t.Fatalf("Get after close: %v", err)
 				}
 				if it.Open {
-					t.Errorf("after Close(%s) the item is still open", v)
+					t.Errorf("after Close(%s) the task is still open", v)
 				}
 			})
 		}
@@ -159,13 +159,13 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 			t.Fatalf("Get: %v", err)
 		}
 		if !it.Open {
-			t.Error("a refused verdict must leave the item open")
+			t.Error("a refused verdict must leave the task open")
 		}
 	})
 
 	t.Run("asking for work that does not exist fails", func(t *testing.T) {
 		if _, err := newSource(t).Get("no-such-item-4f2a"); err == nil {
-			t.Fatal("Get on an unknown id must fail, not return a zero item")
+			t.Fatal("Get on an unknown id must fail, not return a zero task")
 		}
 	})
 }

@@ -72,15 +72,15 @@ func New(c Config) (*Source, error) {
 
 // List reads every configured to-do list. One request per agent: Basecamp has
 // no query that spans lists, so the routing table is also the read plan.
-func (s *Source) List() ([]work.Item, error) {
-	var items []work.Item
+func (s *Source) List() ([]work.Task, error) {
+	var items []work.Task
 	for _, agent := range s.agents {
 		var todos []todo
 		if err := s.api.get("/todolists/"+s.listID[agent]+"/todos.json", &todos); err != nil {
 			return nil, fmt.Errorf("basecamp: listing what is assigned to %s: %w", agent, err)
 		}
 		for _, t := range todos {
-			it := item(t)
+			it := asTask(t)
 			it.Assignee = agent
 			items = append(items, it)
 		}
@@ -90,16 +90,16 @@ func (s *Source) List() ([]work.Item, error) {
 
 // Get returns one to-do in full. The comments are a second request because
 // Basecamp keeps them as recordings of their own, not as a field of the to-do.
-func (s *Source) Get(id string) (work.Item, error) {
+func (s *Source) Get(id string) (work.Task, error) {
 	var t todo
 	if err := s.api.get("/todos/"+id+".json", &t); err != nil {
-		return work.Item{}, err
+		return work.Task{}, err
 	}
 	var comments []comment
 	if err := s.api.get("/recordings/"+id+"/comments.json", &comments); err != nil {
-		return work.Item{}, err
+		return work.Task{}, err
 	}
-	it := item(t)
+	it := asTask(t)
 	it.Assignee = s.agent[strconv.Itoa(t.Parent.ID)]
 	it.Body = body(t)
 	it.Notes = notes(comments)
@@ -132,14 +132,14 @@ func (s *Source) Comment(id, text string) error {
 }
 
 // Close completes the to-do, then comments the verdict. Basecamp has one word
-// for an ending — completed — so a failed or blocked item would otherwise
+// for an ending — completed — so a failed or blocked task would otherwise
 // look exactly like a finished one; the comment is the only place left to say
 // which it was. The completion comes first so that a failure to comment
-// leaves an item the fleet has closed, not one it will run again.
+// leaves an task the fleet has closed, not one it will run again.
 //
 // An unknown verdict is refused before anything is written. Treating a typo as
-// a close would quietly throw away the item: the fleet reads Open, so a closed
-// item is one it will never look at again.
+// a close would quietly throw away the task: the fleet reads Open, so a closed
+// task is one it will never look at again.
 func (s *Source) Close(id string, v work.Verdict) error {
 	if !v.Known() {
 		return fmt.Errorf("close %s: unknown verdict %q", id, v)
@@ -171,11 +171,11 @@ func verdictOf(comments []comment) work.Verdict {
 	return ""
 }
 
-// item maps a Basecamp to-do onto the fleet's vocabulary. Assignee is left to
+// asTask maps a Basecamp to-do onto the fleet's vocabulary. Assignee is left to
 // the caller: only the caller knows which list the to-do came out of, and on
 // Basecamp the list is the assignee.
-func item(t todo) work.Item {
-	return work.Item{
+func asTask(t todo) work.Task {
+	return work.Task{
 		ID:        strconv.Itoa(t.ID),
 		Title:     t.Title,
 		Open:      !closed(t),
@@ -222,7 +222,7 @@ func body(t todo) string {
 // criteria reads Basecamp's steps as the fleet's acceptance criteria. A
 // step's checkbox is the backend's own record of it, and criteria are
 // read-only to the fleet: the verdict and its evidence go in the comment that
-// closes the item, never back onto these.
+// closes the task, never back onto these.
 func criteria(steps []step) []work.Criterion {
 	sorted := append([]step(nil), steps...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Position < sorted[j].Position })
@@ -273,7 +273,7 @@ type content struct {
 }
 
 // todo is the slice of Basecamp's to-do JSON the fleet reads. Field names and
-// nesting are the API's; everything above this file sees work.Item instead.
+// nesting are the API's; everything above this file sees work.Task instead.
 type todo struct {
 	ID          int     `json:"id"`
 	Status      string  `json:"status"`

@@ -16,7 +16,7 @@ import (
 // lives — roster, wiring and backend config. The agent works in its own
 // workdir, so the prompt names the fleet dir for context only: every call it
 // makes goes through the fleet CLI, which finds the queue on its own.
-func Assemble(a fleet.Agent, v work.Item, fleetDir string) string {
+func Assemble(a fleet.Agent, v work.Task, fleetDir string) string {
 	var b strings.Builder
 	b.WriteString(a.Persona)
 	b.WriteString("\n\n")

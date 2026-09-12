@@ -29,28 +29,28 @@ func New(dir string) *Source { return newWith(newCLI(dir)) }
 
 func newWith(c client) *Source { return &Source{client: c} }
 
-// List returns every item in the project, closed ones included — the board
+// List returns every task in the project, closed ones included — the board
 // shows them, and only the queue cares about Open.
-func (s *Source) List() ([]work.Item, error) {
+func (s *Source) List() ([]work.Task, error) {
 	tasks, err := s.client.List()
 	if err != nil {
 		return nil, err
 	}
-	items := make([]work.Item, 0, len(tasks))
+	items := make([]work.Task, 0, len(tasks))
 	for _, t := range tasks {
-		items = append(items, item(t))
+		items = append(items, asTask(t))
 	}
 	return items, nil
 }
 
-// Get returns one item in full: what List carries plus the body, the notes
+// Get returns one task in full: what List carries plus the body, the notes
 // and the criteria the prompt needs.
-func (s *Source) Get(id string) (work.Item, error) {
+func (s *Source) Get(id string) (work.Task, error) {
 	v, err := s.client.View(id)
 	if err != nil {
-		return work.Item{}, err
+		return work.Task{}, err
 	}
-	it := item(v.task)
+	it := asTask(v.task)
 	it.Body = v.Description
 	it.Notes = v.ImplementationNotes
 	for _, c := range v.AcceptanceCriteria {
@@ -59,19 +59,19 @@ func (s *Source) Get(id string) (work.Item, error) {
 	return it, nil
 }
 
-// Create adds an item to the project and returns its new id.
+// Create adds an task to the project and returns its new id.
 func (s *Source) Create(title, body, assignee string) (string, error) {
 	return s.client.Create(title, body, assignee)
 }
 
-// Comment appends to the item's notes. Backlog.md has no separate comment
+// Comment appends to the task's notes. Backlog.md has no separate comment
 // stream, and the notes are where a run's account of itself belongs.
 func (s *Source) Comment(id, text string) error {
 	return s.client.AppendNote(id, text)
 }
 
-// Close ends the item with a verdict. Backlog.md can say Done, Failed or
-// Blocked, so the hardware word survives; the item is closed to the fleet
+// Close ends the task with a verdict. Backlog.md can say Done, Failed or
+// Blocked, so the hardware word survives; the task is closed to the fleet
 // either way.
 func (s *Source) Close(id string, v work.Verdict) error {
 	if !v.Known() {
@@ -93,7 +93,7 @@ var verdicts = map[work.Verdict]string{
 	work.Blocked: statusBlocked,
 }
 
-// verdictOf is the same table read backwards: what a closed item's status
+// verdictOf is the same table read backwards: what a closed task's status
 // word still says about how it ended. Backlog.md is rich enough to keep the
 // verdict, which is how the runner knows whether to tear down a run's
 // workspace or leave it open to resume. A binary backend cannot, and simply
@@ -107,7 +107,7 @@ func verdictOf(status string) work.Verdict {
 	return ""
 }
 
-// SetPhase shows the item as being worked on. Backlog.md has a state for it;
+// SetPhase shows the task as being worked on. Backlog.md has a state for it;
 // this is the only phase the fleet ever writes, and it is display only — the
 // run lock is what keeps two runs apart, so nothing reads this back.
 func (s *Source) SetPhase(id string, phase work.Phase) error {
@@ -122,11 +122,11 @@ var phases = map[work.Phase]string{
 	work.PhaseRunning: statusInProgress,
 }
 
-// item maps a Backlog.md task onto the fleet's vocabulary. A task is open
+// asTask maps a Backlog.md task onto the fleet's vocabulary. A task is open
 // until a verdict has closed it: Done, Failed and Blocked are all closed to
 // the fleet, and Phase carries the fleet's word for wherever it stands.
-func item(t task) work.Item {
-	return work.Item{
+func asTask(t task) work.Task {
+	return work.Task{
 		ID:        t.ID,
 		Title:     t.Title,
 		Assignee:  first(t.Assignees),

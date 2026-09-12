@@ -1,20 +1,20 @@
 // Package work is the backend-blind task queue the fleet speaks. A Source is
 // wherever work actually lives — a Backlog.md project, a Basecamp list, or
-// something not written yet — and an Item is one unit of it, in the fleet's
+// something not written yet — and an Task is one unit of it, in the fleet's
 // own vocabulary. Nothing above an adapter knows which backend answered.
 package work
 
 import "sort"
 
-// Item is one unit of work as the fleet sees it.
+// Task is one unit of work as the fleet sees it.
 //
-// Open is the only state the fleet reads: an item stays open until a verdict
+// Open is the only state the fleet reads: an task stays open until a verdict
 // closes it, which is all a binary backend (a Basecamp to-do) can express.
 // Phase is where it stands in the fleet's words, for display only — written
 // best-effort, never read back; the adapter is what translates its backend's
-// own label into one. Verdict is how a closed item ended, when the backend can
+// own label into one. Verdict is how a closed task ended, when the backend can
 // still say: a rich backend keeps the verdict, a binary one only knows the
-// item is closed and leaves it empty. Priority is how urgent the backend says
+// task is closed and leaves it empty. Priority is how urgent the backend says
 // this is, as a rank it computed: only the order matters, and zero is the
 // backend having no opinion, which is the least urgent there is. Assignee is a
 // plain routing key, not an account: each adapter decides what carries it.
@@ -22,7 +22,7 @@ import "sort"
 // bytes: it is only the last tie-break, so a format that sorts chronologically
 // as text is enough, and parsing it would only add a way for a bad date to lose
 // a task.
-type Item struct {
+type Task struct {
 	ID        string
 	Title     string
 	Body      string
@@ -37,7 +37,7 @@ type Item struct {
 	Criteria  []Criterion
 }
 
-// Criterion is one acceptance criterion of an item. Criteria are read-only to
+// Criterion is one acceptance criterion of an task. Criteria are read-only to
 // the fleet: an adapter fills them in for the prompt, and the agent's verdict
 // and evidence go in its closing comment, not back onto the boxes.
 type Criterion struct {
@@ -46,7 +46,7 @@ type Criterion struct {
 	Checked bool
 }
 
-// Verdict is how a run ended. Close always closes the item, whatever the
+// Verdict is how a run ended. Close always closes the task, whatever the
 // verdict: a blocked or failed task left open would be handed straight back
 // by the next tick, and a binary backend has no other word for it.
 type Verdict string
@@ -59,7 +59,7 @@ const (
 
 // Known reports whether v is one of the verdicts the port writes. An adapter
 // must refuse anything else rather than treat a typo as a close: the fleet's
-// only question about an item is whether it is open, so a closed item is one
+// only question about an task is whether it is open, so a closed task is one
 // it will never look at again — and a mistyped verdict would quietly throw
 // the work away.
 func (v Verdict) Known() bool {
@@ -103,7 +103,7 @@ const (
 	PhaseRunning Phase = "In Progress"
 )
 
-// Phaser is the optional capability of a source that can show an item as
+// Phaser is the optional capability of a source that can show an task as
 // being worked on. Backlog.md has an In Progress state to write; a Basecamp
 // to-do is simply done or not, and the run lock is what actually keeps two
 // runs apart — so a source without this is not a lesser source, just a
@@ -115,8 +115,8 @@ type Phaser interface {
 // Source is the port the fleet's queue lives behind. Picking, running and the
 // board speak only this.
 type Source interface {
-	List() ([]Item, error)
-	Get(id string) (Item, error)
+	List() ([]Task, error)
+	Get(id string) (Task, error)
 	Create(title, body, assignee string) (string, error)
 	Comment(id, text string) error
 	Close(id string, verdict Verdict) error
@@ -154,11 +154,11 @@ func phaseRank(phase string) int {
 	return len(phaseOrder)
 }
 
-// PhasesOf lists the phases these items actually use, most actionable first —
+// PhasesOf lists the phases these tasks actually use, most actionable first —
 // the order a board or a listing should show them in. Backend-blind: a phase
 // the fleet does not know by name still gets its place, just after the ones it
 // does, in the order it turned up.
-func PhasesOf(items []Item) []string {
+func PhasesOf(items []Task) []string {
 	var phases []string
 	seen := map[string]bool{}
 	for _, it := range items {

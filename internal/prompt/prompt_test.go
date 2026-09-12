@@ -11,7 +11,7 @@ import (
 func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 	got := Assemble(
 		fleet.Agent{Name: "marketing", Persona: "You run publication."},
-		work.Item{
+		work.Task{
 			ID: "TASK-7", Title: "Draft launch post", Open: true,
 			Body: "Write the Show HN post.",
 			Criteria: []work.Criterion{
@@ -47,7 +47,7 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 // mistaken for Backlog.md.
 func TestAssembleNeverNamesTheBackend(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		work.Item{ID: "T-1", Title: "t", Open: true, Body: "b"}, "/d")
+		work.Task{ID: "T-1", Title: "t", Open: true, Body: "b"}, "/d")
 	for _, absent := range []string{"BACKLOG_CWD", "--check-ac", "--append-notes", "backlog task"} {
 		if strings.Contains(got, absent) {
 			t.Fatalf("prompt still says %q:\n%s", absent, got)
@@ -59,7 +59,7 @@ func TestAssembleNeverNamesTheBackend(t *testing.T) {
 // about them and answers in prose; it does not tick its own boxes.
 func TestAssembleTellsTheAgentTheCriteriaAreReadOnly(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		work.Item{ID: "T-1", Title: "t", Open: true,
+		work.Task{ID: "T-1", Title: "t", Open: true,
 			Criteria: []work.Criterion{{Index: 1, Text: "works"}}}, "/d")
 	if !strings.Contains(got, "not yours to edit") {
 		t.Fatalf("prompt does not say the criteria are read-only:\n%s", got)
@@ -71,7 +71,7 @@ func TestAssembleTellsTheAgentTheCriteriaAreReadOnly(t *testing.T) {
 
 func TestAssembleOmitsEmptySections(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		work.Item{ID: "T-1", Title: "t", Open: true}, "/d")
+		work.Task{ID: "T-1", Title: "t", Open: true}, "/d")
 	for _, absent := range []string{"Acceptance criteria", "Notes from previous runs", "## Description"} {
 		if strings.Contains(got, absent) {
 			t.Fatalf("empty section %q rendered:\n%s", absent, got)

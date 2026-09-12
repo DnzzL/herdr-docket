@@ -36,10 +36,10 @@ func (f *fakeHost) Do(s host.Session, a host.Spec, timeout time.Duration) error 
 	return f.doErr
 }
 
-// fakeBoard is a queue in memory: enough for the runner to read an item back,
+// fakeBoard is a queue in memory: enough for the runner to read an task back,
 // show it as running, and close it.
 type fakeBoard struct {
-	items     map[string]work.Item
+	items     map[string]work.Task
 	notes     []string
 	getErr    error
 	phaseErr  error
@@ -47,20 +47,20 @@ type fakeBoard struct {
 }
 
 func newBoard(id string) *fakeBoard {
-	return &fakeBoard{items: map[string]work.Item{
+	return &fakeBoard{items: map[string]work.Task{
 		id: {ID: id, Title: "T", Phase: "To Do", Open: true},
 	}}
 }
 
-func (b *fakeBoard) List() ([]work.Item, error) { return nil, nil }
+func (b *fakeBoard) List() ([]work.Task, error) { return nil, nil }
 
-func (b *fakeBoard) Get(id string) (work.Item, error) {
+func (b *fakeBoard) Get(id string) (work.Task, error) {
 	if b.getErr != nil {
-		return work.Item{}, b.getErr
+		return work.Task{}, b.getErr
 	}
 	it, ok := b.items[id]
 	if !ok {
-		return work.Item{}, fmt.Errorf("no such item %q", id)
+		return work.Task{}, fmt.Errorf("no such task %q", id)
 	}
 	return it, nil
 }
@@ -97,7 +97,7 @@ func run(t *testing.T, h *fakeHost, b *fakeBoard) error {
 	t.Helper()
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	r := New(h, b, "/fleet")
-	return r.Run(work.Item{ID: "TASK-1", Title: "T", Open: true}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
+	return r.Run(work.Task{ID: "TASK-1", Title: "T", Open: true}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
 }
 
 func TestHappyPathAgentReportsDone(t *testing.T) {
@@ -202,8 +202,8 @@ func TestAPhaseWriteIsBestEffort(t *testing.T) {
 func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	b := newBoard("TASK-1")
-	b.items["TASK-2"] = work.Item{ID: "TASK-2", Open: true, Phase: "To Do"}
-	b.items["TASK-3"] = work.Item{ID: "TASK-3", Open: true, Phase: "To Do"}
+	b.items["TASK-2"] = work.Task{ID: "TASK-2", Open: true, Phase: "To Do"}
+	b.items["TASK-3"] = work.Task{ID: "TASK-3", Open: true, Phase: "To Do"}
 	started, release := make(chan struct{}), make(chan struct{})
 	h := &fakeHost{after: func() { close(started); <-release }}
 	r := New(h, b, "/fleet")
@@ -212,16 +212,16 @@ func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	tree := fleet.Agent{Name: "dev", Workdir: "/repo", Workspace: "worktree", TimeoutMinutes: 1}
 
 	first := make(chan struct{})
-	go func() { defer close(first); r.Run(work.Item{ID: "TASK-1"}, rootA, "poll") }()
+	go func() { defer close(first); r.Run(work.Task{ID: "TASK-1"}, rootA, "poll") }()
 	<-started
 	if !r.Busy() || r.CanRun(rootA) {
 		t.Fatal("rootA's slot must be taken")
 	}
 	// Same agent again, and a different root agent on the same checkout: refused.
-	if err := r.Run(work.Item{ID: "TASK-2"}, rootA, "poll"); err == nil {
+	if err := r.Run(work.Task{ID: "TASK-2"}, rootA, "poll"); err == nil {
 		t.Fatal("same agent must be refused")
 	}
-	if err := r.Run(work.Item{ID: "TASK-2"}, rootB, "poll"); err == nil || r.CanRun(rootB) {
+	if err := r.Run(work.Task{ID: "TASK-2"}, rootB, "poll"); err == nil || r.CanRun(rootB) {
 		t.Fatal("a root-mode agent sharing the checkout must be refused")
 	}
 	// A worktree agent on the same repo gets its own checkout: allowed.
@@ -230,7 +230,7 @@ func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	}
 	h2 := &fakeHost{after: func() { b.Close("TASK-3", work.Done) }}
 	r.host = h2
-	if err := r.Run(work.Item{ID: "TASK-3"}, tree, "poll"); err != nil {
+	if err := r.Run(work.Task{ID: "TASK-3"}, tree, "poll"); err != nil {
 		t.Fatalf("worktree run alongside a root run: %v", err)
 	}
 	close(release)

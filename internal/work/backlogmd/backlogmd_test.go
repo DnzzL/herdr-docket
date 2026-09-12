@@ -100,7 +100,7 @@ func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := work.Item{
+	want := work.Task{
 		ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "To Do",
 		// "high", as a rank the core can compare rather than a word it knows.
 		Priority: 3,
@@ -117,7 +117,7 @@ func TestListPropagatesTheBackendError(t *testing.T) {
 	}
 }
 
-// Get is the full item: the list view plus what the prompt needs.
+// Get is the full task: the list view plus what the prompt needs.
 func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 	s := newWith(&fakeClient{view: view{
 		task:        task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"dev"}},
@@ -132,7 +132,7 @@ func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := work.Item{
+	want := work.Task{
 		ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "In Progress",
 		Body:  "do it",
 		Notes: "so far",
@@ -294,7 +294,7 @@ func (m *memClient) AppendNote(id, note string) error {
 
 // The port owns the verdict vocabulary; this adapter owns the translation into
 // Backlog.md's status words. Adding a verdict to the port without a status to
-// record it would otherwise close the item into an empty status.
+// record it would otherwise close the task into an empty status.
 func TestEveryKnownVerdictHasAStatus(t *testing.T) {
 	for _, v := range []work.Verdict{work.Done, work.Failed, work.Blocked} {
 		if !v.Known() {

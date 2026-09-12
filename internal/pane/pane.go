@@ -37,7 +37,7 @@ var (
 type row struct {
 	header string
 	spacer bool
-	task   work.Item
+	task   work.Task
 	last   *history.Record
 }
 
@@ -47,7 +47,7 @@ func (r row) selectable() bool { return r.header == "" && !r.spacer }
 // each, a header per non-empty group and a blank spacer between groups. When
 // query is non-empty only tasks whose ID or title contain it (case-insensitive)
 // are included. Pure, so the layout is testable without a terminal.
-func rows(items []work.Item, last map[string]*history.Record, query string) []row {
+func rows(items []work.Task, last map[string]*history.Record, query string) []row {
 	query = strings.ToLower(query)
 	var out []row
 	for _, phase := range work.PhasesOf(items) {
@@ -76,7 +76,7 @@ func rows(items []work.Item, last map[string]*history.Record, query string) []ro
 
 // matches reports whether the task's ID or title contains query, which the
 // caller has already lowercased. An empty query matches everything.
-func matches(it work.Item, query string) bool {
+func matches(it work.Task, query string) bool {
 	if query == "" {
 		return true
 	}
@@ -120,7 +120,7 @@ type model struct {
 	dir          string
 	src          work.Source
 	defaultAgent string
-	tasks        []work.Item
+	tasks        []work.Task
 	last         map[string]*history.Record
 	rows         []row
 	agents       map[string]fleet.Agent
@@ -137,7 +137,7 @@ type model struct {
 }
 
 type refreshMsg struct {
-	tasks  []work.Item
+	tasks  []work.Task
 	last   map[string]*history.Record
 	agents map[string]fleet.Agent
 	err    error

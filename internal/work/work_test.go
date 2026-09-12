@@ -9,7 +9,7 @@ import (
 // fleet knows by name first. A backend with phases of its own still renders —
 // it just sorts after, in the order it turned up.
 func TestPhasesOfOrdersKnownPhasesFirstThenTheRest(t *testing.T) {
-	items := []Item{
+	items := []Task{
 		{ID: "1", Phase: "Done"},
 		{ID: "2", Phase: "Custom"},
 		{ID: "3", Phase: "To Do"},
@@ -25,7 +25,7 @@ func TestPhasesOfOrdersKnownPhasesFirstThenTheRest(t *testing.T) {
 // An empty phase is a phase: a binary backend has nothing to say about where
 // its work sits, and the board still has to show it somewhere.
 func TestPhasesOfKeepsTheEmptyPhase(t *testing.T) {
-	items := []Item{{ID: "1", Phase: ""}, {ID: "2", Phase: ""}, {ID: "3", Phase: "To Do"}}
+	items := []Task{{ID: "1", Phase: ""}, {ID: "2", Phase: ""}, {ID: "3", Phase: "To Do"}}
 	want := []string{"To Do", ""}
 	if got := PhasesOf(items); !reflect.DeepEqual(got, want) {
 		t.Fatalf("PhasesOf = %v, want %v", got, want)

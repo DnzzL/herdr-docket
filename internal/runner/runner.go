@@ -126,7 +126,7 @@ func sanitize(s string) string {
 // in root mode, its checkout) is in flight is refused, not queued — it stays
 // open and the next tick sees it. The lock is the whole claim: a task routes
 // to exactly one agent, so holding that agent's slot is holding the task.
-func (r *Runner) Run(t work.Item, a fleet.Agent, trigger history.Trigger) error {
+func (r *Runner) Run(t work.Task, a fleet.Agent, trigger history.Trigger) error {
 	key := LockKey(a)
 	if !r.acquire(key) {
 		return fmt.Errorf("%s: a run is already in flight for %s", t.ID, key)
@@ -181,7 +181,7 @@ func (r *Runner) Run(t work.Item, a fleet.Agent, trigger history.Trigger) error 
 	return err
 }
 
-// claim shows the item as being worked on, where the backend can say so. The
+// claim shows the task as being worked on, where the backend can say so. The
 // write is display only and best-effort: a binary backend has no such state,
 // and the run lock — not this — is what keeps two runs apart, so a backend
 // that cannot say it is not a reason to refuse the run.
@@ -195,12 +195,12 @@ func (r *Runner) claim(id string) {
 	}
 }
 
-// reconcile makes the item tell the truth after a run and returns the verdict
-// it ended on. The agent's own verdict stands: if the agent closed the item,
-// there is nothing to do. An item the agent left open gets the verdict the run
+// reconcile makes the task tell the truth after a run and returns the verdict
+// it ended on. The agent's own verdict stands: if the agent closed the task,
+// there is nothing to do. An task the agent left open gets the verdict the run
 // mechanics imply — a cancelled run (workspace closed under it) goes Blocked,
 // because somebody decided and a human should say what happens next; anything
-// else that leaves the item unreported is Failed.
+// else that leaves the task unreported is Failed.
 func (r *Runner) reconcile(taskID string, runErr error) work.Verdict {
 	v, err := r.board.Get(taskID)
 	if err != nil {

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRowsGroupsByPhaseOrderAndSkipsEmptyPhases(t *testing.T) {
-	got := rows([]work.Item{
+	got := rows([]work.Task{
 		{ID: "T-1", Phase: "Done"},
 		{ID: "T-2", Phase: "To Do"},
 		{ID: "T-3", Phase: "To Do"},
@@ -37,7 +37,7 @@ func TestRowsGroupsByPhaseOrderAndSkipsEmptyPhases(t *testing.T) {
 // A backend whose phases the fleet has never heard of still gets a board:
 // the group is there, it just sorts after the phases the fleet knows.
 func TestRowsShowsAPhaseTheFleetDoesNotKnow(t *testing.T) {
-	got := rows([]work.Item{
+	got := rows([]work.Task{
 		{ID: "T-1", Phase: "Needs Triage"},
 		{ID: "T-2", Phase: "In Progress"},
 	}, map[string]*history.Record{}, "")
@@ -64,7 +64,7 @@ func TestRowsShowsAPhaseTheFleetDoesNotKnow(t *testing.T) {
 }
 
 func TestRowsFiltersByQueryCaseInsensitive(t *testing.T) {
-	items := []work.Item{
+	items := []work.Task{
 		{ID: "T-1", Title: "Fix login bug", Phase: "To Do"},
 		{ID: "T-2", Title: "Add search", Phase: "To Do"},
 		{ID: "T-3", Title: "Unrelated", Phase: "Done"},

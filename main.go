@@ -255,7 +255,7 @@ var closeVerbs = map[string]work.Verdict{
 }
 
 // taskClose runs one of the three closing verbs. The note is recorded first,
-// so the reason is on the item by the time it closes.
+// so the reason is on the task by the time it closes.
 func taskClose(src work.Source, verb string, args []string, out io.Writer) error {
 	verdict, ok := closeVerbs[verb]
 	if !ok {
@@ -380,7 +380,7 @@ func runCmd(args []string) error {
 // task at a human's request. Unlike pick.Next it ignores Disabled: `run` is
 // explicit intent, so pausing an agent parks the scheduler without forbidding
 // the work. Every manual route goes through here, or the two drift apart.
-func routedAgent(agents map[string]fleet.Agent, it work.Item, defaultAgent string) (fleet.Agent, error) {
+func routedAgent(agents map[string]fleet.Agent, it work.Task, defaultAgent string) (fleet.Agent, error) {
 	name := pick.AssigneeFor(it, defaultAgent)
 	agent, ok := agents[name]
 	if !ok {

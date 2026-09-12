@@ -13,8 +13,8 @@ import (
 // fakeSource stands in for the queue so the CLI verbs are tested without a
 // backend on disk. Writes are recorded to check the verb actually reached it.
 type fakeSource struct {
-	items []work.Item
-	item  work.Item
+	items []work.Task
+	item  work.Task
 	err   error
 
 	created  []string // title, body, assignee
@@ -22,8 +22,8 @@ type fakeSource struct {
 	verdicts []work.Verdict
 }
 
-func (f *fakeSource) List() ([]work.Item, error)       { return f.items, f.err }
-func (f *fakeSource) Get(id string) (work.Item, error) { return f.item, f.err }
+func (f *fakeSource) List() ([]work.Task, error)       { return f.items, f.err }
+func (f *fakeSource) Get(id string) (work.Task, error) { return f.item, f.err }
 
 func (f *fakeSource) Create(title, body, assignee string) (string, error) {
 	f.created = []string{title, body, assignee}
@@ -47,10 +47,10 @@ func runTask(t *testing.T, src work.Source, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// The agent's view of the queue: open work and who it routes to. Closed items
+// The agent's view of the queue: open work and who it routes to. Closed tasks
 // are noise unless asked for.
 func TestTaskListShowsOpenItemsWithTheirRoutingKey(t *testing.T) {
-	src := &fakeSource{items: []work.Item{
+	src := &fakeSource{items: []work.Task{
 		{ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "To Do"},
 		{ID: "TASK-1", Title: "A", Open: false, Phase: "Done"},
 	}}
@@ -67,7 +67,7 @@ func TestTaskListShowsOpenItemsWithTheirRoutingKey(t *testing.T) {
 }
 
 func TestTaskListAllIncludesClosedItems(t *testing.T) {
-	src := &fakeSource{items: []work.Item{
+	src := &fakeSource{items: []work.Task{
 		{ID: "TASK-2", Title: "B", Open: true, Phase: "To Do"},
 		{ID: "TASK-1", Title: "A", Open: false, Phase: "Done"},
 	}}
@@ -83,7 +83,7 @@ func TestTaskListAllIncludesClosedItems(t *testing.T) {
 // Get is what the run prompt and a human both need: the body, the history of
 // notes, and the criteria, which are read-only.
 func TestTaskViewShowsBodyNotesAndCriteria(t *testing.T) {
-	src := &fakeSource{item: work.Item{
+	src := &fakeSource{item: work.Task{
 		ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "To Do",
 		Body: "do it", Notes: "so far",
 		Criteria: []work.Criterion{{Index: 1, Text: "works"}},
@@ -122,7 +122,7 @@ func TestTaskCreateNeedsATitle(t *testing.T) {
 }
 
 // The three closing verbs are the verdict vocabulary: one word each, and the
-// item is closed whatever it is.
+// task is closed whatever it is.
 func TestTaskCloseVerbsMapToVerdicts(t *testing.T) {
 	for verb, want := range map[string]work.Verdict{
 		"done": work.Done, "fail": work.Failed, "block": work.Blocked,
@@ -137,7 +137,7 @@ func TestTaskCloseVerbsMapToVerdicts(t *testing.T) {
 	}
 }
 
-// A note is recorded before the item closes, so the reason is on the task
+// A note is recorded before the task closes, so the reason is on the task
 // even if closing it is the last thing that happens.
 func TestTaskCloseWithANoteCommentsFirst(t *testing.T) {
 	src := &fakeSource{}
@@ -161,7 +161,7 @@ func TestTaskNoteAppendsToTheItem(t *testing.T) {
 		t.Fatalf("commented %v, want %v", src.comments, want)
 	}
 	if len(src.verdicts) != 0 {
-		t.Fatalf("note must not close the item, got %v", src.verdicts)
+		t.Fatalf("note must not close the task, got %v", src.verdicts)
 	}
 }
 
