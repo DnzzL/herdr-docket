@@ -13,7 +13,6 @@ package multi
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/DnzzL/herdr-fleet/internal/work"
 )
@@ -42,10 +41,11 @@ func (s *Source) Names() []string { return append([]string(nil), s.names...) }
 // id. An id with no prefix, or one naming no configured source, is an error:
 // the fleet never guesses which queue an id meant.
 func (s *Source) split(id string) (name, rest string, err error) {
-	name, rest, ok := strings.Cut(id, "/")
-	if !ok || name == "" || rest == "" {
+	name = work.SourceOf(id)
+	if name == "" {
 		return "", "", fmt.Errorf("%s: not a queue-prefixed id (want <source>/<id>)", id)
 	}
+	rest = id[len(name)+1:]
 	if _, ok := s.subs[name]; !ok {
 		return "", "", fmt.Errorf("%s: no configured source %q", id, name)
 	}

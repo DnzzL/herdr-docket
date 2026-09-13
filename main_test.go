@@ -16,7 +16,7 @@ func TestManualRunReachesADisabledAgent(t *testing.T) {
 	agents := map[string]fleet.Agent{"dev": {Name: "dev", Disabled: true}}
 	task := work.Task{ID: "TASK-9", Assignee: "dev", Open: true}
 
-	agent, err := routedAgent(agents, task, "")
+	agent, err := routedAgent(agents, task, defaults(""))
 	if err != nil {
 		t.Fatalf("manual run must bypass the pause: %v", err)
 	}
@@ -27,7 +27,7 @@ func TestManualRunReachesADisabledAgent(t *testing.T) {
 
 func TestManualRunStillRejectsAnUnknownAgent(t *testing.T) {
 	agents := map[string]fleet.Agent{"dev": {Name: "dev"}}
-	if _, err := routedAgent(agents, work.Task{ID: "T", Assignee: "ghost"}, ""); err == nil {
+	if _, err := routedAgent(agents, work.Task{ID: "T", Assignee: "ghost"}, defaults("")); err == nil {
 		t.Fatal("an unknown assignee must still error")
 	}
 }
@@ -35,7 +35,7 @@ func TestManualRunStillRejectsAnUnknownAgent(t *testing.T) {
 // The default-agent route resolves the same way, parked or not.
 func TestManualRunResolvesTheDefaultAgent(t *testing.T) {
 	agents := map[string]fleet.Agent{"dev": {Name: "dev", Disabled: true}}
-	agent, err := routedAgent(agents, work.Task{ID: "T"}, "dev")
+	agent, err := routedAgent(agents, work.Task{ID: "T"}, defaults("dev"))
 	if err != nil || agent.Name != "dev" {
 		t.Fatalf("default agent should route: %v %+v", err, agent)
 	}
@@ -47,7 +47,7 @@ func TestManualRunResolvesTheDefaultAgent(t *testing.T) {
 // a one-off run must not consult it.
 func TestManualRunReachesAnOverBudgetAgent(t *testing.T) {
 	agents := map[string]fleet.Agent{"dev": {Name: "dev", RunsPerDay: 6, MinutesPerDay: 180}}
-	agent, err := routedAgent(agents, work.Task{ID: "TASK-9", Assignee: "dev"}, "")
+	agent, err := routedAgent(agents, work.Task{ID: "TASK-9", Assignee: "dev"}, defaults(""))
 	if err != nil || agent.Name != "dev" {
 		t.Fatalf("manual run must not consult the budget: %v %+v", err, agent)
 	}
@@ -80,4 +80,10 @@ func TestHistoryLineOmitsWhatTheRunHasNotReported(t *testing.T) {
 	if strings.Contains(line, "0s") || strings.Contains(line, "done") {
 		t.Fatalf("an open run must not invent duration or verdict: %q", line)
 	}
+}
+
+// defaults is the routing default as the settings express it — one name for
+// the whole fleet, which is what these cases are about.
+func defaults(name string) fleet.Defaults {
+	return fleet.Settings{DefaultAgent: name}.Defaults()
 }

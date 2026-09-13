@@ -20,14 +20,15 @@ type Result struct {
 }
 
 // Next picks the most urgent open task whose assignee is a known agent.
-// Unassigned tasks go to defaultAgent when one is configured, and are left
-// alone otherwise — an unassigned task may be a human still drafting.
+// Unassigned tasks go to the default agent for their queue when one is
+// configured, and are left alone otherwise — an unassigned task may be a
+// human still drafting.
 //
 // Open, not "To Do": a task left In Progress by a process that died still
 // owes work, and picking it up again is what makes a crashed run self-heal.
 // A task whose agent is mid-run is not re-picked — its agent is simply not
 // free — and the run lock is what actually keeps two runs off the same task.
-func Next(items []work.Task, agents map[string]fleet.Agent, defaultAgent string) Result {
+func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defaults) Result {
 	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
 		if it.Open {
@@ -49,7 +50,7 @@ func Next(items []work.Task, agents map[string]fleet.Agent, defaultAgent string)
 
 	var res Result
 	for i, it := range open {
-		name := AssigneeFor(it, defaultAgent)
+		name := AssigneeFor(it, defaults)
 		if name == "" {
 			continue
 		}
@@ -73,14 +74,14 @@ func Next(items []work.Task, agents map[string]fleet.Agent, defaultAgent string)
 	return res
 }
 
-// AssigneeFor is the one routing rule: the task's assignee, or the configured
-// default agent when it has none. Every surface that routes a task (daemon,
-// board, CLI) must go through this, or they drift apart.
-func AssigneeFor(it work.Task, defaultAgent string) string {
+// AssigneeFor is the one routing rule: the task's assignee, or the default
+// agent for the queue it came from when it has none. Every surface that routes
+// a task (daemon, board, CLI) must go through this, or they drift apart.
+func AssigneeFor(it work.Task, defaults fleet.Defaults) string {
 	if it.Assignee != "" {
 		return it.Assignee
 	}
-	return defaultAgent
+	return defaults.For(it.ID)
 }
 
 // OverBudget reports whether an agent has spent a configured budget in the

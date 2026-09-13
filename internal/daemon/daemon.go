@@ -131,9 +131,9 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		agents[name] = a
 	}
 
-	res := pick.Next(tasks, agents, settings.DefaultAgent)
+	res := pick.Next(tasks, agents, settings.Defaults())
 	for _, t := range res.Unknown {
-		name := pick.AssigneeFor(t, settings.DefaultAgent)
+		name := pick.AssigneeFor(t, settings.Defaults())
 		note := fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", name, name)
 		if t.Assignee == "" {
 			note = fmt.Sprintf("fleet: default_agent %q (fleet.yaml) is not a fleet agent.", name)
@@ -172,7 +172,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 			}
 		}
 		tasks = remaining
-		res = pick.Next(tasks, agents, settings.DefaultAgent)
+		res = pick.Next(tasks, agents, settings.Defaults())
 	}
 }
 

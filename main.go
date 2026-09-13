@@ -141,11 +141,17 @@ func list() error {
 			if it.Phase != phase {
 				continue
 			}
-			who := it.Assignee
-			if who == "" {
+			// The routed agent, not the written one: with a default the two
+			// differ, and a board that showed "-" would hide who is about to
+			// pick the task up.
+			who := pick.AssigneeFor(it, settings.Defaults())
+			switch _, known := agents[who]; {
+			case who == "":
 				who = "-"
-			} else if _, ok := agents[who]; !ok {
+			case !known:
 				who += " (unknown!)"
+			case it.Assignee == "":
+				who += " (default)"
 			}
 			lines = append(lines, fmt.Sprintf("  %-10s %-30s %s", it.ID, text.Truncate(it.Title, 30), who))
 		}
@@ -396,7 +402,7 @@ func runCmd(args []string) error {
 		return fmt.Errorf("%s is already closed — reopen it first if it is still work", it.ID)
 	}
 	agents, _ := fleet.LoadAgents(settings.Dir)
-	agent, err := routedAgent(agents, it, settings.DefaultAgent)
+	agent, err := routedAgent(agents, it, settings.Defaults())
 	if err != nil {
 		return fmt.Errorf("%s: %w", it.ID, err)
 	}
@@ -408,8 +414,8 @@ func runCmd(args []string) error {
 // task at a human's request. Unlike pick.Next it ignores Disabled: `run` is
 // explicit intent, so pausing an agent parks the scheduler without forbidding
 // the work. Every manual route goes through here, or the two drift apart.
-func routedAgent(agents map[string]fleet.Agent, it work.Task, defaultAgent string) (fleet.Agent, error) {
-	name := pick.AssigneeFor(it, defaultAgent)
+func routedAgent(agents map[string]fleet.Agent, it work.Task, defaults fleet.Defaults) (fleet.Agent, error) {
+	name := pick.AssigneeFor(it, defaults)
 	agent, ok := agents[name]
 	if !ok {
 		return fleet.Agent{}, fmt.Errorf("assignee %q is not a fleet agent", name)

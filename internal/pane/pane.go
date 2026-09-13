@@ -117,24 +117,24 @@ const (
 )
 
 type model struct {
-	dir          string
-	src          work.Source
-	defaultAgent string
-	tasks        []work.Task
-	last         map[string]*history.Record
-	usage        map[string]history.Usage
-	rows         []row
-	agents       map[string]fleet.Agent
-	sel          int
-	width        int
-	height       int
-	status       string
-	mode         mode
-	view         view
-	input        string
-	pending      string // the title typed before the assignee is asked
-	query        string // active task filter, live-edited while mode == searching
-	runs         *runner.Runner
+	dir      string
+	src      work.Source
+	defaults fleet.Defaults
+	tasks    []work.Task
+	last     map[string]*history.Record
+	usage    map[string]history.Usage
+	rows     []row
+	agents   map[string]fleet.Agent
+	sel      int
+	width    int
+	height   int
+	status   string
+	mode     mode
+	view     view
+	input    string
+	pending  string // the title typed before the assignee is asked
+	query    string // active task filter, live-edited while mode == searching
+	runs     *runner.Runner
 }
 
 type refreshMsg struct {
@@ -158,10 +158,10 @@ func Run() error {
 		return err
 	}
 	m := model{
-		dir:          settings.Dir,
-		src:          src,
-		defaultAgent: settings.DefaultAgent,
-		runs:         runner.New(host.New(), settings.Dir),
+		dir:      settings.Dir,
+		src:      src,
+		defaults: settings.Defaults(),
+		runs:     runner.New(host.New(), settings.Dir),
 	}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err
@@ -377,7 +377,7 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 		m.status = r.task.ID + " is already closed"
 		return m, nil
 	}
-	name := pick.AssigneeFor(r.task, m.defaultAgent)
+	name := pick.AssigneeFor(r.task, m.defaults)
 	agent, ok := m.agents[name]
 	if !ok {
 		m.status = fmt.Sprintf("%s: assignee %q is not a fleet agent", r.task.ID, name)

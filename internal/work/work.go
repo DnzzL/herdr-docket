@@ -4,7 +4,10 @@
 // own vocabulary. Nothing above an adapter knows which backend answered.
 package work
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Task is one unit of work as the fleet sees it.
 //
@@ -120,6 +123,18 @@ type Source interface {
 	Create(title, body, assignee string) (string, error)
 	Comment(id, text string) error
 	Close(id string, verdict Verdict) error
+}
+
+// SourceOf reads the queue name off a prefixed id, and is empty for a bare
+// one. The prefix convention belongs to the port rather than to the composite
+// that writes it, so routing a task back to its project is one function
+// everything shares — see MultiSource below.
+func SourceOf(id string) string {
+	name, rest, ok := strings.Cut(id, "/")
+	if !ok || rest == "" {
+		return ""
+	}
+	return name
 }
 
 // MultiSource is a Source over several named queues — the shape one fleet has
