@@ -103,7 +103,7 @@ func (b *fakeBoard) open(id string) bool            { return b.items[id].Open }
 func run(t *testing.T, h *fakeHost, b *fakeBoard) error {
 	t.Helper()
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
-	r := New(h, "/fleet")
+	r := New(h, fleet.Settings{Dir: "/fleet"})
 	return r.Run(b, work.Task{ID: "TASK-1", Title: "T", Open: true}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
 }
 
@@ -213,7 +213,7 @@ func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	b.items["TASK-3"] = work.Task{ID: "TASK-3", Open: true, Phase: "To Do"}
 	started, release := make(chan struct{}), make(chan struct{})
 	h := &fakeHost{after: func() { close(started); <-release }}
-	r := New(h, "/fleet")
+	r := New(h, fleet.Settings{Dir: "/fleet"})
 	rootA := fleet.Agent{Name: "pm", Workdir: "/repo", Workspace: "root", TimeoutMinutes: 1}
 	rootB := fleet.Agent{Name: "docs", Workdir: "/repo", Workspace: "root", TimeoutMinutes: 1}
 	tree := fleet.Agent{Name: "dev", Workdir: "/repo", Workspace: "worktree", TimeoutMinutes: 1}

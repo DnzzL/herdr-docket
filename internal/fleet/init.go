@@ -27,6 +27,21 @@ func statusesYAML(v backlogmd.Vocabulary) string {
 	return "statuses: [" + strings.Join(quoted, ", ") + "]"
 }
 
+const exampleRole = `# roles/example.md — a role every agent that names it opens with
+#
+# Name it from an AGENT.md frontmatter:
+#
+#   role: example
+#
+# A role is the method two posts share when they do the same job in different
+# repos — how to read a ticket, when to stop, what "done" means to you. What is
+# true of one repo belongs in that agent's persona; what is true of the whole
+# fleet belongs in FLEET.md.
+#
+# A role an agent names but that has no file grounds that agent, on purpose: a
+# run assembled without its method looks exactly like a run that had one.
+`
+
 const exampleAgent = `---
 # model: claude-sonnet-5
 workdir: ~/Projects/example
@@ -82,6 +97,9 @@ func Init(s Settings) error {
 	if err := initBrief(dir); err != nil {
 		return err
 	}
+	if err := initRoles(dir); err != nil {
+		return err
+	}
 	example := filepath.Join(dir, "agents", "example")
 	if _, err := os.Stat(filepath.Join(dir, "agents")); os.IsNotExist(err) {
 		if err := os.MkdirAll(example, 0o755); err != nil {
@@ -92,6 +110,20 @@ func Init(s Settings) error {
 		}
 	}
 	return nil
+}
+
+// initRoles lays down the roles/ dir with a commented example the first time
+// init runs. A role is optional and this scaffold reaches nobody until an
+// agent names it — but a directory nobody can see is a feature nobody uses.
+func initRoles(dir string) error {
+	path := filepath.Join(dir, "roles", "example.md")
+	if _, err := os.Stat(filepath.Dir(path)); err == nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(exampleRole), 0o644)
 }
 
 // initBrief lays down the commented FLEET.md scaffold the first time init

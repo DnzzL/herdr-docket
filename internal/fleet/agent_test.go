@@ -258,3 +258,49 @@ func TestSplitFrontmatterErrorWordingKeepsItsMeaning(t *testing.T) {
 		})
 	}
 }
+
+// A role names a file every agent of that role opens with. Naming one that
+// does not exist is a typo, and a typo must ground the agent: a run assembled
+// without its role's method looks exactly like a run that had one.
+func TestARoleThatNamesNoFileGroundsItsAgent(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, front string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, "agents", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "agents", name, "AGENT.md"), []byte(front), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("dev", "---\nworkdir: /w\nrole: dev\n---\n\nI write code.\n")
+	write("pm", "---\nworkdir: /w\nrole: ghost\n---\n\nI triage.\n")
+	write("loose", "---\nworkdir: /w\n---\n\nI have no role.\n")
+	if err := os.MkdirAll(filepath.Join(dir, "roles"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "roles", "dev.md"), []byte("  How a dev works.  "), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	agents, diags := LoadAgents(dir)
+	if got := agents["dev"].RoleBrief; got != "How a dev works." {
+		t.Errorf("role brief = %q, want the trimmed body", got)
+	}
+	if _, ok := agents["loose"]; !ok {
+		t.Error("an agent with no role still loads")
+	}
+	if _, ok := agents["pm"]; ok {
+		t.Error("an agent naming a role that does not exist must not load")
+	}
+	// The rest of the fleet keeps working: one typo grounds one agent.
+	var found bool
+	for _, d := range diags {
+		if d.Agent == "pm" && strings.Contains(d.Message, "ghost") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the diagnostic must name the missing role, got %+v", diags)
+	}
+}

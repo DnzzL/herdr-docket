@@ -58,7 +58,7 @@ func Run() error {
 	if _, err := fleet.NewSource(settings); err != nil {
 		return err
 	}
-	runs := runner.New(host.New(), settings.Dir)
+	runs := runner.New(host.New(), settings)
 	binary := binaryStamp()
 	reported := map[string]bool{}
 

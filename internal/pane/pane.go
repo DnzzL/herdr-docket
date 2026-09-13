@@ -161,7 +161,7 @@ func Run() error {
 		dir:      settings.Dir,
 		src:      src,
 		defaults: settings.Defaults(),
-		runs:     runner.New(host.New(), settings.Dir),
+		runs:     runner.New(host.New(), settings),
 	}
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()
 	return err

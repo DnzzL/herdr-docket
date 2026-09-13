@@ -127,6 +127,36 @@ a run that went sideways is a diff you throw away. `root` is for agents whose
 job *is* the working copy: backlog grooming, docs, anything that must see
 uncommitted state.
 
+### Sharing a method between agents
+
+An agent is one post: a role *in one repo*. Two posts doing the same job in two
+projects — a dev on each — want the same method and a different context. `role:`
+is how they share it:
+
+```yaml
+---
+role: dev                             # → ~/fleet/roles/dev.md
+model: opus
+workdir: ~/Projects/myapp
+---
+```
+
+Three layers reach every run, widest first: `FLEET.md` (the whole fleet), then
+`roles/<role>.md` (this role), then the persona (this post). Any of them may be
+absent. A role file is plain markdown — no frontmatter, no inheritance between
+roles — and you write your own: `roles/marketer.md`, `roles/reviewer.md`.
+
+A `role:` naming a file that does not exist **grounds that agent**, on purpose.
+A brief nobody asked for may be missing; one an agent points at may not, or the
+run is assembled with a third of its instructions gone and nothing says so.
+`herdr-fleet agent list` names what failed, and the rest of the fleet keeps
+working.
+
+One thing that does *not* belong in any of the three: your project's status
+words. The fleet already knows them, and the prompt tells each run the words its
+queue accepts — so a persona that says "move it to `ready-for-agent`" is a
+rename away from being wrong, and does not need to exist.
+
 ### Budgeting an agent
 
 An agent that keeps creating follow-up work for itself — the marketer that

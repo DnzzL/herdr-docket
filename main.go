@@ -433,7 +433,7 @@ func runCmd(args []string) error {
 		return fmt.Errorf("%s: %w", it.ID, err)
 	}
 	fmt.Printf("running %s (%s) with agent %s\n", it.ID, it.Title, agent.Name)
-	return runner.New(host.New(), settings.Dir).Run(board, it, agent, history.TriggerManual)
+	return runner.New(host.New(), settings).Run(board, it, agent, history.TriggerManual)
 }
 
 // routedAgent resolves the agent a task runs with, for surfaces acting on one

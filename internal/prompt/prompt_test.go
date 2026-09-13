@@ -22,7 +22,7 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 			},
 			Notes: "previous attempt stalled",
 		},
-		"/Users/x/fleet",
+		"/Users/x/fleet", fleet.Words{Todo: "To Do", Done: "Done", Failed: "Failed", Blocked: "Blocked"},
 	)
 	for _, want := range []string{
 		"You run publication.",
@@ -49,7 +49,7 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 // mistaken for Backlog.md.
 func TestAssembleNeverNamesTheBackend(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		work.Task{ID: "T-1", Title: "t", Open: true, Body: "b"}, "/d")
+		work.Task{ID: "T-1", Title: "t", Open: true, Body: "b"}, "/d", fleet.Words{})
 	for _, absent := range []string{"BACKLOG_CWD", "--check-ac", "--append-notes", "backlog task"} {
 		if strings.Contains(got, absent) {
 			t.Fatalf("prompt still says %q:\n%s", absent, got)
@@ -62,7 +62,7 @@ func TestAssembleNeverNamesTheBackend(t *testing.T) {
 func TestAssembleTellsTheAgentTheCriteriaAreReadOnly(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
 		work.Task{ID: "T-1", Title: "t", Open: true,
-			Criteria: []work.Criterion{{Index: 1, Text: "works"}}}, "/d")
+			Criteria: []work.Criterion{{Index: 1, Text: "works"}}}, "/d", fleet.Words{})
 	if !strings.Contains(got, "not yours to edit") {
 		t.Fatalf("prompt does not say the criteria are read-only:\n%s", got)
 	}
@@ -73,7 +73,7 @@ func TestAssembleTellsTheAgentTheCriteriaAreReadOnly(t *testing.T) {
 
 func TestAssembleOmitsEmptySections(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		work.Task{ID: "T-1", Title: "t", Open: true}, "/d")
+		work.Task{ID: "T-1", Title: "t", Open: true}, "/d", fleet.Words{})
 	for _, absent := range []string{"Acceptance criteria", "Notes from previous runs", "## Description"} {
 		if strings.Contains(got, absent) {
 			t.Fatalf("empty section %q rendered:\n%s", absent, got)
@@ -87,7 +87,7 @@ func TestAssembleOmitsEmptySections(t *testing.T) {
 // never has to know a second queue exists.
 func TestAssembleRoutesTheFollowUpToTheTasksOwnSource(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		work.Task{ID: "myapp/TASK-12", Title: "t", Open: true}, "/d")
+		work.Task{ID: "myapp/TASK-12", Title: "t", Open: true}, "/d", fleet.Words{})
 	if !strings.Contains(got, "task create \"<title>\" -d \"<what and why>\" -a a -s myapp") {
 		t.Fatalf("follow-up create must carry -s myapp:\n%s", got)
 	}
@@ -97,7 +97,7 @@ func TestAssembleRoutesTheFollowUpToTheTasksOwnSource(t *testing.T) {
 // must stay exactly as it was, with no -s on it.
 func TestAssembleLeavesTheFollowUpAloneForAQueueWithNoPrefix(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
-		work.Task{ID: "TASK-12", Title: "t", Open: true}, "/d")
+		work.Task{ID: "TASK-12", Title: "t", Open: true}, "/d", fleet.Words{})
 	if strings.Contains(got, " -s ") {
 		t.Fatalf("an unprefixed task must not name a source:\n%s", got)
 	}
@@ -115,7 +115,7 @@ func TestAssemblePrependsTheFleetBrief(t *testing.T) {
 	got := Assemble(
 		fleet.Agent{Name: "dev", Persona: "You are the dev."},
 		work.Task{ID: "TASK-1", Title: "t", Open: true},
-		dir,
+		dir, fleet.Words{},
 	)
 	if !strings.Contains(got, brief) {
 		t.Fatalf("the brief is missing:\n%s", got)
@@ -132,8 +132,8 @@ func TestAssembleWithoutABriefIsUnchanged(t *testing.T) {
 	a := fleet.Agent{Name: "dev", Persona: "You are the dev."}
 	v := work.Task{ID: "TASK-1", Title: "t", Open: true, Body: "b"}
 	dir := t.TempDir() // no FLEET.md in the dir
-	got := Assemble(a, v, dir)
-	if want := assemble(a, v, "", dir); got != want {
+	got := Assemble(a, v, dir, fleet.Words{})
+	if want := assemble(a, v, "", dir, fleet.Words{}); got != want {
 		t.Fatalf("an absent brief changed the prompt:\n got: %q\nwant: %q", got, want)
 	}
 }
@@ -147,7 +147,7 @@ func TestAssembleTreatsAnEmptyBriefAsNone(t *testing.T) {
 	}
 	a := fleet.Agent{Name: "dev", Persona: "You are the dev."}
 	v := work.Task{ID: "TASK-1", Title: "t", Open: true}
-	if got, want := Assemble(a, v, dir), assemble(a, v, "", dir); got != want {
+	if got, want := Assemble(a, v, dir, fleet.Words{}), assemble(a, v, "", dir, fleet.Words{}); got != want {
 		t.Fatalf("an empty brief changed the prompt:\n got: %q\nwant: %q", got, want)
 	}
 }
@@ -163,7 +163,7 @@ func TestAssembleTreatsAnAllCommentBriefAsNone(t *testing.T) {
 	}
 	a := fleet.Agent{Name: "dev", Persona: "You are the dev."}
 	v := work.Task{ID: "TASK-1", Title: "t", Open: true}
-	if got, want := Assemble(a, v, dir), assemble(a, v, "", dir); got != want {
+	if got, want := Assemble(a, v, dir, fleet.Words{}), assemble(a, v, "", dir, fleet.Words{}); got != want {
 		t.Fatalf("a commented scaffold reached the prompt:\n got: %q\nwant: %q", got, want)
 	}
 }
@@ -177,8 +177,74 @@ func TestAssembleSpeaksOnceABriefHasRealProse(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := Assemble(fleet.Agent{Name: "dev", Persona: "You are the dev."},
-		work.Task{ID: "TASK-1", Title: "t", Open: true}, dir)
+		work.Task{ID: "TASK-1", Title: "t", Open: true}, dir, fleet.Words{})
 	if !strings.Contains(got, "We build acme.") || !strings.Contains(got, "Keep this note.") {
 		t.Fatalf("a brief with prose must be prepended whole:\n%s", got)
+	}
+}
+
+// Three layers, widest first: the fleet's brief, the role's method, then this
+// post's own persona. A role is how two agents doing the same job in two
+// repos share one method instead of two copies that drift.
+func TestTheRoleBriefSitsBetweenTheFleetAndThePersona(t *testing.T) {
+	got := assemble(
+		fleet.Agent{Name: "dev", Persona: "PERSONA", RoleBrief: "ROLE"},
+		work.Task{ID: "TASK-7", Title: "T"},
+		"FLEET", "/fleet", fleet.Words{},
+	)
+	fleetAt, roleAt, personaAt := strings.Index(got, "FLEET"), strings.Index(got, "ROLE"), strings.Index(got, "PERSONA")
+	if fleetAt < 0 || roleAt < 0 || personaAt < 0 {
+		t.Fatalf("a layer is missing:\n%s", got)
+	}
+	if !(fleetAt < roleAt && roleAt < personaAt) {
+		t.Fatalf("layers out of order (fleet %d, role %d, persona %d)", fleetAt, roleAt, personaAt)
+	}
+}
+
+// An agent with no role is the whole fleet before roles existed.
+func TestNoRoleChangesNothing(t *testing.T) {
+	got := assemble(fleet.Agent{Name: "dev", Persona: "PERSONA"}, work.Task{ID: "TASK-7"}, "", "/fleet", fleet.Words{})
+	if strings.HasPrefix(strings.TrimSpace(got), "\n") {
+		t.Fatal("an absent role must not leave a gap")
+	}
+	if !strings.HasPrefix(got, "PERSONA") {
+		t.Fatalf("want the persona first:\n%s", got[:80])
+	}
+}
+
+// An agent that edits its project's board writes that project's word, not the
+// fleet's idea of it. Before the prompt said them, every persona retyped them
+// by hand — and a project that renamed a column left its agent writing a
+// status its own CLI refuses.
+func TestThePromptNamesTheQueuesOwnWords(t *testing.T) {
+	got := assemble(
+		fleet.Agent{Name: "pm", Persona: "P"},
+		work.Task{ID: "notara/NOT-92", Title: "T"},
+		"", "/fleet",
+		fleet.Words{Todo: "ready-for-agent", Done: "done", Failed: "ready-for-human", Blocked: "needs-info"},
+	)
+	for _, want := range []string{"ready-for-agent", "ready-for-human", "needs-info"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the prompt must name %q:\n%s", want, got)
+		}
+	}
+	// A project with no word for work in hand is taught none, rather than
+	// being handed an empty line to write.
+	if strings.Contains(got, "work a run has in hand") {
+		t.Error("a phase the project has no word for must not be named")
+	}
+}
+
+// A backend with no status words — a Basecamp to-do is done or not — is not
+// given Backlog.md's vocabulary by accident.
+func TestAQueueWithoutWordsIsToldSo(t *testing.T) {
+	got := assemble(fleet.Agent{Name: "pm", Persona: "P"}, work.Task{ID: "bc/987"}, "", "/fleet", fleet.Words{})
+	if !strings.Contains(got, "no status words") {
+		t.Fatalf("want the prompt to say the queue has none:\n%s", got)
+	}
+	for _, absent := range []string{"To Do", "In Progress"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("the prompt invented %q for a backend that has none", absent)
+		}
 	}
 }

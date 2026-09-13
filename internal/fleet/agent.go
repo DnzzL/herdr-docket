@@ -15,11 +15,15 @@ import (
 // Agent is one named worker: the parameters a run needs plus the persona the
 // prompt opens with.
 type Agent struct {
-	Name           string
-	Model          string   `yaml:"model"`
-	Workdir        string   `yaml:"workdir"`
-	Workspace      string   `yaml:"workspace"` // root | worktree
-	Kind           string   `yaml:"agent"`     // herdr agent kind, default claude
+	Name      string
+	Model     string `yaml:"model"`
+	Workdir   string `yaml:"workdir"`
+	Workspace string `yaml:"workspace"` // root | worktree
+	Kind      string `yaml:"agent"`     // herdr agent kind, default claude
+	// Role names a file in the fleet's roles/ dir whose body every agent of
+	// that role opens with — the method two posts share when they do the same
+	// job in different repos. Absent is the whole fleet before roles existed.
+	Role           string   `yaml:"role"`
 	MCPConfig      string   `yaml:"mcp_config"`
 	AgentArgs      []string `yaml:"agent_args"`
 	TimeoutMinutes int      `yaml:"timeout_minutes"`
@@ -34,6 +38,10 @@ type Agent struct {
 	// root-mode run holds the checkout it shares). Only the scheduler sets it.
 	Unavailable bool   `yaml:"-"`
 	Persona     string `yaml:"-"`
+	// RoleBrief is the body of the named role file, read at load so a role
+	// that does not exist grounds its agent instead of silently costing it a
+	// third of its instructions.
+	RoleBrief string `yaml:"-"`
 }
 
 // Diagnostic is one AGENT.md that did not load, and why. The rest of the
@@ -59,7 +67,7 @@ func LoadAgents(dir string) (map[string]Agent, []Diagnostic) {
 			continue
 		}
 		name := e.Name()
-		a, err := loadAgent(filepath.Join(dir, "agents", name, "AGENT.md"), name)
+		a, err := loadAgent(dir, filepath.Join(dir, "agents", name, "AGENT.md"), name)
 		if err != nil {
 			diags = append(diags, Diagnostic{Agent: name, Message: err.Error()})
 			continue
@@ -69,7 +77,7 @@ func LoadAgents(dir string) (map[string]Agent, []Diagnostic) {
 	return agents, diags
 }
 
-func loadAgent(path, name string) (Agent, error) {
+func loadAgent(fleetDir, path, name string) (Agent, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return Agent{}, err
@@ -98,6 +106,16 @@ func loadAgent(path, name string) (Agent, error) {
 	}
 	if a.TimeoutMinutes <= 0 {
 		a.TimeoutMinutes = 60
+	}
+	if a.Role != "" {
+		brief, err := os.ReadFile(filepath.Join(fleetDir, "roles", a.Role+".md"))
+		if err != nil {
+			// Named and missing is a typo, not a choice. A brief nobody asked
+			// for may be absent; one an agent points at may not, or the agent
+			// runs with a third of its instructions gone and nothing says so.
+			return Agent{}, fmt.Errorf("role %q: no roles/%s.md in the fleet dir", a.Role, a.Role)
+		}
+		a.RoleBrief = strings.TrimSpace(string(brief))
 	}
 	return a, nil
 }

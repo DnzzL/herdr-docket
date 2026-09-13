@@ -167,7 +167,7 @@ func TestEachTickWritesToTheQueueItReadFrom(t *testing.T) {
 		"a": {Name: "a", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1},
 	}, first, second)
 
-	runs := runner.New(fakeHost{}, "/fleet")
+	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"})
 	reported := map[string]bool{}
 
 	evaluate(runs, reported)
@@ -199,7 +199,7 @@ func TestAnAgentPastItsBudgetStartsNoRun(t *testing.T) {
 		"a": {Name: "a", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1, RunsPerDay: 6},
 	}, src)
 
-	evaluate(runner.New(fakeHost{}, "/fleet"), map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
 
 	if src.closed("TASK-1") {
 		t.Fatal("an agent past its budget must not run")

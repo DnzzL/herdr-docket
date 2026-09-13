@@ -31,7 +31,11 @@ import (
 // Runner, and an OS file lock per key in the state dir keeps a manual run
 // from racing the daemon into the same agent or the same checkout.
 type Runner struct {
-	host     host.Host
+	host host.Host
+	// settings is held for what a prompt needs to know about the queue a task
+	// came from — the status words it writes. fleetDir is settings.Dir, kept
+	// separate because every other use of it is just a path.
+	settings fleet.Settings
 	fleetDir string
 	busy     map[string]*os.File
 	mu       sync.Mutex
@@ -41,8 +45,8 @@ type Runner struct {
 // passed to Run, so the task a run reads and the queue it writes back to are
 // the same value by construction, even as the daemon rebuilds its source
 // between ticks.
-func New(h host.Host, fleetDir string) *Runner {
-	return &Runner{host: h, fleetDir: fleetDir, busy: map[string]*os.File{}}
+func New(h host.Host, settings fleet.Settings) *Runner {
+	return &Runner{host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{}}
 }
 
 // LockKey names what a run of this agent would mutate: the shared checkout
@@ -151,7 +155,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		Workspace: host.WorkspaceMode(a.Workspace),
 		Agent:     a.Kind,
 		Model:     a.Model,
-		Prompt:    prompt.Assemble(a, v, r.fleetDir),
+		Prompt:    prompt.Assemble(a, v, r.fleetDir, r.settings.WordsFor(t.ID)),
 		MCPConfig: a.MCPConfig,
 		AgentArgs: a.AgentArgs,
 	}

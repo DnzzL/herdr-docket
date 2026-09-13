@@ -24,8 +24,8 @@ import (
 // the persona, so what is true of every agent lives in one file instead of
 // being repeated in each AGENT.md. No file, or an empty one, and the prompt is
 // exactly what it was before the file existed.
-func Assemble(a fleet.Agent, v work.Task, fleetDir string) string {
-	return assemble(a, v, readBrief(fleetDir), fleetDir)
+func Assemble(a fleet.Agent, v work.Task, fleetDir string, words fleet.Words) string {
+	return assemble(a, v, readBrief(fleetDir), fleetDir, words)
 }
 
 // readBrief is FLEET.md's body, or "" when there is none worth reading. A
@@ -61,11 +61,16 @@ func allComments(s string) bool {
 // assemble is the pure core: the brief in, the prompt out. Reading the file
 // outside it is what keeps the one contract the whole system depends on
 // pinned by a test.
-func assemble(a fleet.Agent, v work.Task, brief, fleetDir string) string {
+func assemble(a fleet.Agent, v work.Task, brief, fleetDir string, words fleet.Words) string {
 	var b strings.Builder
-	if brief != "" {
-		b.WriteString(brief)
-		b.WriteString("\n\n")
+	// Three layers, widest first: what is true of the fleet, then of the role,
+	// then of this post. Each one may be absent, and an absent layer changes
+	// nothing else.
+	for _, layer := range []string{brief, a.RoleBrief} {
+		if layer != "" {
+			b.WriteString(layer)
+			b.WriteString("\n\n")
+		}
 	}
 	b.WriteString(a.Persona)
 	b.WriteString("\n\n")
@@ -100,8 +105,9 @@ func assemble(a fleet.Agent, v work.Task, brief, fleetDir string) string {
 
 	fmt.Fprintf(&b, `## When you are done — required
 
-The task lives in the fleet queue (fleet dir: %s), not in this repo. The
-queue answers only to the herdr-fleet CLI — never edit a task by hand.
+Your own task answers to the herdr-fleet CLI and nothing else — never close it
+by hand, whichever board it happens to live on. (The fleet dir, for context, is
+%s: agents and the shared brief, not the queue.)
 
 Say what happened as you go:
 
@@ -117,6 +123,9 @@ A task you leave open with no verdict and no new agent is a task the fleet will
 pick up and run again, so don't leave one open. Do not touch other agents'
 tasks.
 
+If you edit this project's board directly — triage, a status another task
+should sit in — use the word this project accepts, not the fleet's idea of it.
+%s
 If the real work belongs to another agent — you specced it, somebody else
 builds it — hand this task over instead of closing it and filing a near-copy:
 
@@ -134,6 +143,28 @@ finished slice with a good handoff beats a timed-out marathon.
 If you find follow-up work, create a task for it instead of expanding this one:
 
   herdr-fleet task create "<title>" -d "<what and why>" -a %s%s
-`, fleetDir, v.ID, v.ID, v.ID, v.ID, v.ID, a.Name, createSource)
+`, fleetDir, v.ID, v.ID, v.ID, v.ID, wordList(words), v.ID, a.Name, createSource)
+	return b.String()
+}
+
+// wordList is the queue's own status words, as the prompt states them. Only
+// the ones the fleet writes: a board's human columns are not the fleet's to
+// teach, and a backend with no statuses at all is simply not told about any.
+func wordList(w fleet.Words) string {
+	if !w.Known() {
+		return "(This queue has no status words: a task is open or it is closed.)"
+	}
+	var b strings.Builder
+	for _, l := range []struct{ what, word string }{
+		{"work this fleet may pick up", w.Todo},
+		{"work a run has in hand", w.InProgress},
+		{"a task that ended done", w.Done},
+		{"a run that failed", w.Failed},
+		{"a task blocked on a human", w.Blocked},
+	} {
+		if l.word != "" {
+			fmt.Fprintf(&b, "  %-28s %s\n", l.what+":", l.word)
+		}
+	}
 	return b.String()
 }
