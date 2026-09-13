@@ -16,11 +16,12 @@ import (
 // added there cannot go missing here — the CLI refuses any status the project
 // config does not declare. Written to the config file because the CLI has no
 // `config set statuses`: the file is the only supported channel.
-var backlogStatuses = statusesYAML()
+var backlogStatuses = statusesYAML(backlogmd.DefaultVocabulary())
 
-func statusesYAML() string {
-	quoted := make([]string, len(backlogmd.Statuses))
-	for i, s := range backlogmd.Statuses {
+func statusesYAML(v backlogmd.Vocabulary) string {
+	words := v.List()
+	quoted := make([]string, len(words))
+	for i, s := range words {
 		quoted[i] = `"` + s + `"`
 	}
 	return "statuses: [" + strings.Join(quoted, ", ") + "]"
@@ -73,8 +74,8 @@ func Init(s Settings) error {
 			return fmt.Errorf("git init: %s", out)
 		}
 	}
-	if s.Source.local() {
-		if err := initBacklog(dir); err != nil {
+	for _, q := range s.ownQueues() {
+		if err := initBacklog(dir, q.Statuses); err != nil {
 			return err
 		}
 	}
@@ -105,30 +106,32 @@ func initBrief(dir string) error {
 
 // initBacklog lays down the Backlog.md project and makes sure the project
 // config knows the fleet's lifecycle.
-func initBacklog(dir string) error {
+func initBacklog(dir string, vocab backlogmd.Vocabulary) error {
 	if _, err := os.Stat(filepath.Join(dir, "backlog")); os.IsNotExist(err) {
 		if out, err := command(dir, "backlog", "init", "fleet", "--defaults"); err != nil {
 			return fmt.Errorf("backlog init: %s", out)
 		}
 	}
-	return patchStatuses(filepath.Join(dir, "backlog", "config.yml"))
+	return patchStatusesTo(filepath.Join(dir, "backlog", "config.yml"), statusesYAML(vocab.OrDefault()))
 }
 
-// patchStatuses rewrites the statuses list in the Backlog.md config. Leaves
-// the file alone when the fleet statuses are already there.
-func patchStatuses(path string) error {
+// patchStatuses rewrites the statuses list in the Backlog.md config with the
+// fleet's own lifecycle. Leaves the file alone when they are already there.
+func patchStatuses(path string) error { return patchStatusesTo(path, backlogStatuses) }
+
+func patchStatusesTo(path, statuses string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("backlog config: %w", err)
 	}
-	if strings.Contains(string(raw), backlogStatuses) {
+	if strings.Contains(string(raw), statuses) {
 		return nil
 	}
 	re := regexp.MustCompile(`(?m)^statuses:.*$`)
 	if !re.Match(raw) {
 		return fmt.Errorf("%s: no statuses line to patch", path)
 	}
-	return os.WriteFile(path, re.ReplaceAll(raw, []byte(backlogStatuses)), 0o644)
+	return os.WriteFile(path, re.ReplaceAll(raw, []byte(statuses)), 0o644)
 }
 
 func command(dir, name string, args ...string) (string, error) {

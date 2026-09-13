@@ -20,6 +20,7 @@ type fakeClient struct {
 
 	created  []string // title, body, assignee
 	stages   []string // statuses set, in order
+	assigned []string // "<id>=<agent>", in order
 	comments []string
 }
 
@@ -33,6 +34,11 @@ func (f *fakeClient) Create(title, body, assignee string) (string, error) {
 
 func (f *fakeClient) SetStatus(id, status string) error {
 	f.stages = append(f.stages, status)
+	return f.err
+}
+
+func (f *fakeClient) SetAssignee(id, agent string) error {
+	f.assigned = append(f.assigned, id+"="+agent)
 	return f.err
 }
 
@@ -53,7 +59,7 @@ func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 		{ID: "T-4", Title: "broken", Status: "Failed"},
 		{ID: "T-5", Title: "finished", Status: "Done"},
 	}
-	items, err := newWith(&fakeClient{tasks: tasks}).List()
+	items, err := newWith(&fakeClient{tasks: tasks}, Vocabulary{}).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +102,7 @@ func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
 	items, err := newWith(&fakeClient{tasks: []task{{
 		ID: "TASK-2", Title: "B", Status: "To Do", Priority: "high",
 		Assignees: []string{"dev", "pm"}, Ordinal: 2000, CreatedAt: "2026-08-30T10:00:00Z",
-	}}}).List()
+	}}}, Vocabulary{}).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +118,7 @@ func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
 }
 
 func TestListPropagatesTheBackendError(t *testing.T) {
-	if _, err := newWith(&fakeClient{err: errors.New("backlog exploded")}).List(); err == nil {
+	if _, err := newWith(&fakeClient{err: errors.New("backlog exploded")}, Vocabulary{}).List(); err == nil {
 		t.Fatal("a backend failure must not look like an empty queue")
 	}
 }
@@ -127,7 +133,7 @@ func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 			{Index: 2, Text: "tested", Checked: true},
 		},
 		ImplementationNotes: "so far",
-	}})
+	}}, Vocabulary{})
 	it, err := s.Get("TASK-2")
 	if err != nil {
 		t.Fatal(err)
@@ -148,7 +154,7 @@ func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 
 func TestCreatePassesTheRoutingKeyToTheBackend(t *testing.T) {
 	f := &fakeClient{}
-	id, err := newWith(f).Create("Fix the thing", "because it is broken", "dev")
+	id, err := newWith(f, Vocabulary{}).Create("Fix the thing", "because it is broken", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +178,7 @@ func TestCloseMapsEachVerdictToItsStatus(t *testing.T) {
 		{work.Blocked, statusBlocked},
 	} {
 		f := &fakeClient{}
-		if err := newWith(f).Close("T-1", tc.verdict); err != nil {
+		if err := newWith(f, Vocabulary{}).Close("T-1", tc.verdict); err != nil {
 			t.Fatal(err)
 		}
 		if want := []string{tc.status}; !reflect.DeepEqual(f.stages, want) {
@@ -183,7 +189,7 @@ func TestCloseMapsEachVerdictToItsStatus(t *testing.T) {
 
 func TestCloseRejectsAnUnknownVerdict(t *testing.T) {
 	f := &fakeClient{}
-	if err := newWith(f).Close("T-1", work.Verdict("maybe")); err == nil {
+	if err := newWith(f, Vocabulary{}).Close("T-1", work.Verdict("maybe")); err == nil {
 		t.Fatal("an unknown verdict must be refused, never silently closed")
 	}
 	if len(f.stages) != 0 {
@@ -193,7 +199,7 @@ func TestCloseRejectsAnUnknownVerdict(t *testing.T) {
 
 func TestCommentAppendsWithoutReplacing(t *testing.T) {
 	f := &fakeClient{}
-	if err := newWith(f).Comment("T-1", "why it failed"); err != nil {
+	if err := newWith(f, Vocabulary{}).Comment("T-1", "why it failed"); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"why it failed"}; !reflect.DeepEqual(f.comments, want) {
@@ -205,7 +211,7 @@ func TestCommentAppendsWithoutReplacing(t *testing.T) {
 // canned response. Every backend the fleet speaks to runs the same suite, so
 // a new adapter is judged by behaviour rather than by its author's taste.
 func TestSourceMeetsTheContract(t *testing.T) {
-	worktest.Run(t, func(t *testing.T) work.Source { return newWith(&memClient{}) })
+	worktest.Run(t, func(t *testing.T) work.Source { return newWith(&memClient{}, Vocabulary{}) })
 }
 
 // memClient is a Backlog.md project in miniature: enough state for the
@@ -280,6 +286,18 @@ func (m *memClient) SetStatus(id, status string) error {
 	return nil
 }
 
+func (m *memClient) SetAssignee(id, agent string) error {
+	mt, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	mt.task.Assignees = nil
+	if agent != "" {
+		mt.task.Assignees = []string{agent}
+	}
+	return nil
+}
+
 func (m *memClient) AppendNote(id, note string) error {
 	mt, err := m.find(id)
 	if err != nil {
@@ -300,11 +318,36 @@ func TestEveryKnownVerdictHasAStatus(t *testing.T) {
 		if !v.Known() {
 			t.Fatalf("%q is a port verdict but Known() denies it", v)
 		}
-		if verdicts[v] == "" {
+		if DefaultVocabulary().status(v) == "" {
 			t.Errorf("verdict %q has no Backlog.md status to record it as", v)
 		}
 	}
 	if work.Verdict("probably").Known() {
 		t.Error("Known() must not accept a verdict the port does not write")
+	}
+}
+
+// A PM specs work and hands it to a dev. Assigning replaces the assignee
+// rather than adding one: the routing rule reads a single agent off a task,
+// so a second name would silently never be routed to.
+func TestAssignReplacesTheAgent(t *testing.T) {
+	m := &memClient{}
+	s := newWith(m, Vocabulary{})
+	id, err := s.Create("Spec the thing", "", "pm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Assign(id, "dev"); err != nil {
+		t.Fatal(err)
+	}
+	it, err := s.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Assignee != "dev" {
+		t.Fatalf("assignee = %q, want dev", it.Assignee)
+	}
+	if got := m.tasks[id].task.Assignees; len(got) != 1 {
+		t.Fatalf("assignees = %v, want exactly one", got)
 	}
 }

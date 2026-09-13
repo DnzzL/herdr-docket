@@ -18,16 +18,25 @@ type client interface {
 	View(id string) (view, error)
 	Create(title, body, assignee string) (string, error)
 	SetStatus(id, status string) error
+	SetAssignee(id, agent string) error
 	AppendNote(id, note string) error
 }
 
-// Source is a work.Source backed by a Backlog.md project.
-type Source struct{ client client }
+// Source is a work.Source backed by a Backlog.md project. The vocabulary is
+// that project's own status words: the fleet's queue uses the fleet's, a
+// project the fleet merely works uses whatever it already declares.
+type Source struct {
+	client client
+	vocab  Vocabulary
+}
 
-// New returns a Source on the Backlog.md project at dir.
-func New(dir string) *Source { return newWith(newCLI(dir)) }
+// New returns a Source on the Backlog.md project at dir, speaking vocab. The
+// zero Vocabulary is the fleet's own words.
+func New(dir string, vocab Vocabulary) *Source { return newWith(newCLI(dir), vocab) }
 
-func newWith(c client) *Source { return &Source{client: c} }
+func newWith(c client, vocab Vocabulary) *Source {
+	return &Source{client: c, vocab: vocab.OrDefault()}
+}
 
 // List returns every task in the project, closed ones included — the board
 // shows them, and only the queue cares about Open.
@@ -38,7 +47,7 @@ func (s *Source) List() ([]work.Task, error) {
 	}
 	items := make([]work.Task, 0, len(tasks))
 	for _, t := range tasks {
-		items = append(items, asTask(t))
+		items = append(items, s.asTask(t))
 	}
 	return items, nil
 }
@@ -50,7 +59,7 @@ func (s *Source) Get(id string) (work.Task, error) {
 	if err != nil {
 		return work.Task{}, err
 	}
-	it := asTask(v.task)
+	it := s.asTask(v.task)
 	it.Body = v.Description
 	it.Notes = v.ImplementationNotes
 	for _, c := range v.AcceptanceCriteria {
@@ -77,84 +86,113 @@ func (s *Source) Close(id string, v work.Verdict) error {
 	if !v.Known() {
 		return fmt.Errorf("close %s: unknown verdict %q", id, v)
 	}
-	// verdicts is total over the known verdicts, which the test beside this
+	// status is total over the known verdicts, which the test beside this
 	// one keeps it.
-	return s.client.SetStatus(id, verdicts[v])
+	return s.client.SetStatus(id, s.vocab.status(v))
 }
 
-// verdicts is the translation from the port's verdict to the status word that
-// records it. An adapter that can only say one thing about an ending (a binary
-// completed flag) has no such table — it asks the port whether the verdict is
-// known and records whatever it can.
-
-var verdicts = map[work.Verdict]string{
-	work.Done:    statusDone,
-	work.Failed:  statusFailed,
-	work.Blocked: statusBlocked,
+// status is the translation from the port's verdict to the word that records
+// it in this project. An adapter that can only say one thing about an ending
+// (a binary completed flag) has no such table — it asks the port whether the
+// verdict is known and records whatever it can.
+func (v Vocabulary) status(verdict work.Verdict) string {
+	switch verdict {
+	case work.Done:
+		return v.Done
+	case work.Failed:
+		return v.Failed
+	case work.Blocked:
+		return v.Blocked
+	}
+	return ""
 }
 
 // verdictOf is the same table read backwards: what a closed task's status
 // word still says about how it ended. Backlog.md is rich enough to keep the
 // verdict, which is how the runner knows whether to tear down a run's
 // workspace or leave it open to resume. A binary backend cannot, and simply
-// leaves Verdict empty.
-func verdictOf(status string) work.Verdict {
-	for v, s := range verdicts {
-		if s == status {
-			return v
-		}
+// leaves Verdict empty. Ordered, not a map: two phases of a project may share
+// one word, and which verdict that word means must not depend on map order.
+func (v Vocabulary) verdictOf(status string) work.Verdict {
+	switch status {
+	case "":
+		return ""
+	case v.Done:
+		return work.Done
+	case v.Failed:
+		return work.Failed
+	case v.Blocked:
+		return work.Blocked
 	}
 	return ""
 }
 
-// SetPhase shows the task as being worked on. Backlog.md has a state for it;
-// this is the only phase the fleet ever writes, and it is display only — the
-// run lock is what keeps two runs apart, so nothing reads this back.
+// Assign re-routes the task to another agent. Backlog.md holds a list of
+// assignees and the fleet reads the first, so assigning replaces the list
+// rather than adding to it: one task, one agent, which is what the routing
+// rule assumes.
+func (s *Source) Assign(id, agent string) error { return s.client.SetAssignee(id, agent) }
+
+// SetPhase shows the task as being worked on. This is the only phase the
+// fleet ever writes, and it is display only — the run lock is what keeps two
+// runs apart, so nothing reads this back. A project with no word for it is
+// left alone: writing one its CLI rejects would fail a run over decoration.
 func (s *Source) SetPhase(id string, phase work.Phase) error {
-	status, ok := phases[phase]
-	if !ok {
+	if phase != work.PhaseInProgress {
 		return fmt.Errorf("phase %q: the backlogmd adapter does not know it", phase)
 	}
-	return s.client.SetStatus(id, status)
-}
-
-var phases = map[work.Phase]string{
-	work.PhaseInProgress: statusInProgress,
+	if s.vocab.InProgress == "" {
+		return nil
+	}
+	return s.client.SetStatus(id, s.vocab.InProgress)
 }
 
 // asTask maps a Backlog.md task onto the fleet's vocabulary. A task is open
 // until a verdict has closed it: Done, Failed and Blocked are all closed to
 // the fleet, and Phase carries the fleet's word for wherever it stands.
-func asTask(t task) work.Task {
+func (s *Source) asTask(t task) work.Task {
 	return work.Task{
 		ID:        t.ID,
 		Title:     t.Title,
 		Assignee:  first(t.Assignees),
-		Open:      open(t.Status),
-		Phase:     phase(t.Status),
-		Verdict:   verdictOf(t.Status),
+		Open:      s.vocab.open(t.Status),
+		Phase:     s.vocab.phase(t.Status),
+		Verdict:   s.vocab.verdictOf(t.Status),
 		Priority:  rank(t.Priority),
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,
 	}
 }
 
-// phase reads a Backlog.md status in the fleet's words. A closed status stands
-// under its verdict's word, because the three endings are one vocabulary and
-// not two; an open one under the fleet's name for it. A status this adapter
-// has never seen still shows: the board renders the phases it does not know by
-// name after the ones it does.
-func phase(status string) string {
-	if v := verdictOf(status); v != "" {
-		return v.Label()
+// phase reads a status in the fleet's words. A closed status stands under its
+// verdict's word, because the three endings are one vocabulary and not two;
+// an open one under the fleet's name for it. A status this project has that
+// the fleet was never told about still shows, under its own name: the board
+// renders the phases it does not know after the ones it does.
+func (v Vocabulary) phase(status string) string {
+	if verdict := v.verdictOf(status); verdict != "" {
+		return verdict.Label()
 	}
 	switch status {
-	case statusToDo:
+	case "":
+		return ""
+	case v.Todo:
 		return string(work.PhaseTodo)
-	case statusInProgress:
+	case v.InProgress:
 		return string(work.PhaseInProgress)
 	}
 	return status
+}
+
+// open reports whether a status is work the fleet may pick up. A whitelist,
+// deliberately: a project has columns the fleet has no business in — triage,
+// wontfix, waiting on a human — and reading anything unrecognised as open
+// would put an agent on them.
+func (v Vocabulary) open(status string) bool {
+	if status == "" {
+		return false
+	}
+	return status == v.Todo || status == v.InProgress
 }
 
 // rank reads a Backlog.md priority as a rank the core can compare. Higher is
@@ -173,14 +211,6 @@ func rank(priority string) int {
 		return 1
 	}
 	return 0
-}
-
-func open(status string) bool {
-	switch status {
-	case statusDone, statusFailed, statusBlocked:
-		return false
-	}
-	return true
 }
 
 func first(xs []string) string {

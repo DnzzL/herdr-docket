@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -79,6 +80,20 @@ func TestOnlyALocalQueueIsScaffolded(t *testing.T) {
 		if got := (SourceConfig{Kind: tc.kind}).local(); got != tc.want {
 			t.Errorf("kind %q: local = %v, want %v", tc.kind, got, tc.want)
 		}
+	}
+	// A Backlog.md project of its own is a repo that already exists. Laying
+	// one down there would scaffold over somebody else's backlog.
+	if (SourceConfig{Kind: "backlogmd", Dir: "/srv/notion-alt"}).local() {
+		t.Error("a source naming its own project is not the fleet's to scaffold")
+	}
+	if q := (Settings{Dir: "/tmp/fleet", Sources: map[string]SourceConfig{
+		"notara":  {Dir: "/srv/notion-alt"},
+		"dishnow": {Dir: "/srv/dishnow-v2"},
+	}}).ownQueues(); len(q) != 0 {
+		t.Errorf("a fleet whose every queue is elsewhere creates none, got %d", len(q))
+	}
+	if q := (Settings{Dir: "/tmp/fleet"}).ownQueues(); len(q) != 1 {
+		t.Errorf("a fleet with its own queue still creates it, got %d", len(q))
 	}
 }
 
@@ -236,5 +251,112 @@ func TestABadKindInsideANamedSourceNamesTheSource(t *testing.T) {
 	_, err = NewSource(s)
 	if err == nil || !strings.Contains(err.Error(), "myapp") || !strings.Contains(err.Error(), "trello") {
 		t.Fatalf("the error must name the source and the kind, got %v", err)
+	}
+}
+
+// The point of several sources: each one is a different project's own
+// backlog. Without a dir of its own every local source resolves to the fleet
+// dir, and a fleet "working two projects" quietly works one of them twice.
+func TestALocalSourceCanNameItsOwnProject(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"no dir is the fleet's own queue", "", "/tmp/fleet"},
+		{"absolute is taken as it stands", "/srv/notion-alt", "/srv/notion-alt"},
+		{"~ expands", "~/Projects/notion-alt", filepath.Join(home, "Projects/notion-alt")},
+		{"relative hangs off the fleet dir", "projects/dishnow", "/tmp/fleet/projects/dishnow"},
+	} {
+		got := SourceConfig{Dir: tc.dir}.dirFrom("/tmp/fleet")
+		if got != tc.want {
+			t.Errorf("%s: dirFrom = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A vocabulary is refused where it is written, not where it is used. Half of
+// one is a fleet that picks work up and cannot put it down: the run ends, the
+// status never moves, and the daemon picks the same task straight back up.
+func TestAHalfWrittenVocabularyIsRefused(t *testing.T) {
+	writeFleetYAML(t, `dir: /tmp/fleet
+sources:
+  notara:
+    kind: backlogmd
+    dir: /srv/notion-alt
+    statuses:
+      todo: ready-for-agent
+      done: done
+`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewSource(s)
+	if err == nil {
+		t.Fatal("want an error for a vocabulary with no word for a failed run")
+	}
+	for _, want := range []string{"notara", "failed"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error must name %q, got %q", want, err)
+		}
+	}
+}
+
+// The whole arrangement, read end to end: two projects, each with its own
+// directory and its own words, behind one fleet.
+func TestSeveralSourcesEachCarryTheirOwnProjectAndWords(t *testing.T) {
+	writeFleetYAML(t, `dir: /tmp/fleet
+sources:
+  notara:
+    kind: backlogmd
+    dir: /srv/notion-alt
+    statuses:
+      todo: ready-for-agent
+      done: done
+      failed: ready-for-human
+      blocked: needs-info
+  dishnow:
+    kind: backlogmd
+    dir: /srv/dishnow-v2
+    statuses:
+      todo: ready for agent
+      in_progress: In Progress
+      done: Done
+      failed: wontfix
+      blocked: needs human validation
+`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Sources["notara"].Dir; got != "/srv/notion-alt" {
+		t.Errorf("notara dir = %q", got)
+	}
+	if got := s.Sources["notara"].Statuses.Todo; got != "ready-for-agent" {
+		t.Errorf("notara todo = %q", got)
+	}
+	// notara has no word for work in hand, and that is allowed: the phase is
+	// display only.
+	if got := s.Sources["notara"].Statuses.InProgress; got != "" {
+		t.Errorf("notara in_progress = %q, want none", got)
+	}
+	if got := s.Sources["dishnow"].Statuses.Blocked; got != "needs human validation" {
+		t.Errorf("dishnow blocked = %q", got)
+	}
+	src, err := NewSource(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms, ok := src.(work.MultiSource)
+	if !ok {
+		t.Fatalf("several sources must be one MultiSource, got %T", src)
+	}
+	if want := []string{"dishnow", "notara"}; !reflect.DeepEqual(ms.Names(), want) {
+		t.Fatalf("names = %v, want %v", ms.Names(), want)
 	}
 }

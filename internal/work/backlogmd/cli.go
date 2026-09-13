@@ -21,7 +21,7 @@ const (
 )
 
 // Statuses is that lifecycle as a list, for whoever has to write it down.
-var Statuses = []string{statusToDo, statusInProgress, statusBlocked, statusFailed, statusDone}
+var Statuses = DefaultVocabulary().List()
 
 // task is one row of `task list --json` — enough to pick work and draw a board.
 type task struct {
@@ -110,6 +110,14 @@ func (c *cli) View(id string) (view, error) {
 // SetStatus moves a task. The CLI validates against the configured statuses.
 func (c *cli) SetStatus(id, status string) error {
 	_, err := c.exec("task", "edit", id, "-s", status, "--plain")
+	return err
+}
+
+// SetAssignee replaces the task's assignees with one agent. The CLI's -a
+// replaces rather than appends, which is the fleet's model: one task is one
+// agent's to run.
+func (c *cli) SetAssignee(id, agent string) error {
+	_, err := c.exec("task", "edit", id, "-a", agent, "--plain")
 	return err
 }
 
