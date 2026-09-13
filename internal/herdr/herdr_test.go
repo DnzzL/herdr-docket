@@ -2,6 +2,7 @@ package herdr
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +44,40 @@ func TestNewAPIErrorKeepsStderrOverTheExecError(t *testing.T) {
 func TestNewAPIErrorSurvivesANilExecError(t *testing.T) {
 	if err := newAPIError([]string{"pane", "read"}, nil, "", nil); err == nil {
 		t.Fatal("want an error even with nothing to say")
+	}
+}
+
+// herdr prints its error envelope on stderr, not stdout. Reading only stdout
+// left Code empty on every error the fleet ever saw, which turned every
+// HasCode branch into dead code — the prompt-stall recovery gave up on its
+// first attempt while its error text still read correctly, so nothing showed.
+func TestAnErrorCodeIsReadFromWhicheverStreamCarriesIt(t *testing.T) {
+	envelope := `{"error":{"code":"agent_prompt_stalled","message":"no observed working state"},"id":"cli:agent:prompt"}`
+	for _, tc := range []struct {
+		name           string
+		stdout, stderr string
+	}{
+		{"on stderr, which is where herdr puts it", "", envelope},
+		{"on stdout, in case that ever changes", envelope, ""},
+	} {
+		err := newAPIError([]string{"agent", "prompt"}, []byte(tc.stdout), tc.stderr, nil)
+		if !HasCode(err, CodeStalled) {
+			t.Errorf("%s: HasCode = false, got %v", tc.name, err)
+		}
+		if strings.Contains(err.Error(), "{") {
+			t.Errorf("%s: the raw envelope leaked into the message: %v", tc.name, err)
+		}
+	}
+}
+
+// Anything that is not an envelope still has to produce a readable line rather
+// than an empty one — that is what this function existed for first.
+func TestANonEnvelopeErrorStillReads(t *testing.T) {
+	err := newAPIError([]string{"worktree", "create"}, nil, "boom: no space left", nil)
+	if HasCode(err, CodeStalled) {
+		t.Error("a message with no code must not match a code")
+	}
+	if !strings.Contains(err.Error(), "no space left") {
+		t.Errorf("the message must survive, got %v", err)
 	}
 }

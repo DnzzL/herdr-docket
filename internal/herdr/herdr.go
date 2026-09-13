@@ -80,16 +80,25 @@ func HasCode(err error, code string) bool {
 // while printing nothing at all used to produce a bare "worktree create: ",
 // which says only that the run failed — not that it exited 1, was killed, or
 // was never on PATH.
+//
+// The envelope is looked for on both streams because herdr puts it on stderr,
+// not stdout. Reading only stdout left Code empty on every error the fleet has
+// ever seen, which silently turned every HasCode branch into dead code: the
+// prompt-stall recovery, the start retries, the vanished-agent and
+// vanished-workspace paths. They failed by giving up on the first try and the
+// error text still read correctly, which is why it went unnoticed.
 func newAPIError(args []string, stdout []byte, stderr string, runErr error) error {
 	cmd := strings.Join(args[:min(2, len(args))], " ")
-	var envelope struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if json.Unmarshal(stdout, &envelope) == nil && envelope.Error.Code != "" {
-		return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
+	for _, out := range [][]byte{stdout, []byte(stderr)} {
+		var envelope struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(out, &envelope) == nil && envelope.Error.Code != "" {
+			return &APIError{Command: cmd, Code: envelope.Error.Code, Message: envelope.Error.Message}
+		}
 	}
 	msg := strings.TrimSpace(stderr)
 	if msg == "" {
