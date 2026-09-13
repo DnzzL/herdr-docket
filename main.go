@@ -39,6 +39,7 @@ Usage:
   herdr-fleet task list        List open work from the queue (--all for closed)
   herdr-fleet task view <id>   Show one task: body, notes and criteria
   herdr-fleet task create      Add work: "<title>" [-a <agent>] [-d "<body>"]
+  herdr-fleet task assign <id> <agent>  Hand a task to another agent
   herdr-fleet task note <id>   Append to a task's notes
   herdr-fleet task done|fail|block <id> [--note "..."]  Close with a verdict
   herdr-fleet agent list       Show the agents and which are paused
@@ -179,11 +180,12 @@ func taskCmd(args []string) error {
 
 // runTaskCmd is the task verbs with the source injected, so the CLI's shape is
 // tested without a backend on disk. It is the agent's whole write surface:
-// list and view to read, create to hand on follow-up work, note to say where
-// things stand, and done/fail/block to close with a verdict.
+// list and view to read, create to hand on follow-up work, assign to pass one
+// on, note to say where things stand, and done/fail/block to close with a
+// verdict.
 func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-fleet task list|view|create|note|done|fail|block")
+		return fmt.Errorf("usage: herdr-fleet task list|view|create|assign|note|done|fail|block")
 	}
 	switch args[0] {
 	case "list":
@@ -202,6 +204,11 @@ func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 		return taskView(src, args[1], out)
 	case "create":
 		return taskCreate(src, args[1:], out)
+	case "assign":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: herdr-fleet task assign <id> <agent>")
+		}
+		return taskAssign(src, args[1], args[2], out)
 	case "note":
 		if len(args) != 3 {
 			return fmt.Errorf(`usage: herdr-fleet task note <id> "<text>"`)
@@ -211,6 +218,25 @@ func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 		return taskClose(src, args[0], args[1:], out)
 	}
 	return fmt.Errorf("unknown task command %q", args[0])
+}
+
+// taskAssign re-routes a task. This is how a PM hands specced work to a dev
+// without closing it: one task, one thread, one id. A queue that routes work
+// some other way says so rather than accepting the call and doing nothing.
+//
+// The agent name is not checked against agents/ — same as `task create -a`.
+// An unknown assignee is visible where it matters: `herdr-fleet list` marks
+// it, and the picker leaves the task alone rather than guessing.
+func taskAssign(src work.Source, id, agent string, out io.Writer) error {
+	a, ok := src.(work.Assigner)
+	if !ok {
+		return fmt.Errorf("%s: this queue routes work another way and cannot be reassigned", id)
+	}
+	if err := a.Assign(id, agent); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s assigned to %s\n", id, agent)
+	return nil
 }
 
 func taskCreate(src work.Source, args []string, out io.Writer) error {

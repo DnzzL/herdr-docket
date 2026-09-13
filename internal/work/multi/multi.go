@@ -116,6 +116,21 @@ func (s *Source) SetPhase(id string, phase work.Phase) error {
 	return nil
 }
 
+// Assign forwards to the named sub-source, and refuses when that backend has
+// no assignee to write. Unlike SetPhase this is not display: swallowing it
+// would leave the task routed to the wrong agent with nothing to show for it.
+func (s *Source) Assign(id, agent string) error {
+	name, rest, err := s.split(id)
+	if err != nil {
+		return err
+	}
+	a, ok := s.subs[name].(work.Assigner)
+	if !ok {
+		return fmt.Errorf("%s: source %q routes work another way and cannot be reassigned", id, name)
+	}
+	return a.Assign(rest, agent)
+}
+
 // Create targets the sole sub-source. With several queues there is no way to
 // guess which one a bare Create meant, so it is an error — the CLI's -s names
 // one through CreateIn. Working for one sub-source is what lets the composite

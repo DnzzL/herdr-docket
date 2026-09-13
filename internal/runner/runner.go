@@ -157,15 +157,15 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 	}
 	session, err := r.host.Provision(spec)
 	if err != nil {
-		v := r.reconcile(src, t.ID, err)
+		v, _ := r.reconcile(src, t.ID, a.Name, err)
 		rec.close(history.StatusFailed, session, v, err.Error())
 		return err
 	}
 	rec.record(history.StatusRunning, session, "")
 
 	err = r.host.Do(session, spec, time.Duration(a.TimeoutMinutes)*time.Minute)
-	final := r.reconcile(src, t.ID, err)
-	r.cleanup(src, t.ID, session, final)
+	final, handedOn := r.reconcile(src, t.ID, a.Name, err)
+	r.cleanup(src, t.ID, session, final, handedOn)
 	switch {
 	case errors.Is(err, host.ErrCancelled):
 		rec.close(history.StatusCancelled, session, final, err.Error())
@@ -198,19 +198,28 @@ func (r *Runner) claim(src work.Source, id string) {
 }
 
 // reconcile makes the task tell the truth after a run and returns the verdict
-// it ended on. The agent's own verdict stands: if the agent closed the task,
-// there is nothing to do. An task the agent left open gets the verdict the run
-// mechanics imply — a cancelled run (workspace closed under it) goes Blocked,
-// because somebody decided and a human should say what happens next; anything
-// else that leaves the task unreported is Failed.
-func (r *Runner) reconcile(src work.Source, taskID string, runErr error) work.Verdict {
+// it ended on, plus whether the agent handed the task to somebody else. The
+// agent's own verdict stands: if the agent closed the task, there is nothing
+// to do. A task the agent left open gets the verdict the run mechanics imply
+// — a cancelled run (workspace closed under it) goes Blocked, because somebody
+// decided and a human should say what happens next; anything else that leaves
+// the task unreported is Failed.
+func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) (work.Verdict, bool) {
 	v, err := src.Get(taskID)
 	if err != nil {
 		log.Printf("%s: cannot re-read the task after the run: %v", taskID, err)
-		return ""
+		return "", false
 	}
 	if !v.Open {
-		return v.Verdict // the agent reported; its verdict stands
+		return v.Verdict, false // the agent reported; its verdict stands
+	}
+	// A task now assigned to somebody else was handed on, not abandoned: it is
+	// open on purpose, with a new owner and its whole history in one place.
+	// Closing it here would undo the handoff and the next tick would never
+	// route it. Only on a clean run — a task reassigned by an agent that then
+	// crashed is still an unreported task.
+	if runErr == nil && v.Assignee != "" && v.Assignee != agent {
+		return "", true
 	}
 	verdict, note := work.Failed, "fleet: the agent settled without reporting a verdict."
 	switch {
@@ -225,19 +234,20 @@ func (r *Runner) reconcile(src work.Source, taskID string, runErr error) work.Ve
 	if err := src.Close(taskID, verdict); err != nil {
 		log.Printf("%s: close as %s: %v", taskID, verdict, err)
 	}
-	return verdict
+	return verdict, false
 }
 
 // cleanup decides what happens to the run's workspace. A task that ended Done
 // left nothing to look at — the work is in the repo and the notes — so the
-// workspace is torn down. Anything else keeps its workspace open as the place
-// to resume: the board's enter-jump lands there, and the note names it for
-// anyone reading the ticket instead of the board.
-func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict) {
+// workspace is torn down, and a task handed to another agent is the same: the
+// next agent opens its own. Anything else keeps its workspace open as the
+// place to resume: the board's enter-jump lands there, and the note names it
+// for anyone reading the ticket instead of the board.
+func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn bool) {
 	if s.WorkspaceID == "" {
 		return
 	}
-	if final == work.Done {
+	if final == work.Done || handedOn {
 		if err := r.host.Close(s); err != nil {
 			log.Printf("%s: close workspace %s: %v", taskID, s.WorkspaceID, err)
 		}

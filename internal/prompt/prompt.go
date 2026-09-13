@@ -113,8 +113,18 @@ Then close the task exactly once, reporting exactly one verdict:
   herdr-fleet task fail %s --note "<why you could not do it>"
   herdr-fleet task block %s --note "<what a human must decide or unblock>"
 
-A task you leave open is a task the fleet will pick up and run again, so don't
-leave one open. Do not touch other agents' tasks.
+A task you leave open with no verdict and no new agent is a task the fleet will
+pick up and run again, so don't leave one open. Do not touch other agents'
+tasks.
+
+If the real work belongs to another agent — you specced it, somebody else
+builds it — hand this task over instead of closing it and filing a near-copy:
+
+  herdr-fleet task assign %s <agent>
+
+That is the one way to end a run without a verdict: the task stays open with
+its whole history in one place, and the fleet routes it to that agent on the
+next tick.
 
 This run has a time budget. If the task is too big to finish well within it,
 do one coherent slice, record exactly where you stopped in the closing note,
@@ -124,6 +134,6 @@ finished slice with a good handoff beats a timed-out marathon.
 If you find follow-up work, create a task for it instead of expanding this one:
 
   herdr-fleet task create "<title>" -d "<what and why>" -a %s%s
-`, fleetDir, v.ID, v.ID, v.ID, v.ID, a.Name, createSource)
+`, fleetDir, v.ID, v.ID, v.ID, v.ID, v.ID, a.Name, createSource)
 	return b.String()
 }

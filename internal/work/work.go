@@ -115,6 +115,20 @@ type Phaser interface {
 	SetPhase(id string, phase Phase) error
 }
 
+// Assigner is the optional capability of a source that can re-route a task
+// to another agent. A PM that specs work and hands it to a dev needs it: the
+// alternative — close this one, create a follow-up — splits one subject
+// across two ids and loses the thread.
+//
+// Optional because not every backend has an assignee to write. Basecamp
+// routes by which list a to-do is in, so re-routing there is a move, not a
+// field. Unlike Phaser, a source that cannot do this says so: a re-route that
+// silently did nothing would leave the task with the wrong agent and look
+// like it worked.
+type Assigner interface {
+	Assign(id, agent string) error
+}
+
 // Source is the port the fleet's queue lives behind. Picking, running and the
 // board speak only this.
 type Source interface {

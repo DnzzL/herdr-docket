@@ -90,6 +90,13 @@ func (b *fakeBoard) SetPhase(id string, p work.Phase) error {
 	return nil
 }
 
+func (b *fakeBoard) Assign(id, agent string) error {
+	it := b.items[id]
+	it.Assignee = agent
+	b.items[id] = it
+	return nil
+}
+
 func (b *fakeBoard) verdict(id string) work.Verdict { return b.items[id].Verdict }
 func (b *fakeBoard) open(id string) bool            { return b.items[id].Open }
 
@@ -237,4 +244,37 @@ func TestRunsSerializePerCheckoutNotGlobally(t *testing.T) {
 	// Wait for the run to finish inside the test: leaked past it, the goroutine
 	// writes history with the test env torn down — into the real state dir.
 	<-first
+}
+
+// A PM specs a task and hands it to the dev. The task is open on purpose, with
+// a new owner — closing it as "settled without reporting" would undo the
+// handoff, and the next tick would never route it to anyone.
+func TestATaskHandedToAnotherAgentStaysOpen(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{after: func() { _ = b.Assign("TASK-1", "dev") }}
+	if err := run(t, h, b); err != nil {
+		t.Fatal(err)
+	}
+	if !b.open("TASK-1") {
+		t.Fatal("a handed-on task must stay open for its new agent")
+	}
+	if v := b.verdict("TASK-1"); v != "" {
+		t.Fatalf("verdict = %q, want none: the task did not end", v)
+	}
+	if h.closes != 1 {
+		t.Fatalf("a handed-on run tears its workspace down, closes = %d", h.closes)
+	}
+}
+
+// Reassignment is not an escape hatch from reporting. An agent that handed the
+// task on and then crashed left it unreported all the same.
+func TestAHandoffDoesNotExcuseAFailedRun(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{doErr: errors.New("boom"), after: func() { _ = b.Assign("TASK-1", "dev") }}
+	if err := run(t, h, b); err == nil {
+		t.Fatal("want error")
+	}
+	if b.open("TASK-1") || b.verdict("TASK-1") != work.Failed {
+		t.Fatalf("verdict = %q, open = %v", b.verdict("TASK-1"), b.open("TASK-1"))
+	}
 }

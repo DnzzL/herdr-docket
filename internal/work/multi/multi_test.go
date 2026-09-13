@@ -2,6 +2,7 @@ package multi
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/DnzzL/herdr-fleet/internal/work"
@@ -253,4 +254,41 @@ func mustCreate(t *testing.T, src *memSource, title string) string {
 		t.Fatal(err)
 	}
 	return id
+}
+
+// Re-routing follows the prefix like every other verb. A backend with no
+// assignee to write refuses out loud: a silent no-op would leave the task
+// with the old agent and look like it moved.
+func TestAssignRoutesOnThePrefixAndRefusesWhatCannotRoute(t *testing.T) {
+	assignable := &fakeAssigner{Source: newMem()}
+	s := New(map[string]work.Source{
+		"myapp": assignable,
+		"plain": newMem(),
+	})
+	if err := s.Assign("myapp/TASK-1", "dev"); err != nil {
+		t.Fatalf("Assign: %v", err)
+	}
+	if assignable.got != "TASK-1=dev" {
+		t.Fatalf("sub-source saw %q, want the bare id", assignable.got)
+	}
+	err := s.Assign("plain/TASK-1", "dev")
+	if err == nil {
+		t.Fatal("a source that cannot reassign must say so")
+	}
+	if !strings.Contains(err.Error(), "plain") {
+		t.Fatalf("the error must name the source, got %q", err)
+	}
+	if err := s.Assign("TASK-1", "dev"); err == nil {
+		t.Fatal("a bare id names no queue and must not be guessed")
+	}
+}
+
+type fakeAssigner struct {
+	work.Source
+	got string
+}
+
+func (f *fakeAssigner) Assign(id, agent string) error {
+	f.got = id + "=" + agent
+	return nil
 }
