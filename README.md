@@ -127,6 +127,45 @@ a run that went sideways is a diff you throw away. `root` is for agents whose
 job *is* the working copy: backlog grooming, docs, anything that must see
 uncommitted state.
 
+### Running a post on another agent runtime
+
+Herdr speaks more than one coding agent, and `agent:` picks which one a post
+runs on — Claude Code by default. Your subscription is per post, not per fleet:
+
+```yaml
+---
+role: dev
+agent: opencode                     # herdr kinds: pi, claude, codex, gemini,
+model: opencode-go/kimi-k2.7-code   # opencode, cursor, amp, grok, qwen, …
+workdir: ~/Projects/myapp
+---
+```
+
+```yaml
+---
+role: pm
+agent: pi
+model: anthropic/claude-sonnet-4-5
+agent_args: ["--provider", "anthropic"]
+workdir: ~/Projects/myapp
+---
+```
+
+Two things to know before you switch a post over:
+
+- **`model:` is written straight through as `--model`**, so it has to be the
+  *runtime's* spelling. Claude Code takes the short alias (`sonnet`); opencode
+  and pi want `provider/model` (`opencode models` and `pi update` list what you
+  have). A short alias on opencode is not a fallback — it is a model id that
+  does not exist.
+- **`mcp_config:` emits `--mcp-config`, which is Claude Code's flag.** Neither
+  pi nor opencode has it — they manage their own servers (`opencode mcp`,
+  `pi install`). Leave `mcp_config` empty on a post that is not Claude Code, or
+  the agent fails to start.
+
+Anything else the runtime takes goes in `agent_args`, passed through untouched
+and *after* the two above — so an explicit `agent_args` entry wins over them.
+
 ### Sharing a method between agents
 
 An agent is one post: a role *in one repo*. Two posts doing the same job in two
