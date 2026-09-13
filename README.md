@@ -2,7 +2,7 @@
 
 **A shared task queue worked by your coding agents.** A [Backlog.md](https://backlog.md)
 project as the queue — or Basecamp, if that's where your work already lives
-(see [Where the queue lives](#where-the-queue-lives)) — `AGENT.md` personas as
+(see [Where the work lives](#where-the-work-lives)) — `AGENT.md` personas as
 the workers, and a daemon that routes every open task to the agent it names —
 agents in parallel, one run each, in [Herdr](https://herdr.dev) workspaces you
 can watch, join, or close.
@@ -27,10 +27,34 @@ the agent reports back into the queue itself with `herdr-fleet task done|fail|bl
 You come back to a board that tells the truth — and to nothing else,
 because a run that ends `Done` cleans its own workspace up.
 
-If you've wanted a tiny [paperclip.ing](https://paperclip.ing)-style company of
-agents without the org chart: this is the smallest version of that idea that
-still works. Named agents, a shared queue, a human gate. Markdown all the way
-down.
+[paperclip.ing](https://paperclip.ing) runs a company of agents autonomously.
+This is the smallest version of that idea that still works, built for Herdr:
+named agents, a shared queue, no org chart, markdown all the way down — and
+autonomy as a dial you set yourself, per project, rather than a mode you switch
+on.
+
+## How much autonomy
+
+Nothing here is all-or-nothing. Autonomy is a handful of levers, each one a
+line of config, and you can move them one project at a time:
+
+| Lever | Keep a hand on it | Let it run |
+| --- | --- | --- |
+| `statuses.todo` | a column you fill by hand — `ready-for-agent` | your project's default column: everything new is fair game |
+| assignee / `default_agent` | name the agent on the task, one at a time | `default_agent` picks up everything unassigned — per project, so each one has its own intake |
+| `statuses.failed` | points at a human column — `needs-info`, `ready-for-human` | points at a real `Failed`; nobody is paged |
+| a reviewer agent | gates the dev's PRs ([Example 4](#example-4--a-reviewer-that-gates-the-devs-prs)) | no gate; the dev merges its own work |
+| `runs_per_day`, `minutes_per_day` | a ceiling on the day ([Budgeting](#budgeting-an-agent)) | unset — unbounded |
+| `disabled` / `agent pause` | park an agent while you look at something | never paused |
+
+The one lever with teeth is the first: **the fleet only ever picks up the
+status you name**, so handing it a project means handing it one column, not a
+board. Your triage, your wontfix, your waiting-on-a-human columns stay yours —
+see [Where the work lives](#where-the-work-lives).
+
+It never overrides you in the other direction either: `herdr-fleet run TASK-12`
+reaches a paused agent and an over-budget one, because pressing the button is
+human intent, not scheduling.
 
 ## The model
 
@@ -336,9 +360,121 @@ source:
                           # project in the fleet dir — see below)
 ```
 
-### Where the queue lives
+## Where the work lives
 
-The queue does not have to be local. To work a Basecamp project instead:
+By default the queue is the Backlog.md project in the fleet dir, and there is
+nothing to configure. Three things change that, in rising order of how much
+config they cost.
+
+### Work a project you already have
+
+Point a source at your own repo with `dir:` — absolute, `~`, or relative to the
+fleet dir. Your project has its own status words, and there are two ways to
+meet:
+
+**Let the fleet own the vocabulary.** Add its five statuses to your
+`backlog/config.yml` and there is nothing else to configure:
+
+```yaml
+statuses: ["To Do", "In Progress", "Blocked", "Failed", "Done"]
+```
+
+**Or keep your own words** — usually the right call on a board humans already
+read — and name them once:
+
+```yaml
+sources:
+  myapp:
+    kind: backlogmd
+    dir: ~/Projects/myapp
+    statuses:
+      todo: ready-for-agent       # the only status the fleet picks up
+      done: done
+      failed: ready-for-human     # your word for "a human now"
+      blocked: needs-info
+      # in_progress omitted: this project has no word for it
+```
+
+Read `statuses:` as a whitelist: **a status not named there is not the fleet's
+business.** That is the whole point of it — a real board has a triage column, a
+wontfix column, a waiting-on-a-human column, and a fleet that treated every
+unrecognised status as open work would put an agent on them. It is also the
+first lever in [How much autonomy](#how-much-autonomy): `todo` is exactly how
+much of your board you are handing over.
+
+`todo`, `done`, `failed` and `blocked` are required — a queue the fleet can
+pick from but cannot close leaves every task open for the next tick to pick up
+again. `in_progress` is optional: it is display only, so a project with no word
+for it simply never shows one. A source with a `dir:` of its own is never
+scaffolded or patched by `herdr-fleet init`; its config stays yours.
+
+### Several projects at once
+
+One fleet can work several projects, each keeping the tool it already uses. Use
+`sources:` — a map of name → the same block `source:` takes — instead of
+`source:`:
+
+```yaml
+sources:
+  myapp:                      # your repo, its own words
+    kind: backlogmd
+    dir: ~/Projects/myapp
+    statuses: {todo: ready-for-agent, done: done, failed: ready-for-human, blocked: needs-info}
+  agency:                     # a client's Basecamp, worked alongside it
+    kind: basecamp
+    basecamp:
+      account_id: "9999999"
+      lists:
+        dev: "1111111"
+```
+
+Each source's tasks carry its name as an id prefix — `myapp/TASK-12`,
+`agency/987654` — so every command that takes an id (`task view`, `note`,
+`done|fail|block`) routes to the right project, and `herdr-fleet list` and the
+board show them all together. Creating work then names the project, because a
+bare `task create` cannot guess:
+
+```bash
+herdr-fleet task create "Triage the backlog" -a pm -s myapp
+```
+
+Each source names the agent its unassigned work falls to, because an agent
+carries its own `workdir` — one global default would send one project's tasks
+into another project's checkout:
+
+```yaml
+sources:
+  myapp:
+    dir: ~/Projects/myapp
+    default_agent: myapp-pm     # this project's intake
+  agency:
+    kind: basecamp
+    default_agent: agency-pm
+```
+
+A source that names none falls back to the fleet's `default_agent`, and no
+default anywhere still means no default: unassigned work is left alone.
+Pointing the default at a **PM rather than a dev** is the safe setting — an
+unassigned task is by definition unspecced, so the agent that receives it
+should be the one that specs it and then hands it on:
+
+```bash
+herdr-fleet task assign myapp/TASK-12 dev
+```
+
+`assign` is how one agent passes work to another without closing it: same
+task, same id, whole history in one place. It is also the one way a run may
+end without a verdict — the fleet reads a reassigned open task as handed on
+rather than abandoned, and routes it on the next tick.
+
+The prefix *is* the source, so an agent's follow-up task inherits it without
+the agent knowing a second queue exists. `source:` and `sources:` are mutually
+exclusive; `source:` stays exactly what it was — one unnamed queue, no prefix
+anywhere.
+
+### A hosted queue: Basecamp
+
+If the work already lives somewhere else, the queue does not have to be local:
 
 ```yaml
 source:
@@ -363,49 +499,32 @@ herdr-fleet auth basecamp
 
 The tokens land in `credentials.yaml` (0600) beside `fleet.yaml` and never in
 it — `fleet.yaml` is the file you paste into a bug report. A Basecamp access
-token lives two weeks, so the fleet refreshes it on the way out: a machine
-left alone for a month heals itself on the next poll instead of failing every
-one of them.
+token lives two weeks, so the fleet refreshes it on the way out: a machine left
+alone for a month heals itself on the next poll instead of failing every one of
+them.
 
 Agents never see any of this. `task list`, `view`, `create`, `note` and
 `done|fail|block` are the same commands, and the fleet CLI is the only thing
-they talk to. What differs is what Basecamp can hold: no labels (the list is
-the assignee), no priority, and one word for an ending — so a `fail` or
-`block` completes the to-do and says which it was in a comment. A to-do in a
-list the fleet doesn't know about is simply not its work.
+they talk to. What differs is what the backend can hold: Basecamp has no labels
+(the list is the assignee), no priority, and one word for an ending — so a
+`fail` or `block` completes the to-do and says which it was in a comment. A
+to-do in a list the fleet doesn't know about is simply not its work.
 
-### Several queues at once
+### Writing an adapter — contributions welcome
 
-One fleet can work several projects, each keeping the tool it already uses.
-Use `sources:` — a map of name → the same block `source:` takes — instead of
-`source:`:
+Linear, GitHub Issues, Jira, a directory of text files: if it holds tasks, it
+can be a queue. An adapter is one package under `internal/work/` implementing
+five methods — `List`, `Get`, `Create`, `Comment`, `Close` — plus the optional
+`Phaser` for a backend that can show work in hand. Nothing above an adapter
+knows the backend's name, its status words, or its id format: the core owns the
+vocabulary ([ADR 0001](docs/adr/0001-the-core-owns-the-vocabulary.md)) and the
+adapter translates on the way in and out.
 
-```yaml
-sources:
-  myapp:                    # a markdown project in the fleet dir
-    kind: backlogmd
-  agency:                   # a client's Basecamp, worked alongside it
-    kind: basecamp
-    basecamp:
-      account_id: "9999999"
-      lists:
-        dev: "1111111"
-```
-
-Each source's tasks carry its name as an id prefix — `myapp/TASK-12`,
-`agency/987654` — so every command that takes an id (`task view`, `note`,
-`done|fail|block`) routes to the right project, and `herdr-fleet list` and the
-board show them all together. Creating work then names the project, because a
-bare `task create` cannot guess:
-
-```bash
-herdr-fleet task create "Triage the backlog" -a pm -s myapp
-```
-
-The prefix *is* the source, so an agent's follow-up task inherits it without
-the agent knowing a second queue exists. `source:` and `sources:` are mutually
-exclusive; `source:` stays exactly what it was — one unnamed queue, no prefix
-anywhere.
+`internal/work/worktest` is a conformance suite any adapter can run against
+itself, so "does this behave like a queue?" is a test rather than a review.
+Register the new kind in `internal/fleet/source.go` — the one place an adapter
+is constructed — and the daemon, the CLI and the board all pick it up at once.
+PRs welcome.
 
 ## Commands
 
@@ -419,6 +538,7 @@ anywhere.
 | `herdr-fleet task list` | the queue as the agent sees it (`--all` includes closed work) |
 | `herdr-fleet task view ID` | one task: body, notes, criteria, and who it is routed to |
 | `herdr-fleet task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several) |
+| `herdr-fleet task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-fleet task note ID "…"` | say where things stand without closing |
 | `herdr-fleet task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence) |
 | `herdr-fleet agent list` | the agents, and which are parked |
