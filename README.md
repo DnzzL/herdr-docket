@@ -614,6 +614,7 @@ PRs welcome.
 | `herdr-fleet agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-fleet history [TASK-12]` | recent runs |
 | `herdr-fleet pane` | the interactive board |
+| `herdr-fleet install-skill` | teach your coding agent to write fleet tasks |
 
 ## What it isn't
 
@@ -633,8 +634,15 @@ PRs welcome.
 
 `skills/fleet-tasks/SKILL.md` teaches a coding agent to create well-formed fleet
 tasks — real descriptions, at least one acceptance criterion, and the rule that
-keeps the fleet queue separate from a project's own. Symlink or copy it into
-`~/.claude/skills/`.
+keeps the fleet queue separate from a project's own. Agents only discover skills
+under `~/.claude/skills`, so install it once:
+
+```bash
+herdr-fleet install-skill     # symlinks into ~/.claude/skills
+```
+
+It points a symlink at the bundled skill, so plugin upgrades update the skill
+too. Start a new agent session afterwards.
 
 ## License
 

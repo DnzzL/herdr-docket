@@ -21,6 +21,7 @@ import (
 	"github.com/DnzzL/herdr-fleet/internal/pane"
 	"github.com/DnzzL/herdr-fleet/internal/pick"
 	"github.com/DnzzL/herdr-fleet/internal/runner"
+	"github.com/DnzzL/herdr-fleet/internal/skill"
 	"github.com/DnzzL/herdr-fleet/internal/text"
 	"github.com/DnzzL/herdr-fleet/internal/work"
 )
@@ -47,6 +48,7 @@ Usage:
   herdr-fleet agent resume <n> Start scheduling it again
   herdr-fleet history [id]     Show recent runs
   herdr-fleet pane             Interactive board (used by the Herdr pane)
+  herdr-fleet install-skill    Teach your coding agent to write fleet tasks
   herdr-fleet version          Print the version
 
 Fleet dir: %s   (override: fleet.yaml in %s)
@@ -78,6 +80,12 @@ func main() {
 		err = historyCmd(os.Args[2:])
 	case "pane":
 		err = pane.Run()
+	case "install-skill":
+		target := ""
+		if len(os.Args) > 2 {
+			target = os.Args[2]
+		}
+		err = skill.Install(target)
 	case "version":
 		fmt.Println(Version)
 	default:
