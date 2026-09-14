@@ -3,7 +3,7 @@ package host
 import (
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/herdr"
+	"github.com/DnzzL/herdr-docket/internal/herdr"
 )
 
 // ops is this package's internal seam: the individual Herdr calls, one method

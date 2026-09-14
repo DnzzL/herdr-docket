@@ -7,8 +7,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // Result is what should happen now: at most one task to run (the worker is

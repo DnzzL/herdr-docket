@@ -7,7 +7,7 @@ package backlogmd
 import (
 	"fmt"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // client is the slice of the Backlog.md CLI the adapter needs. The real one

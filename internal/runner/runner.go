@@ -14,12 +14,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/host"
-	"github.com/DnzzL/herdr-fleet/internal/hostpath"
-	"github.com/DnzzL/herdr-fleet/internal/prompt"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/prompt"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // Runner runs tasks on a host, one at a time *per checkout*. The unit of
@@ -27,7 +27,7 @@ import (
 // own checkout per run, so two such agents (or two runs of different agents)
 // can fly in parallel; agents in root mode share their working copy, so runs
 // keyed to the same root workdir are serialized. The claim holds across
-// processes — the daemon, `herdr-fleet run` and the board each have their own
+// processes — the daemon, `herdr-docket run` and the board each have their own
 // Runner, and an OS file lock per key in the state dir keeps a manual run
 // from racing the daemon into the same agent or the same checkout.
 type Runner struct {

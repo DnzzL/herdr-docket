@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/DnzzL/herdr-fleet/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
 const dirName = "fleet-tasks"

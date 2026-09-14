@@ -18,7 +18,7 @@ const APIHost = "https://3.basecampapi.com"
 
 // UserAgent identifies the fleet to Basecamp, which rejects requests from
 // clients that do not say who they are.
-const UserAgent = "herdr-fleet (+https://github.com/DnzzL/herdr-fleet)"
+const UserAgent = "herdr-docket (+https://github.com/DnzzL/herdr-docket)"
 
 // maxRetries bounds the rate-limit retry loop. Basecamp asks for patience
 // with Retry-After; it never asks for forever.

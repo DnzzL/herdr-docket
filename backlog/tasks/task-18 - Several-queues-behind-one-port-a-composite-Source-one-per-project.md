@@ -31,7 +31,7 @@ Depends on TASK-17: with several sources, pick and run disagreeing on which Sour
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 fleet.yaml accepts sources: {name: <source block>}; the singular source: still works and produces no ID prefix
-- [ ] #2 With two sources configured, herdr-fleet list and the pane show every open task from both, IDs prefixed by source name
+- [ ] #2 With two sources configured, herdr-docket list and the pane show every open task from both, IDs prefixed by source name
 - [ ] #3 task view, note, done|fail|block and the daemon's claim/close on a prefixed ID reach the right sub-source; an unknown prefix is an error
 - [ ] #4 task create requires -s when several sources exist and the assembled prompt's follow-up command carries the current task's source
 - [ ] #5 The composite passes the adapter conformance suite, and a unit test covers Phaser forwarding to a sub-source that has it beside one that does not

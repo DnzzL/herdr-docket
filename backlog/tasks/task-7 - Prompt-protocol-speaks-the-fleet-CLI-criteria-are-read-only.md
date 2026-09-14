@@ -14,7 +14,7 @@ ordinal: 7000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Change what the agent is told. Reporting becomes `herdr-fleet task done|fail|block <id> --note "..."` and `herdr-fleet task note`; acceptance criteria are read-only (the adapter fills them for the prompt, the agent's met/not-met verdict and evidence go in the closing comment); BACKLOG_CWD disappears (the CLI resolves the fleet dir; a --fleet override is honoured); --check-ac retires. Update the fleet-tasks skill to match.
+Change what the agent is told. Reporting becomes `herdr-docket task done|fail|block <id> --note "..."` and `herdr-docket task note`; acceptance criteria are read-only (the adapter fills them for the prompt, the agent's met/not-met verdict and evidence go in the closing comment); BACKLOG_CWD disappears (the CLI resolves the fleet dir; a --fleet override is honoured); --check-ac retires. Update the fleet-tasks skill to match.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 func agents(names ...string) map[string]fleet.Agent {

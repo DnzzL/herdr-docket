@@ -8,7 +8,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/DnzzL/herdr-fleet/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
 // acquireLock keeps a single daemon alive per machine. Two daemons would race

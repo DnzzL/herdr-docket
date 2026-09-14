@@ -14,11 +14,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/host"
-	"github.com/DnzzL/herdr-fleet/internal/pick"
-	"github.com/DnzzL/herdr-fleet/internal/runner"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
+	"github.com/DnzzL/herdr-docket/internal/pick"
+	"github.com/DnzzL/herdr-docket/internal/runner"
 )
 
 // tickInterval is how often the queue is polled. Short enough that a task
@@ -35,7 +35,7 @@ var (
 )
 
 func Run() error {
-	log.SetPrefix("[herdr-fleet] ")
+	log.SetPrefix("[herdr-docket] ")
 
 	release, err := acquireLock()
 	if err != nil {
@@ -48,7 +48,7 @@ func Run() error {
 		return fmt.Errorf("fleet.yaml: %w", err)
 	}
 	if _, err := os.Stat(settings.Dir); err != nil {
-		return fmt.Errorf("fleet dir %s does not exist — run `herdr-fleet init` first", settings.Dir)
+		return fmt.Errorf("fleet dir %s does not exist — run `herdr-docket init` first", settings.Dir)
 	}
 	log.Printf("daemon starting, fleet=%s", settings.Dir)
 

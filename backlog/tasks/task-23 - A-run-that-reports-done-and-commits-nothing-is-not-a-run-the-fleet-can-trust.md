@@ -47,5 +47,5 @@ Do not build a general "did the agent do a good job" checker. This is one narrow
 - [ ] #1 A run whose disposable worktree still holds uncommitted changes when it ends cannot silently destroy them — the fleet says so on the task and in the run history
 - [ ] #2 A root-mode run that deliberately leaves edits uncommitted is untouched by the check, and a test pins that
 - [ ] #3 A PM or reviewer run that legitimately produces no commit is untouched, and a test pins that
-- [ ] #4 herdr-fleet history shows whether a run produced commits, so the answer does not require leaving the fleet's own tools
+- [ ] #4 herdr-docket history shows whether a run produced commits, so the answer does not require leaving the fleet's own tools
 <!-- AC:END -->

@@ -6,7 +6,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/DnzzL/herdr-fleet/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
 // credentialsFile is the shape of credentials.yaml: a section per backend, so

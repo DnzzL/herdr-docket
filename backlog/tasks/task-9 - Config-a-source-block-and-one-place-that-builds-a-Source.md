@@ -21,6 +21,6 @@ fleet.yaml gains a source: block (kind: backlogmd is the default, plus per-kind 
 <!-- AC:BEGIN -->
 - [ ] #1 a fleet.yaml without a source block defaults to backlogmd and keeps working unchanged
 - [ ] #2 one constructor maps settings to a work.Source; no caller builds an adapter itself
-- [ ] #3 herdr-fleet init for backlogmd is behaviourally unchanged
+- [ ] #3 herdr-docket init for backlogmd is behaviourally unchanged
 - [ ] #4 go test ./... green
 <!-- AC:END -->

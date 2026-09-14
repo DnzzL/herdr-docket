@@ -38,7 +38,7 @@ on the poll.
   to-dos per list). It is invisible at personal scale, and this ADR is where
   the cause is written down for the day a page-long list makes it visible.
 - `Get` returns a closed to-do whose phase is the verdict's label when one was
-  recorded, so `herdr-fleet task view` shows `Failed` where the board shows
+  recorded, so `herdr-docket task view` shows `Failed` where the board shows
   `Done`. A hand-ticked to-do has no verdict and stays under `Done`, which is
   all Basecamp's completed flag actually says.
 - A third backend's obligations are unchanged: `List` is one page, and `Get`

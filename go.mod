@@ -1,4 +1,4 @@
-module github.com/DnzzL/herdr-fleet
+module github.com/DnzzL/herdr-docket
 
 go 1.26.5
 

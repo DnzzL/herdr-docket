@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // fakeSource stands in for the queue so the CLI verbs are tested without a

@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // Source multiplexes named queues behind one work.Source.

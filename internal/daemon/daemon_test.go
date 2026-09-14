@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/host"
-	"github.com/DnzzL/herdr-fleet/internal/runner"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
+	"github.com/DnzzL/herdr-docket/internal/runner"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // memSource is a queue in memory: enough for a tick to read a task, claim it,

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
 // Client talks to the herdr CLI. It holds nothing: the zero value is ready.

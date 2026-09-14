@@ -1,6 +1,6 @@
 package fleet
 
-import "github.com/DnzzL/herdr-fleet/internal/work"
+import "github.com/DnzzL/herdr-docket/internal/work"
 
 // Defaults resolves which agent an unassigned task falls to. One value for
 // the whole fleet is not enough once it works more than one project: an agent

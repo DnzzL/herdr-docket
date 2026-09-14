@@ -5,10 +5,10 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
-	"github.com/DnzzL/herdr-fleet/internal/work/basecamp"
-	"github.com/DnzzL/herdr-fleet/internal/work/multi"
+	"github.com/DnzzL/herdr-docket/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-docket/internal/work/basecamp"
+	"github.com/DnzzL/herdr-docket/internal/work/multi"
 )
 
 // The queues the fleet knows how to speak to.

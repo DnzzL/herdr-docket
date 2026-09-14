@@ -1,4 +1,4 @@
-# herdr-fleet
+# herdr-docket
 
 **A shared task queue worked by your coding agents.** A [Backlog.md](https://backlog.md)
 project as the queue — or Basecamp, if that's where your work already lives
@@ -6,6 +6,12 @@ project as the queue — or Basecamp, if that's where your work already lives
 the workers, and a daemon that routes every open task to the agent it names —
 agents in parallel, one run each, in [Herdr](https://herdr.dev) workspaces you
 can watch, join, or close.
+
+*docket*: the list on the wall of the work a crew will get to — what the queue is, all of it.
+Part of the [Herdr plugin family](https://herdr.dev/docs/plugins/).
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/go-1.26-00ADD8.svg)](https://go.dev)
 
 ```text
       you ─────────┐
@@ -16,14 +22,14 @@ can watch, join, or close.
 Write a task, assign it to an agent, walk away:
 
 ```bash
-herdr-fleet task create "Triage the project backlog" \
+herdr-docket task create "Triage the project backlog" \
   -d "Route every needs-triage task: out of scope, agent-ready, or needs a human." \
   -a pm
 ```
 
 Within 15 seconds the daemon opens a workspace on that agent's repo, starts a real
 coding agent (Claude Code by default) with the agent's persona plus the task, and
-the agent reports back into the queue itself with `herdr-fleet task done|fail|block`.
+the agent reports back into the queue itself with `herdr-docket task done|fail|block`.
 You come back to a board that tells the truth — and to nothing else,
 because a run that ends `Done` cleans its own workspace up.
 
@@ -52,7 +58,7 @@ status you name**, so handing it a project means handing it one column, not a
 board. Your triage, your wontfix, your waiting-on-a-human columns stay yours —
 see [Where the work lives](#where-the-work-lives).
 
-It never overrides you in the other direction either: `herdr-fleet run TASK-12`
+It never overrides you in the other direction either: `herdr-docket run TASK-12`
 reaches a paused agent and an over-budget one, because pressing the button is
 human intent, not scheduling.
 
@@ -79,15 +85,15 @@ read, diff, and back up:
 - **A shared brief.** If `~/fleet/FLEET.md` exists, its body is prepended to
   every agent's persona — the one place for what is true of the whole company:
   what the product is, who the human is, what never to do. Absent, every prompt
-  is exactly what it would have been without it. `herdr-fleet init` writes a
+  is exactly what it would have been without it. `herdr-docket init` writes a
   commented example; delete it or fill it in.
 - **One at a time, per agent.** Agents work in parallel, but each agent runs
   a single task to completion — and root-mode agents sharing a checkout are
   serialized, because the thing to protect is the working copy, not a queue.
   A second `To Do` task for a busy agent simply waits its turn.
 - **The agent closes its own task** through the fleet CLI — it reports where
-  things stand with `herdr-fleet task note`, then closes with exactly one of
-  `herdr-fleet task done | fail | block`. It never needs credentials for, or
+  things stand with `herdr-docket task note`, then closes with exactly one of
+  `herdr-docket task done | fail | block`. It never needs credentials for, or
   knowledge of, whatever backend is behind the queue. If it ends silent, the
   daemon closes the task for it: a run that ends with nothing to show for it
   goes `Failed`, a workspace you closed mid-run goes `Blocked` (you decided,
@@ -188,7 +194,7 @@ roles — and you write your own: `roles/marketer.md`, `roles/reviewer.md`.
 A `role:` naming a file that does not exist **grounds that agent**, on purpose.
 A brief nobody asked for may be missing; one an agent points at may not, or the
 run is assembled with a third of its instructions gone and nothing says so.
-`herdr-fleet agent list` names what failed, and the rest of the fleet keeps
+`herdr-docket agent list` names what failed, and the rest of the fleet keeps
 working.
 
 One thing that does *not* belong in any of the three: your project's status
@@ -213,14 +219,14 @@ Unset means unbounded, exactly as before. Reaching a limit spends it: the run
 that would cross the line waits. A spent agent is like a busy one — its `To Do`
 tasks stay open with nothing written on them, and the rest of the queue keeps
 moving — and because the window rolls, the budget re-opens on its own as old
-runs age out. `herdr-fleet agent list` (and the board's `g` view) shows the
+runs age out. `herdr-docket agent list` (and the board's `g` view) shows the
 spend for any agent that has a budget:
 
 ```bash
-herdr-fleet agent list           # dev  active  ~/Projects/myapp  4/6 runs today, 130/180 min
+herdr-docket agent list           # dev  active  ~/Projects/myapp  4/6 runs today, 130/180 min
 ```
 
-Budgets are scheduling policy, not a lock: `herdr-fleet run TASK-12` still
+Budgets are scheduling policy, not a lock: `herdr-docket run TASK-12` still
 starts a run for an over-budget agent, because pressing the button is human
 intent — the same rule that lets a manual run reach a paused agent.
 
@@ -232,14 +238,14 @@ in the queue without a word written on them. Pause from the CLI instead of
 by hand:
 
 ```bash
-herdr-fleet agent pause dev      # resume with: agent resume dev
-herdr-fleet agent list           # dev  paused  ~/Projects/myapp
+herdr-docket agent pause dev      # resume with: agent resume dev
+herdr-docket agent list           # dev  paused  ~/Projects/myapp
 ```
 
 The daemon re-reads `agents/` on every tick, so a pause lands within ~15s and
 needs no restart. Two things it deliberately does *not* do: it never kills a
 run already in flight (that agent keeps its full timeout and still reports its
-task), and it never overrides you — `herdr-fleet run TASK-12` reaches a paused
+task), and it never overrides you — `herdr-docket run TASK-12` reaches a paused
 agent, because pressing the button is human intent, not scheduling.
 
 ### Example 1 — a PM that triages your project's backlog
@@ -274,7 +280,7 @@ a comment with 2–4 sentences of reasoning. Never delete a task; never write co
 Then, whenever the inbox fills up:
 
 ```bash
-herdr-fleet task create "Triage the backlog" -a pm \
+herdr-docket task create "Triage the backlog" -a pm \
   -d "Route every needs-triage task, and say why in a comment on each one."
 ```
 
@@ -375,7 +381,7 @@ recording in the repo root, and say so in the persona.
    - the reporting protocol.
 3. The agent works — you can watch it live, jump in, answer its permission
    prompts, or close its workspace to call the run off.
-4. The agent reports back with `herdr-fleet task note` as it goes, then closes
+4. The agent reports back with `herdr-docket task note` as it goes, then closes
    with `done`, `fail`, or `block` and a note saying what happened and how it
    knows. The daemon reconciles anything left hanging and records the run in
    an append-only `history.jsonl`.
@@ -387,13 +393,13 @@ the queue itself is the checkpoint mechanism.
 ## Quick start
 
 ```bash
-herdr plugin install DnzzL/herdr-fleet
-herdr-fleet init                     # backlog project + example agent in ~/fleet
+herdr plugin install DnzzL/herdr-docket
+herdr-docket init                     # backlog project + example agent in ~/fleet
 $EDITOR ~/fleet/agents/example/AGENT.md
-herdr-fleet task create "First task" -a example
+herdr-docket task create "First task" -a example
 ```
 
-The board pane (overlay in Herdr, or `herdr-fleet pane`) shows the queue grouped
+The board pane (overlay in Herdr, or `herdr-docket pane`) shows the queue grouped
 by phase: `r` runs a task now, `enter` jumps into the workspace a run opened,
 `a` adds a task. Bind it to a chord in `~/.config/herdr/config.toml`:
 
@@ -401,7 +407,7 @@ by phase: `r` runs a task now, `enter` jumps into the workspace a run opened,
 [[keys.command]]
 key = "prefix+f"
 type = "shell"
-command = "herdr plugin pane open --plugin dnzzl.fleet --entrypoint board --placement overlay"
+command = "herdr plugin pane open --plugin dnzzl.docket --entrypoint board --placement overlay"
 ```
 
 Nothing happens when you press the chord? A linked plugin is registered but not
@@ -411,11 +417,11 @@ for the pane directly, which prints the error the keybinding swallows:
 
 ```bash
 herdr plugin list                      # enabled? and does bin/ actually exist?
-herdr plugin pane open --plugin dnzzl.fleet --entrypoint board --placement overlay
+herdr plugin pane open --plugin dnzzl.docket --entrypoint board --placement overlay
 herdr plugin pane close PANE_ID        # this opens the board without any chord
 ```
 
-`plugin_disabled` → `herdr plugin enable dnzzl.fleet`. `... because it does not
+`plugin_disabled` → `herdr plugin enable dnzzl.docket`. `... because it does not
 exist` → run the manifest's build step (`sh scripts/install.sh`). Both take
 effect without restarting the Herdr server, so no running agent loses its pane.
 
@@ -475,7 +481,7 @@ much of your board you are handing over.
 pick from but cannot close leaves every task open for the next tick to pick up
 again. `in_progress` is optional: it is display only, so a project with no word
 for it simply never shows one. A source with a `dir:` of its own is never
-scaffolded or patched by `herdr-fleet init`; its config stays yours.
+scaffolded or patched by `herdr-docket init`; its config stays yours.
 
 ### Several projects at once
 
@@ -499,12 +505,12 @@ sources:
 
 Each source's tasks carry its name as an id prefix — `myapp/TASK-12`,
 `agency/987654` — so every command that takes an id (`task view`, `note`,
-`done|fail|block`) routes to the right project, and `herdr-fleet list` and the
+`done|fail|block`) routes to the right project, and `herdr-docket list` and the
 board show them all together. Creating work then names the project, because a
 bare `task create` cannot guess:
 
 ```bash
-herdr-fleet task create "Triage the backlog" -a pm -s myapp
+herdr-docket task create "Triage the backlog" -a pm -s myapp
 ```
 
 Each source names the agent its unassigned work falls to, because an agent
@@ -528,7 +534,7 @@ unassigned task is by definition unspecced, so the agent that receives it
 should be the one that specs it and then hands it on:
 
 ```bash
-herdr-fleet task assign myapp/TASK-12 dev
+herdr-docket task assign myapp/TASK-12 dev
 ```
 
 `assign` is how one agent passes work to another without closing it: same
@@ -563,7 +569,7 @@ with the redirect URI `http://localhost:8917/callback`, then:
 ```sh
 export HERDR_FLEET_BASECAMP_CLIENT_ID=...
 export HERDR_FLEET_BASECAMP_CLIENT_SECRET=...   # only if your app has one
-herdr-fleet auth basecamp
+herdr-docket auth basecamp
 ```
 
 The tokens land in `credentials.yaml` (0600) beside `fleet.yaml` and never in
@@ -599,28 +605,28 @@ PRs welcome.
 
 | | |
 | --- | --- |
-| `herdr-fleet daemon` | the worker (Herdr starts it for you) |
-| `herdr-fleet init` | bootstrap the fleet dir |
-| `herdr-fleet auth basecamp` | sign in to a hosted queue, once |
-| `herdr-fleet list` | the queue, grouped by phase, with the routed agent |
-| `herdr-fleet run TASK-12` | run one task now |
-| `herdr-fleet task list` | the queue as the agent sees it (`--all` includes closed work) |
-| `herdr-fleet task view ID` | one task: body, notes, criteria, and who it is routed to |
-| `herdr-fleet task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several) |
-| `herdr-fleet task assign ID AGENT` | hand a task to another agent, same id, same thread |
-| `herdr-fleet task note ID "…"` | say where things stand without closing |
-| `herdr-fleet task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence) |
-| `herdr-fleet agent list` | the agents, and which are parked |
-| `herdr-fleet agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
-| `herdr-fleet history [TASK-12]` | recent runs |
-| `herdr-fleet pane` | the interactive board |
-| `herdr-fleet install-skill` | teach your coding agent to write fleet tasks |
+| `herdr-docket daemon` | the worker (Herdr starts it for you) |
+| `herdr-docket init` | bootstrap the fleet dir |
+| `herdr-docket auth basecamp` | sign in to a hosted queue, once |
+| `herdr-docket list` | the queue, grouped by phase, with the routed agent |
+| `herdr-docket run TASK-12` | run one task now |
+| `herdr-docket task list` | the queue as the agent sees it (`--all` includes closed work) |
+| `herdr-docket task view ID` | one task: body, notes, criteria, and who it is routed to |
+| `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several) |
+| `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
+| `herdr-docket task note ID "…"` | say where things stand without closing |
+| `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence) |
+| `herdr-docket agent list` | the agents, and which are parked |
+| `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
+| `herdr-docket history [TASK-12]` | recent runs |
+| `herdr-docket pane` | the interactive board |
+| `herdr-docket install-skill` | teach your coding agent to write fleet tasks |
 
 ## What it isn't
 
 - **Not a scheduler.** Recurring work belongs to
   [herdr-automations](https://github.com/DnzzL/herdr-automations) — point an
-  automation's prompt at `herdr-fleet task create` and the two plugins compose:
+  automation's prompt at `herdr-docket task create` and the two plugins compose:
   automations decide *when*, fleet decides *what* and *who*.
 - **Not a workflow engine.** A task is one goal for one agent. Fan-out happens
   the honest way: an agent creates follow-up tasks in the same queue.
@@ -638,7 +644,7 @@ keeps the fleet queue separate from a project's own. Agents only discover skills
 under `~/.claude/skills`, so install it once:
 
 ```bash
-herdr-fleet install-skill     # symlinks into ~/.claude/skills
+herdr-docket install-skill     # symlinks into ~/.claude/skills
 ```
 
 It points a symlink at the bundled skill, so plugin upgrades update the skill

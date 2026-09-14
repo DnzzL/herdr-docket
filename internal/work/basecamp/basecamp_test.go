@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/worktest"
+	"github.com/DnzzL/herdr-docket/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work/worktest"
 )
 
 // fakeBasecamp answers the endpoints the adapter uses and remembers what it

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // Run exercises a Source against the contract.

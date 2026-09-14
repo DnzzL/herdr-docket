@@ -3,8 +3,8 @@ package pane
 import (
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 func TestRowsGroupsByPhaseOrderAndSkipsEmptyPhases(t *testing.T) {

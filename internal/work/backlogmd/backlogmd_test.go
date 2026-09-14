@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/worktest"
+	"github.com/DnzzL/herdr-docket/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work/worktest"
 )
 
 // fakeClient is the adapter's seam: the Backlog.md client is a process

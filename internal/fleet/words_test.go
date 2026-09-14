@@ -3,7 +3,7 @@ package fleet
 import (
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
 )
 
 func vocab(todo, inProgress, done, failed, blocked string) backlogmd.Vocabulary {

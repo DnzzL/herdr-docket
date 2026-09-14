@@ -1,4 +1,4 @@
-project_name: "herdr-fleet"
+project_name: "herdr-docket"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []

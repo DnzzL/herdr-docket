@@ -1,4 +1,4 @@
-# herdr-fleet
+# herdr-docket
 
 A shared task queue worked by your coding agents. The queue lives in a backend
 (a Backlog.md project or a Basecamp project) and the fleet keeps no copy of it.

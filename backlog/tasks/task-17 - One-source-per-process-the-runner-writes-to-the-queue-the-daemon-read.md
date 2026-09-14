@@ -23,6 +23,6 @@ One source per evaluation, and every side effect of that evaluation goes through
 <!-- AC:BEGIN -->
 - [ ] #1 The daemon uses exactly one Source per tick: the tasks it picks from and the one it claims, comments and closes on are the same value
 - [ ] #2 A test changes the source between two ticks and shows the run's writes land on the new queue
-- [ ] #3 herdr-fleet run and the pane are unchanged in behaviour, and still build their source through fleet.NewSource
+- [ ] #3 herdr-docket run and the pane are unchanged in behaviour, and still build their source through fleet.NewSource
 - [ ] #4 go test ./... is green
 <!-- AC:END -->

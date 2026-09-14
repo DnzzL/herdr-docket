@@ -14,7 +14,7 @@ ordinal: 22000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-`herdr-fleet task create` takes a title, `-d`, `-a` and `-s`. It cannot write an acceptance criterion, and the port has no verb for one either.
+`herdr-docket task create` takes a title, `-d`, `-a` and `-s`. It cannot write an acceptance criterion, and the port has no verb for one either.
 
 That gap is not theoretical: two personas already route around it. `dev` and `reviewer` both hand work on by creating a task with criteria, and both had to be written to call `backlog task create --ac` from the repo root instead of the fleet CLI. It works today only because a source can now be the project's own board — the moment a fleet works a queue that is not the agent's checkout, the workaround stops working and the criteria are simply lost.
 
@@ -27,7 +27,7 @@ Not urgent. Raised while writing the personas for v0.3.0; parked deliberately un
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 herdr-fleet task create can attach acceptance criteria at creation, or the fleet states plainly why it never will
+- [ ] #1 herdr-docket task create can attach acceptance criteria at creation, or the fleet states plainly why it never will
 - [ ] #2 No shipped persona reaches past the fleet CLI to write a task any more
 - [ ] #3 An adapter that cannot store criteria fails or degrades in a stated way, never silently drops them
 <!-- AC:END -->

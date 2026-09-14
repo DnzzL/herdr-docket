@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/herdr"
+	"github.com/DnzzL/herdr-docket/internal/herdr"
 )
 
 // fakeOps scripts Herdr's answers. A nil field means "this call is fine and

@@ -7,7 +7,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/DnzzL/herdr-fleet/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
 // Settings is fleet.yaml in the plugin's config dir. Optional: the zero

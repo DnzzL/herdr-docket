@@ -53,8 +53,8 @@ const (
 // http://localhost:8917/callback and export these. They are configuration,
 // not fleet.yaml, because they identify the app rather than any one fleet.
 const (
-	clientIDEnv     = "HERDR_FLEET_BASECAMP_CLIENT_ID"
-	clientSecretEnv = "HERDR_FLEET_BASECAMP_CLIENT_SECRET"
+	clientIDEnv     = "HERDR_DOCKET_BASECAMP_CLIENT_ID"
+	clientSecretEnv = "HERDR_DOCKET_BASECAMP_CLIENT_SECRET"
 )
 
 // loginPort is fixed so the redirect URI can be registered once.
@@ -175,7 +175,7 @@ func (c *credentials) access() (string, error) {
 		return c.token.AccessToken, nil
 	}
 	if c.token.RefreshToken == "" {
-		return "", fmt.Errorf("no Basecamp credentials: run `herdr-fleet auth basecamp`")
+		return "", fmt.Errorf("no Basecamp credentials: run `herdr-docket auth basecamp`")
 	}
 	fresh, err := c.oauth.refresh(c.token.RefreshToken)
 	if err != nil {
@@ -211,7 +211,7 @@ func Login(out io.Writer) error {
 
 	redirect := fmt.Sprintf("http://localhost:%d/callback", loginPort)
 	authURL := o.authorizeURL(redirect, state)
-	fmt.Fprintf(out, "Authorize herdr-fleet in Basecamp:\n\n  %s\n\n", authURL)
+	fmt.Fprintf(out, "Authorize herdr-docket in Basecamp:\n\n  %s\n\n", authURL)
 	openBrowser(authURL)
 
 	code, err := waitForCode(ln, state)

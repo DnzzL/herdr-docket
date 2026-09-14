@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
 )
 
 // The Backlog.md CLI refuses any status the project config does not declare,

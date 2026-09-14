@@ -12,14 +12,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/herdr"
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/host"
-	"github.com/DnzzL/herdr-fleet/internal/pick"
-	"github.com/DnzzL/herdr-fleet/internal/runner"
-	"github.com/DnzzL/herdr-fleet/internal/text"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/herdr"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
+	"github.com/DnzzL/herdr-docket/internal/pick"
+	"github.com/DnzzL/herdr-docket/internal/runner"
+	"github.com/DnzzL/herdr-docket/internal/text"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 var (

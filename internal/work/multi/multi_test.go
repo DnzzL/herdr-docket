@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/worktest"
+	"github.com/DnzzL/herdr-docket/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work/worktest"
 )
 
 // memSource is a sub-source in memory: enough to exercise the composite

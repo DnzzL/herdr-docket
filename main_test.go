@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
-// `herdr-fleet run` is explicit human intent: it must reach a parked agent
+// `herdr-docket run` is explicit human intent: it must reach a parked agent
 // anyway, so pausing parks the scheduler rather than forbidding the work.
 func TestManualRunReachesADisabledAgent(t *testing.T) {
 	agents := map[string]fleet.Agent{"dev": {Name: "dev", Disabled: true}}

@@ -18,7 +18,7 @@ import (
 
 // PluginID must match the id in herdr-plugin.toml: it locates the same
 // directories Herdr hands the daemon when the CLI is run from a plain shell.
-const PluginID = "dnzzl.fleet"
+const PluginID = "dnzzl.herdr-docket"
 
 // Bin locates the herdr CLI. HERDR_BIN_PATH is herdr telling a plugin exactly
 // which binary to call back into, so it wins — but only if it still exists. A
@@ -65,7 +65,7 @@ func StateDir() string {
 }
 
 // Root locates the plugin checkout: Herdr sets it, otherwise derive it from
-// the binary's location (bin/herdr-fleet lives inside the checkout).
+// the binary's location (bin/herdr-docket lives inside the checkout).
 func Root() (string, error) {
 	if r := os.Getenv("HERDR_PLUGIN_ROOT"); r != "" {
 		return r, nil

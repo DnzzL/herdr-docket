@@ -27,10 +27,10 @@ The fleet generated that agent name. It provisioned that workspace. It recorded 
 
 ## What the surfaces show today
 
-- `herdr-fleet list`: id, truncated title, routed agent. Nothing about runs at all.
-- `herdr-fleet history`: timestamp, status, task, trigger, duration, and an error string. No branch, no PR, no workspace, no note.
+- `herdr-docket list`: id, truncated title, routed agent. Nothing about runs at all.
+- `herdr-docket history`: timestamp, status, task, trigger, duration, and an error string. No branch, no PR, no workspace, no note.
 - The board pane: two views, tasks and agents, `j/k move · r run · enter jump to run · a add · / search · g agents · q quit`. `enter` jumps into a workspace — which is the one good answer already there, and it only works if you already know which row is running.
-- The daemon log goes to stdout, captured to a file by whoever started it. `herdr-fleet` has no way to read its own daemon's log.
+- The daemon log goes to stdout, captured to a file by whoever started it. `herdr-docket` has no way to read its own daemon's log.
 
 ## What "better" means here, concretely
 
@@ -53,6 +53,6 @@ Some of this is Herdr's to give rather than the fleet's. Where the answer is "He
 <!-- AC:BEGIN -->
 - [ ] #1 From the board alone, a human can see that a run is in flight, which agent has it, and how long it has been running against its timeout
 - [ ] #2 The agent's live output is reachable from the fleet's own surfaces without discovering a generated name by hand
-- [ ] #3 herdr-fleet history records what a run produced — at minimum its branch and any PR — rather than leaving it in prose inside a task note
+- [ ] #3 herdr-docket history records what a run produced — at minimum its branch and any PR — rather than leaving it in prose inside a task note
 - [ ] #4 An ADR states what the board pane is for, and the additions are the ones that decision implies
 <!-- AC:END -->

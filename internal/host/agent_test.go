@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/herdr"
+	"github.com/DnzzL/herdr-docket/internal/herdr"
 )
 
 func agentWorkWith(ops ops, a Spec) agentWork {

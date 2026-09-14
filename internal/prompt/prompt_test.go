@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
@@ -29,11 +29,11 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 		"TASK-7", "Draft launch post", "Write the Show HN post.",
 		"[ ] #1 under 200 words", "[x] #2 links the repo",
 		"previous attempt stalled",
-		"herdr-fleet task note TASK-7",
-		"herdr-fleet task done TASK-7",
-		"herdr-fleet task fail TASK-7",
-		"herdr-fleet task block TASK-7",
-		"herdr-fleet task create",
+		"herdr-docket task note TASK-7",
+		"herdr-docket task done TASK-7",
+		"herdr-docket task fail TASK-7",
+		"herdr-docket task block TASK-7",
+		"herdr-docket task create",
 		"-a marketing",
 		"one coherent slice",
 	} {

@@ -1,6 +1,6 @@
 package fleet
 
-import "github.com/DnzzL/herdr-fleet/internal/work"
+import "github.com/DnzzL/herdr-docket/internal/work"
 
 // Words are the status words one queue writes, in that queue's own language.
 // The fleet already owns them — a source's statuses: block, or the default —

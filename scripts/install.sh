@@ -3,17 +3,17 @@
 # not required; falls back to building from source when that isn't possible.
 set -eu
 
-REPO="DnzzL/herdr-fleet"
-OUT="bin/herdr-fleet"
+REPO="DnzzL/herdr-docket"
+OUT="bin/herdr-docket"
 VERSION=$(sed -n 's/^version *= *"\(.*\)"/\1/p' herdr-plugin.toml | head -1)
 
 build_from_source() {
 	if ! command -v go >/dev/null 2>&1; then
-		echo "herdr-fleet: no prebuilt binary for this platform and Go is not installed." >&2
+		echo "herdr-docket: no prebuilt binary for this platform and Go is not installed." >&2
 		echo "Install Go (https://go.dev/dl/) and reinstall the plugin." >&2
 		exit 1
 	fi
-	echo "herdr-fleet: building from source"
+	echo "herdr-docket: building from source"
 	go build -ldflags "-X main.Version=${VERSION}" -o "$OUT" .
 }
 
@@ -29,14 +29,14 @@ x86_64 | amd64) arch=amd64 ;;
 *) build_from_source; exit 0 ;;
 esac
 
-asset="herdr-fleet_${os}_${arch}"
+asset="herdr-docket_${os}_${arch}"
 base="https://github.com/${REPO}/releases/download/v${VERSION}"
 mkdir -p bin
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 if ! curl -fsSL "${base}/${asset}" -o "${tmp}/${asset}"; then
-	echo "herdr-fleet: no release asset ${asset} for v${VERSION}"
+	echo "herdr-docket: no release asset ${asset} for v${VERSION}"
 	build_from_source
 	exit 0
 fi
@@ -53,7 +53,7 @@ if curl -fsSL "${base}/checksums.txt" -o "${tmp}/checksums.txt"; then
 	if [ -n "$actual" ]; then
 		expected=$(grep " ${asset}\$" "${tmp}/checksums.txt" | cut -d' ' -f1)
 		if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
-			echo "herdr-fleet: checksum mismatch for ${asset}, refusing the download." >&2
+			echo "herdr-docket: checksum mismatch for ${asset}, refusing the download." >&2
 			build_from_source
 			exit 0
 		fi
@@ -65,9 +65,9 @@ chmod +x "$OUT"
 
 # A binary that can't run here (wrong libc, bad download) must not ship.
 if ! "./$OUT" version >/dev/null 2>&1; then
-	echo "herdr-fleet: prebuilt binary did not run, falling back"
+	echo "herdr-docket: prebuilt binary did not run, falling back"
 	build_from_source
 	exit 0
 fi
 
-echo "herdr-fleet: installed prebuilt v${VERSION} (${os}/${arch})"
+echo "herdr-docket: installed prebuilt v${VERSION} (${os}/${arch})"

@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/herdr"
+	"github.com/DnzzL/herdr-docket/internal/herdr"
 )
 
 // agentWork starts an interactive agent, hands it the prompt, and waits for it

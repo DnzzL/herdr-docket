@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DnzzL/herdr-fleet/internal/work"
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
-	"github.com/DnzzL/herdr-fleet/internal/work/basecamp"
+	"github.com/DnzzL/herdr-docket/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-docket/internal/work/basecamp"
 )
 
 // A fleet that names no source at all still works: Backlog.md in the fleet
@@ -166,7 +166,7 @@ func TestOnlyAHostedQueueCanBeSignedInTo(t *testing.T) {
 // listener when there is no application to authorize against.
 func TestAuthingBasecampReachesTheBasecampFlow(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", t.TempDir())
-	t.Setenv("HERDR_FLEET_BASECAMP_CLIENT_ID", "")
+	t.Setenv("HERDR_DOCKET_BASECAMP_CLIENT_ID", "")
 	err := Auth("basecamp", io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "Launchpad client id") {
 		t.Fatalf("err = %v, want the missing-client-id message from the basecamp flow", err)

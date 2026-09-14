@@ -1,4 +1,4 @@
-// herdr-fleet — the queue layer for Herdr agents: a shared task queue,
+// herdr-docket — the queue layer for Herdr agents: a shared task queue,
 // AGENT.md personas as the workers, and a daemon that routes open tasks to
 // real coding agents, one run at a time. The queue is a Backlog.md project or
 // a Basecamp project; which one is configuration, and nothing above the
@@ -13,43 +13,43 @@ import (
 	"strings"
 	"time"
 
-	"github.com/DnzzL/herdr-fleet/internal/daemon"
-	"github.com/DnzzL/herdr-fleet/internal/fleet"
-	"github.com/DnzzL/herdr-fleet/internal/history"
-	"github.com/DnzzL/herdr-fleet/internal/host"
-	"github.com/DnzzL/herdr-fleet/internal/hostpath"
-	"github.com/DnzzL/herdr-fleet/internal/pane"
-	"github.com/DnzzL/herdr-fleet/internal/pick"
-	"github.com/DnzzL/herdr-fleet/internal/runner"
-	"github.com/DnzzL/herdr-fleet/internal/skill"
-	"github.com/DnzzL/herdr-fleet/internal/text"
-	"github.com/DnzzL/herdr-fleet/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/daemon"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/pane"
+	"github.com/DnzzL/herdr-docket/internal/pick"
+	"github.com/DnzzL/herdr-docket/internal/runner"
+	"github.com/DnzzL/herdr-docket/internal/skill"
+	"github.com/DnzzL/herdr-docket/internal/text"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // Version is stamped by the release build; "dev" for local builds.
 var Version = "dev"
 
-const usage = `herdr-fleet — a task queue worked by your Herdr agents
+const usage = `herdr-docket — a task queue worked by your Herdr agents
 
 Usage:
-  herdr-fleet daemon           Run the worker (started by the plugin startup hook)
-  herdr-fleet init             Bootstrap the fleet dir (the local Backlog.md project + example agent)
-  herdr-fleet auth <queue>     Sign in to a hosted queue and store its credentials
-  herdr-fleet list             List the queue, grouped by phase
-  herdr-fleet run <task-id>    Run one open task now, whatever its phase
-  herdr-fleet task list        List open work from the queue (--all for closed)
-  herdr-fleet task view <id>   Show one task: body, notes and criteria
-  herdr-fleet task create      Add work: "<title>" [-a <agent>] [-d "<body>"]
-  herdr-fleet task assign <id> <agent>  Hand a task to another agent
-  herdr-fleet task note <id>   Append to a task's notes
-  herdr-fleet task done|fail|block <id> [--note "..."]  Close with a verdict
-  herdr-fleet agent list       Show the agents and which are paused
-  herdr-fleet agent pause <n>  Stop scheduling an agent (a running task finishes)
-  herdr-fleet agent resume <n> Start scheduling it again
-  herdr-fleet history [id]     Show recent runs
-  herdr-fleet pane             Interactive board (used by the Herdr pane)
-  herdr-fleet install-skill    Teach your coding agent to write fleet tasks
-  herdr-fleet version          Print the version
+  herdr-docket daemon           Run the worker (started by the plugin startup hook)
+  herdr-docket init             Bootstrap the fleet dir (the local Backlog.md project + example agent)
+  herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials
+  herdr-docket list             List the queue, grouped by phase
+  herdr-docket run <task-id>    Run one open task now, whatever its phase
+  herdr-docket task list        List open work from the queue (--all for closed)
+  herdr-docket task view <id>   Show one task: body, notes and criteria
+  herdr-docket task create      Add work: "<title>" [-a <agent>] [-d "<body>"]
+  herdr-docket task assign <id> <agent>  Hand a task to another agent
+  herdr-docket task note <id>   Append to a task's notes
+  herdr-docket task done|fail|block <id> [--note "..."]  Close with a verdict
+  herdr-docket agent list       Show the agents and which are paused
+  herdr-docket agent pause <n>  Stop scheduling an agent (a running task finishes)
+  herdr-docket agent resume <n> Start scheduling it again
+  herdr-docket history [id]     Show recent runs
+  herdr-docket pane             Interactive board (used by the Herdr pane)
+  herdr-docket install-skill    Teach your coding agent to write fleet tasks
+  herdr-docket version          Print the version
 
 Fleet dir: %s   (override: fleet.yaml in %s)
 `
@@ -94,7 +94,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "herdr-fleet:", err)
+		fmt.Fprintln(os.Stderr, "herdr-docket:", err)
 		os.Exit(1)
 	}
 }
@@ -109,8 +109,8 @@ func initCmd() error {
 	}
 	fmt.Printf("fleet ready at %s\n", settings.Dir)
 	fmt.Println("- describe your agents in agents/<name>/AGENT.md")
-	fmt.Println("- add work: herdr-fleet task create \"...\" -a <agent>")
-	fmt.Println("- the daemon (or `herdr-fleet daemon`) picks tasks up from there")
+	fmt.Println("- add work: herdr-docket task create \"...\" -a <agent>")
+	fmt.Println("- the daemon (or `herdr-docket daemon`) picks tasks up from there")
 	return nil
 }
 
@@ -118,7 +118,7 @@ func initCmd() error {
 // fleet's business, not the CLI's.
 func authCmd(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: herdr-fleet auth <queue>   (queues that sign in: basecamp)")
+		return fmt.Errorf("usage: herdr-docket auth <queue>   (queues that sign in: basecamp)")
 	}
 	return fleet.Auth(args[0], os.Stdout)
 }
@@ -193,7 +193,7 @@ func taskCmd(args []string) error {
 // verdict.
 func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-fleet task list|view|create|assign|note|done|fail|block")
+		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|done|fail|block")
 	}
 	switch args[0] {
 	case "list":
@@ -207,19 +207,19 @@ func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 		return taskList(src, out, all)
 	case "view":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: herdr-fleet task view <id>")
+			return fmt.Errorf("usage: herdr-docket task view <id>")
 		}
 		return taskView(src, args[1], out)
 	case "create":
 		return taskCreate(src, args[1:], out)
 	case "assign":
 		if len(args) != 3 {
-			return fmt.Errorf("usage: herdr-fleet task assign <id> <agent>")
+			return fmt.Errorf("usage: herdr-docket task assign <id> <agent>")
 		}
 		return taskAssign(src, args[1], args[2], out)
 	case "note":
 		if len(args) != 3 {
-			return fmt.Errorf(`usage: herdr-fleet task note <id> "<text>"`)
+			return fmt.Errorf(`usage: herdr-docket task note <id> "<text>"`)
 		}
 		return src.Comment(args[1], args[2])
 	case "done", "fail", "block":
@@ -233,7 +233,7 @@ func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 // some other way says so rather than accepting the call and doing nothing.
 //
 // The agent name is not checked against agents/ — same as `task create -a`.
-// An unknown assignee is visible where it matters: `herdr-fleet list` marks
+// An unknown assignee is visible where it matters: `herdr-docket list` marks
 // it, and the picker leaves the task alone rather than guessing.
 func taskAssign(src work.Source, id, agent string, out io.Writer) error {
 	a, ok := src.(work.Assigner)
@@ -248,7 +248,7 @@ func taskAssign(src work.Source, id, agent string, out io.Writer) error {
 }
 
 func taskCreate(src work.Source, args []string, out io.Writer) error {
-	const usage = `usage: herdr-fleet task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>]`
+	const usage = `usage: herdr-docket task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>]`
 	var title, body, assignee, queue string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -329,7 +329,7 @@ func taskClose(src work.Source, verb string, args []string, out io.Writer) error
 	if !ok {
 		return fmt.Errorf("unknown closing verb %q", verb)
 	}
-	usage := fmt.Sprintf(`usage: herdr-fleet task %s <id> [--note "<text>"]`, verb)
+	usage := fmt.Sprintf(`usage: herdr-docket task %s <id> [--note "<text>"]`, verb)
 	var id, note string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
@@ -422,7 +422,7 @@ func taskView(src work.Source, id string, out io.Writer) error {
 
 func runCmd(args []string) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: herdr-fleet run <task-id>")
+		return fmt.Errorf("usage: herdr-docket run <task-id>")
 	}
 	settings, board, err := settingsAndSource()
 	if err != nil {
@@ -458,7 +458,7 @@ func routedAgent(agents map[string]fleet.Agent, it work.Task, defaults fleet.Def
 }
 
 // agentCmd is the per-agent pause: list, pause, resume. A pause is a scheduler
-// change only — a run already in flight keeps its timeout, and `herdr-fleet run`
+// change only — a run already in flight keeps its timeout, and `herdr-docket run`
 // still reaches a paused agent, because that call is human intent.
 func agentCmd(args []string) error {
 	settings, err := fleet.LoadSettings()
@@ -466,7 +466,7 @@ func agentCmd(args []string) error {
 		return err
 	}
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-fleet agent list|pause|resume <name>")
+		return fmt.Errorf("usage: herdr-docket agent list|pause|resume <name>")
 	}
 
 	switch args[0] {
@@ -474,7 +474,7 @@ func agentCmd(args []string) error {
 		return agentList(settings.Dir)
 	case "pause", "resume":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: herdr-fleet agent %s <name>", args[0])
+			return fmt.Errorf("usage: herdr-docket agent %s <name>", args[0])
 		}
 		paused := args[0] == "pause"
 		if err := fleet.SetDisabled(settings.Dir, args[1], paused); err != nil {
@@ -518,7 +518,7 @@ func agentList(dir string) error {
 		fmt.Println(line)
 	}
 	for _, d := range diags {
-		fmt.Fprintf(os.Stderr, "herdr-fleet: %s\n", d)
+		fmt.Fprintf(os.Stderr, "herdr-docket: %s\n", d)
 	}
 	return nil
 }

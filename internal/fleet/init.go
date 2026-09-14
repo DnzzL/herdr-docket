@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/DnzzL/herdr-fleet/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
 )
 
 // backlogStatuses is the lifecycle the Backlog.md adapter reads and writes,
@@ -53,7 +53,7 @@ You are the example fleet agent. Describe here who this agent is, what it
 owns, and how it should work: the persona every one of its runs opens with.
 
 Delete this folder or rename it to create your first real agent, then assign
-it a task with the fleet CLI:  herdr-fleet task create "..." -a <agent-name>
+it a task with the fleet CLI:  herdr-docket task create "..." -a <agent-name>
 `
 
 // exampleFleet is the scaffold written once, as FLEET.md, so the shared
