@@ -40,7 +40,7 @@ func usable(path string) bool {
 
 // ConfigDir resolves the config directory. Under Herdr the env var is
 // authoritative; from a plain shell we ask the herdr CLI, so
-// `herdr-automations list` in a terminal always sees what the daemon sees.
+// `herdr-docket list` in a terminal always sees what the daemon sees.
 func ConfigDir() string {
 	if d := os.Getenv("HERDR_PLUGIN_CONFIG_DIR"); d != "" {
 		return d
