@@ -96,6 +96,13 @@ func (a *api) do(operation, query string, vars map[string]any, out any) error {
 	if err != nil {
 		return fmt.Errorf("github: %s: %w", operation, err)
 	}
+	// A token can be revoked while the process runs. There is no expiry the
+	// fleet can read, so a 401 is the only notice it gets: the memo is emptied,
+	// the next call resolves again — the environment, gh and the stored file
+	// may all say something the memo did not — and the request goes out once
+	// more. Once, because a token that is still refused is a sign-in problem
+	// and retrying is only a slower way to say so.
+	retriedToken := false
 	for attempt := 0; ; attempt++ {
 		token, err := a.tokens.access()
 		if err != nil {
@@ -108,14 +115,12 @@ func (a *api) do(operation, query string, vars map[string]any, out any) error {
 
 		switch {
 		case resp.StatusCode == http.StatusUnauthorized:
-			// The token stopped being good while the process was running. It
-			// is resolved again — the environment, gh and the stored file may
-			// all say something the memo does not — and tried once more.
 			a.tokens.invalidate()
-			if attempt == 0 {
-				continue
+			if retriedToken {
+				return fmt.Errorf("github: %s: %s: run `herdr-docket auth github`", operation, statusText(resp, body))
 			}
-			return fmt.Errorf("github: %s: %s: run `herdr-docket auth github`", operation, statusText(resp, body))
+			retriedToken = true
+			continue
 		case rateLimited(resp, body):
 			if attempt >= maxRetries {
 				return fmt.Errorf("github: %s: %s, and still rate limited after %d attempts", operation, statusText(resp, body), attempt+1)

@@ -233,6 +233,44 @@ func TestLoginStoresTheTokenItWasHanded(t *testing.T) {
 	}
 }
 
+// A token that GitHub refuses is not written down. A typo left in
+// credentials.yaml would be found by every run after it, and every one of them
+// would report GitHub's complaint instead of saying to sign in.
+func TestLoginDoesNotStoreATokenGitHubRefused(t *testing.T) {
+	inTempConfigDir(t)
+	f := newFakeBoard()
+	f.unauthorized = 10 // every request, so the viewer check cannot pass
+
+	err := f.source(t).login([]string{"dev"}, "pat-typo", io.Discard)
+	if err == nil {
+		t.Fatal("login with a token GitHub refuses must fail")
+	}
+	stored, loadErr := defaultStore().load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if stored != "" {
+		t.Errorf("the refused token was stored as %q, want nothing written", stored)
+	}
+}
+
+// When gh is there and says no, its own sentence is the useful part of the
+// failure: it names the command that fixes it.
+func TestGHTokenSurfacesWhatGHSaid(t *testing.T) {
+	dir := t.TempDir()
+	script := filepath.Join(dir, "gh")
+	body := "#!/bin/sh\necho 'To get started with GitHub CLI, please run: gh auth login' >&2\nexit 1\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	_, err := ghToken()
+	if err == nil || !strings.Contains(err.Error(), "gh auth login") {
+		t.Fatalf("ghToken = %v, want gh's own complaint", err)
+	}
+}
+
 // Signing in is where the routing field is made, so that no run ever has to
 // change the board's schema underneath a person who is editing it.
 func TestLoginCreatesTheRoutingField(t *testing.T) {

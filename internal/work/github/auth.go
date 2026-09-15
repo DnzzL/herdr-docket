@@ -106,6 +106,12 @@ func ghToken() (string, error) {
 	}
 	out, err := exec.Command("gh", "auth", "token").Output()
 	if err != nil {
+		// gh explains itself on stderr — "please run gh auth login" — and
+		// that sentence is the whole reason the fleet asked it.
+		var failed *exec.ExitError
+		if errors.As(err, &failed) && len(failed.Stderr) > 0 {
+			return "", fmt.Errorf("gh auth token: %s", strings.TrimSpace(string(failed.Stderr)))
+		}
 		return "", fmt.Errorf("gh auth token: %w", err)
 	}
 	return string(out), nil
@@ -132,17 +138,13 @@ func Login(c Config, agents []string, handed string, out io.Writer) error {
 // login is the sign-in itself, on a Source that already knows how to talk to a
 // board. Tests drive this one directly: everything above it is configuration.
 func (s *Source) login(agents []string, handed string, out io.Writer) error {
-	store := defaultStore()
 	if handed = strings.TrimSpace(handed); handed != "" {
 		// A token given on the command line is the one answer that does not
-		// survive the process, so it is also the one worth writing down.
-		// Nothing else is stored: the environment and gh are already durable,
-		// and copying them here would only make a second token to expire.
-		if err := store.save(handed); err != nil {
-			return err
-		}
+		// survive the process, so it is the one worth writing down — but only
+		// once GitHub has answered with it. A typo must not leave a bad token
+		// in credentials.yaml, where every later run would find it and report
+		// GitHub's complaint instead of telling the person to sign in.
 		s.api.tokens = fixedToken(handed)
-		fmt.Fprintf(out, "Token stored in %s\n", store.file.Path)
 	}
 
 	var viewer struct {
@@ -157,6 +159,15 @@ func (s *Source) login(agents []string, handed string, out io.Writer) error {
 		return errors.New("github: the token answered no login — is it still valid?")
 	}
 	fmt.Fprintf(out, "Signed in to GitHub as %s\n", viewer.Viewer.Login)
+	if handed != "" {
+		// Nothing else is stored: the environment and gh are already durable,
+		// and copying them here would only make a second token to expire.
+		store := defaultStore()
+		if err := store.save(handed); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Token stored in %s\n", store.file.Path)
+	}
 
 	board, err := s.board()
 	if err != nil {
