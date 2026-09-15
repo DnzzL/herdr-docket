@@ -1,8 +1,8 @@
 // herdr-docket — the queue layer for Herdr agents: a shared task queue,
 // AGENT.md personas as the workers, and a daemon that routes open tasks to
-// real coding agents, one run at a time. The queue is a Backlog.md project or
-// a Basecamp project; which one is configuration, and nothing above the
-// adapter knows the difference.
+// real coding agents, one run at a time. The queue is a Backlog.md project, a
+// Basecamp project or a GitHub Projects board; which one is configuration, and
+// nothing above the adapter knows the difference.
 package main
 
 import (
@@ -34,7 +34,7 @@ const usage = `herdr-docket — a task queue worked by your Herdr agents
 Usage:
   herdr-docket daemon           Run the worker (started by the plugin startup hook)
   herdr-docket init             Bootstrap the fleet dir (the local Backlog.md project + example agent)
-  herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials
+  herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials ([--token <pat>])
   herdr-docket list             List the queue, grouped by phase
   herdr-docket run <task-id>    Run one open task now, whatever its phase
   herdr-docket task list        List open work from the queue (--all for closed)
@@ -115,12 +115,36 @@ func initCmd() error {
 }
 
 // authCmd is thin on purpose: which queues can be signed in to, and how, is
-// fleet's business, not the CLI's.
+// fleet's business, not the CLI's. The name is a queue kind — basecamp,
+// github — or the name of one source when a fleet has several.
 func authCmd(args []string) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: herdr-docket auth <queue>   (queues that sign in: basecamp)")
+	name, token := "", ""
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i]; {
+		case arg == "--token":
+			if i++; i >= len(args) {
+				return fmt.Errorf("auth: --token wants a personal access token after it")
+			}
+			token = args[i]
+		case strings.HasPrefix(arg, "--token="):
+			token = strings.TrimPrefix(arg, "--token=")
+		case name == "":
+			name = arg
+		default:
+			return fmt.Errorf("auth: unexpected %q", arg)
+		}
 	}
-	return fleet.Auth(args[0], os.Stdout)
+	if name == "" {
+		return fmt.Errorf("usage: herdr-docket auth <queue> [--token <pat>]   (queues that sign in: basecamp, github)")
+	}
+	// Settings rather than a constructed source: signing in is how a
+	// half-configured queue gets *configured*, so building the adapter first
+	// would refuse exactly the fleet that needs this command.
+	settings, err := fleet.LoadSettings()
+	if err != nil {
+		return err
+	}
+	return fleet.Auth(settings, name, token, os.Stdout)
 }
 
 // settingsAndSource resolves the fleet's configuration and the queue it names

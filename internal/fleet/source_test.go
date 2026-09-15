@@ -11,6 +11,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/work"
 	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
 	"github.com/DnzzL/herdr-docket/internal/work/basecamp"
+	"github.com/DnzzL/herdr-docket/internal/work/github"
 )
 
 // A fleet that names no source at all still works: Backlog.md in the fleet
@@ -76,6 +77,7 @@ func TestOnlyALocalQueueIsScaffolded(t *testing.T) {
 		{"", true}, // no block at all: the default, Backlog.md
 		{"backlogmd", true},
 		{"basecamp", false},
+		{"github", false},
 	} {
 		if got := (SourceConfig{Kind: tc.kind}).local(); got != tc.want {
 			t.Errorf("kind %q: local = %v, want %v", tc.kind, got, tc.want)
@@ -94,6 +96,49 @@ func TestOnlyALocalQueueIsScaffolded(t *testing.T) {
 	}
 	if q := (Settings{Dir: "/tmp/fleet"}).ownQueues(); len(q) != 1 {
 		t.Errorf("a fleet with its own queue still creates it, got %d", len(q))
+	}
+}
+
+// A GitHub fleet is a board plus the repository its issues live in. The
+// adapter owns the block's shape; this package only hands it over.
+func TestASourceBlockCarriesTheGithubConfig(t *testing.T) {
+	writeFleetYAML(t, `source:
+  kind: github
+  github:
+    owner: acme
+    project: 3
+    repo: acme/widgets
+`)
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Source.Github.Owner; got != "acme" {
+		t.Fatalf("owner = %q, want acme", got)
+	}
+	if got := s.Source.Github.Project; got != 3 {
+		t.Fatalf("project = %d, want 3", got)
+	}
+	if got := s.Source.Github.Repo; got != "acme/widgets" {
+		t.Fatalf("repo = %q, want acme/widgets", got)
+	}
+	if src, err := NewSource(s); err != nil {
+		t.Fatal(err)
+	} else if _, ok := src.(*github.Source); !ok {
+		t.Fatalf("got %T", src)
+	}
+}
+
+// A board that is half configured is refused at startup, naming the field that
+// is missing: a fleet that ran against no board would look like an empty one.
+func TestAGithubFleetWithNoBoardIsRefused(t *testing.T) {
+	writeFleetYAML(t, "source:\n  kind: github\n  github:\n    project: 3\n")
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewSource(s); err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatalf("err = %v, want it to name the field that is missing", err)
 	}
 }
 
@@ -151,7 +196,7 @@ func TestOnlyAHostedQueueCanBeSignedInTo(t *testing.T) {
 		{"a queue nothing implements", "trello", "trello"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := Auth(tc.kind, io.Discard)
+			err := Auth(Settings{}, tc.kind, "", io.Discard)
 			if err == nil {
 				t.Fatal("want an error")
 			}
@@ -162,12 +207,60 @@ func TestOnlyAHostedQueueCanBeSignedInTo(t *testing.T) {
 	}
 }
 
+// A github fleet with no board says which field is missing, rather than that
+// the queue is unknown. Signing in is where a board first has to exist.
+func TestAuthingGithubAsksForTheBoard(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", t.TempDir())
+	err := Auth(Settings{}, "github", "", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "source.github.owner") {
+		t.Fatalf("err = %v, want it to name the board that is missing", err)
+	}
+}
+
+// A fleet with several queues signs in to the one it names, and a name that is
+// not a kind is looked for among the sources first.
+func TestAuthingNamesTheQueueItMeans(t *testing.T) {
+	board := SourceConfig{Kind: kindGithub, Github: github.Config{Owner: "acme", Project: 3, Repo: "acme/widgets"}}
+	s := Settings{Sources: map[string]SourceConfig{"board": board}}
+
+	if got := s.authSubject("board"); got.Github.Owner != "acme" {
+		t.Errorf("authSubject(\"board\") = %+v, want the named source", got)
+	}
+	// A kind with no source of that kind still answers with an empty block of
+	// it, so the adapter can say what is missing.
+	if got := s.authSubject("github"); got.Github.Owner != "" || got.Kind != "github" {
+		t.Errorf("authSubject(\"github\") = %+v, want an empty github block", got)
+	}
+	// One source, named by its kind, is the one that is signed in to.
+	one := Settings{Source: board}
+	if got := one.authSubject("github"); got.Github.Owner != "acme" {
+		t.Errorf("authSubject(\"github\") = %+v, want the configured board", got)
+	}
+	if got := one.authSubject("basecamp"); got.Github.Owner != "" {
+		t.Errorf("authSubject(\"basecamp\") = %+v, want nothing of the board", got)
+	}
+}
+
+// Who a queue routes to is the fleet's own agents, read from agents/.
+func TestAuthingKnowsTheFleetsAgents(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"reviewer", "dev"} {
+		writeAgent(t, dir, name, "---\nworkdir: "+dir+"\n---\nPersona.")
+	}
+	if got := agentNames(Settings{Dir: dir}); !reflect.DeepEqual(got, []string{"dev", "reviewer"}) {
+		t.Errorf("agentNames = %v, want the fleet's agents in order", got)
+	}
+	if got := agentNames(Settings{Dir: t.TempDir()}); len(got) != 0 {
+		t.Errorf("agentNames of a fleet with no agents = %v, want none", got)
+	}
+}
+
 // basecamp is routed to the real flow, which refuses before it opens a
 // listener when there is no application to authorize against.
 func TestAuthingBasecampReachesTheBasecampFlow(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", t.TempDir())
 	t.Setenv("HERDR_DOCKET_BASECAMP_CLIENT_ID", "")
-	err := Auth("basecamp", io.Discard)
+	err := Auth(Settings{}, "basecamp", "", io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "Launchpad client id") {
 		t.Fatalf("err = %v, want the missing-client-id message from the basecamp flow", err)
 	}

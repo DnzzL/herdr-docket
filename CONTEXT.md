@@ -1,7 +1,8 @@
 # herdr-docket
 
 A shared task queue worked by your coding agents. The queue lives in a backend
-(a Backlog.md project or a Basecamp project) and the fleet keeps no copy of it.
+(a Backlog.md project, a Basecamp project or a GitHub Projects project) and the
+fleet keeps no copy of it.
 
 ## The queue
 
@@ -14,6 +15,10 @@ _Avoid_: backlog, board, sprint
 **Task**:
 One unit of work in the queue.
 _Avoid_: item, ticket, card, issue, to-do
+
+A backend with a vocabulary of its own keeps that word inside its adapter — a
+GitHub adapter says *issue*, because that is what GitHub calls the thing a
+person will go and read — and nothing above the adapter uses it.
 
 **Open**:
 A task that still owes work. The only thing the fleet reads to decide whether
@@ -62,3 +67,9 @@ _Avoid_: job, session, execution
 
 **Board**:
 The interactive view of the queue.
+
+**Project**:
+What a backend calls the container its queue lives in: a GitHub Projects v2
+project, say, which is the queue itself rather than a view of it. A backend
+whose queue is a board says *board* in its own documentation, because that is
+what its users call it; the fleet's _Board_ is always the view.

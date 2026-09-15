@@ -1,7 +1,8 @@
 // Package work is the backend-blind task queue the fleet speaks. A Source is
-// wherever work actually lives — a Backlog.md project, a Basecamp list, or
-// something not written yet — and a Task is one unit of it, in the fleet's
-// own vocabulary. Nothing above an adapter knows which backend answered.
+// wherever work actually lives — a Backlog.md project, a Basecamp list, a
+// GitHub Projects board, or something not written yet — and a Task is one unit
+// of it, in the fleet's own vocabulary. Nothing above an adapter knows which
+// backend answered.
 package work
 
 import (
@@ -107,10 +108,10 @@ const (
 )
 
 // Phaser is the optional capability of a source that can show a task as
-// being worked on. Backlog.md has an In Progress state to write; a Basecamp
-// to-do is simply done or not, and the run lock is what actually keeps two
-// runs apart — so a source without this is not a lesser source, just a
-// quieter one.
+// being worked on. Backlog.md has an In Progress state to write, a GitHub
+// board a Status column; a Basecamp to-do is simply done or not, and the run
+// lock is what actually keeps two runs apart — so a source without this is
+// not a lesser source, just a quieter one.
 type Phaser interface {
 	SetPhase(id string, phase Phase) error
 }
@@ -122,7 +123,8 @@ type Phaser interface {
 //
 // Optional because not every backend has an assignee to write. Basecamp
 // routes by which list a to-do is in, so re-routing there is a move, not a
-// field. Unlike Phaser, a source that cannot do this says so: a re-route that
+// field; a GitHub board routes by a single-select field, so it is a write.
+// Unlike Phaser, a source that cannot do this says so: a re-route that
 // silently did nothing would leave the task with the wrong agent and look
 // like it worked.
 type Assigner interface {

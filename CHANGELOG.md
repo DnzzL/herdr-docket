@@ -14,6 +14,23 @@ What changed for someone using the plugin. Dates are release dates.
   hand.
 - Reading `herdr`'s error envelope from the stream it actually writes: a failing
   `herdr` call used to surface as a parse error instead of the real message.
+- **A GitHub Projects board can be the queue.** `kind: github` with the board's
+  `owner`, its `project` number and the `repo` its issues live in: a task is a
+  real issue that has been put on the board, `assign` writes the board's
+  `Agent` field, and `note`, `done`, `fail` and `block` land on the issue's
+  thread as they do anywhere else. The token wants the `project` scope;
+  `herdr-docket auth github` checks it, stores it (`--token ghp_…` stores a PAT
+  instead) and creates the `Agent` field with one option per agent. It is looked
+  for in `HERDR_DOCKET_GITHUB_TOKEN`, then `gh auth token`, then the stored copy.
+- A GitHub board is read **one page of 100 at a time**, in the board's own
+  order: past that the tail waits for the next poll, and a pull request or a
+  draft card on the board is not the fleet's work. The poll asks for titles and
+  the two columns only — bodies, checklists and comments are read by
+  `task view` — so a tick costs about one of GitHub's 5,000 hourly points
+  rather than a hundred.
+- The README named `HERDR_FLEET_BASECAMP_CLIENT_ID` and `_SECRET` for the
+  Launchpad app. The names the code reads are `HERDR_DOCKET_BASECAMP_CLIENT_ID`
+  and `HERDR_DOCKET_BASECAMP_CLIENT_SECRET`.
 
 ## v0.3.0 — 2026-09-13
 

@@ -1,11 +1,11 @@
 # herdr-docket
 
 **A shared task queue worked by your coding agents.** A [Backlog.md](https://backlog.md)
-project as the queue — or Basecamp, if that's where your work already lives
-(see [Where the work lives](#where-the-work-lives)) — `AGENT.md` personas as
-the workers, and a daemon that routes every open task to the agent it names —
-agents in parallel, one run each, in [Herdr](https://herdr.dev) workspaces you
-can watch, join, or close.
+project as the queue — or Basecamp, or a GitHub Projects board, if that's where
+your work already lives (see [Where the work lives](#where-the-work-lives)) —
+`AGENT.md` personas as the workers, and a daemon that routes every open task to
+the agent it names — agents in parallel, one run each, in
+[Herdr](https://herdr.dev) workspaces you can watch, join, or close.
 
 *docket*: the list on the wall of the work a crew will get to — what the queue is, all of it.
 Part of the [Herdr plugin family](https://herdr.dev/docs/plugins/).
@@ -16,7 +16,8 @@ Part of the [Herdr plugin family](https://herdr.dev/docs/plugins/).
 ```text
       you ─────────┐
  an automation ────┼──► the queue (open) ──► daemon ──► herdr agent run ──► Done | Failed | Blocked
- another agent ────┘    markdown or Basecamp   one run per agent          (the agent reports itself)
+ another agent ────┘    markdown, Basecamp    one run per agent          (the agent reports itself)
+                        or a GitHub board
 ```
 
 Write a task, assign it to an agent, walk away:
@@ -567,8 +568,8 @@ application of its own — register one at
 with the redirect URI `http://localhost:8917/callback`, then:
 
 ```sh
-export HERDR_FLEET_BASECAMP_CLIENT_ID=...
-export HERDR_FLEET_BASECAMP_CLIENT_SECRET=...   # only if your app has one
+export HERDR_DOCKET_BASECAMP_CLIENT_ID=...
+export HERDR_DOCKET_BASECAMP_CLIENT_SECRET=...   # only if your app has one
 herdr-docket auth basecamp
 ```
 
@@ -585,15 +586,76 @@ they talk to. What differs is what the backend can hold: Basecamp has no labels
 `fail` or `block` completes the to-do and says which it was in a comment. A
 to-do in a list the fleet doesn't know about is simply not its work.
 
+### A hosted queue: GitHub Projects
+
+A GitHub Projects v2 board is a queue too — useful when the work is already
+issues in a repo, and the board is how you and a human colleague already look
+at it:
+
+```yaml
+source:
+  kind: github
+  github:
+    owner: your-org           # the board's owner: an org or a user
+    project: 3                # the number in .../projects/3
+    repo: your-org/your-repo  # where Create writes, and what List reads
+    # agent_field: Agent      # the single-select field carrying the agent
+    # status_field: Status    # the board's column field
+    # in_progress: In Progress
+```
+
+**The board is the queue and the repo is the container.** A task is a real
+issue that has been put on the board — not one of the board's own draft cards,
+because a draft card cannot be commented on and work that leaves no trace is
+not work a fleet can hand on. An issue in the repo that is not on the board is
+somebody else's inbox: the fleet says so and never adds it for you.
+
+Sign in once. The token needs the `project` scope (and `repo`, to write
+issues):
+
+```sh
+gh auth login --scopes project                       # or export HERDR_DOCKET_GITHUB_TOKEN
+herdr-docket auth github                             # checks the token, makes the Agent field
+herdr-docket auth github --token ghp_...             # or hand it a PAT to store (0600)
+```
+
+The token is looked for in that order: `HERDR_DOCKET_GITHUB_TOKEN`, then
+`gh auth token`, then the copy `auth github` stored in `credentials.yaml`.
+Signing in also provisions the **`Agent`** single-select field with one option
+per `agents/<name>/`, which is the routing key — an agent is an option on the
+board, and `assign` moves a task between options. It never removes an option
+(removing one clears every item's value that pointed at it) and it says so if
+the name it needs is already a field of another type.
+
+What the board can hold, and what that costs:
+
+- A closed issue is closed work, whatever column it sits in: the issue decides,
+  the column only describes. The **verdict** is a `Verdict: done` comment on the
+  issue (with `closed as completed` / `not planned` alongside it), because
+  GitHub has no word that tells failed from blocked.
+- `List` reads **one page of 100 items** in board order and stops there. Past
+  that, the tail is dropped — see
+  [ADR 0002](docs/adr/0002-list-is-a-page-and-a-verdict-costs-a-request.md).
+- A **pull request or a draft card** on the board is not the fleet's work, and
+  neither is an issue in another repo, so the bot that opened a PR is not a
+  task.
+- The poll asks for titles and the two columns only. Bodies, checklists and
+  threads are read by `task view`, which is why a read of the board costs about
+  one of GitHub's 5,000 hourly points and not a hundred.
+
+Why a board can be a queue at all, and what that costs: [ADR
+0007](docs/adr/0007-a-board-is-a-queue.md).
+
 ### Writing an adapter — contributions welcome
 
-Linear, GitHub Issues, Jira, a directory of text files: if it holds tasks, it
-can be a queue. An adapter is one package under `internal/work/` implementing
-five methods — `List`, `Get`, `Create`, `Comment`, `Close` — plus the optional
-`Phaser` for a backend that can show work in hand. Nothing above an adapter
-knows the backend's name, its status words, or its id format: the core owns the
-vocabulary ([ADR 0001](docs/adr/0001-the-core-owns-the-vocabulary.md)) and the
-adapter translates on the way in and out.
+Linear, Jira, Notion, a directory of text files: if it holds tasks, it can be a
+queue. An adapter is one package under `internal/work/` implementing five
+methods — `List`, `Get`, `Create`, `Comment`, `Close` — plus the optional
+`Phaser` (a backend that can show work in hand) and `Assigner` (one that can
+hand a task to another agent). Nothing above an adapter knows the backend's
+name, its status words, or its id format: the core owns the vocabulary
+([ADR 0001](docs/adr/0001-the-core-owns-the-vocabulary.md)) and the adapter
+translates on the way in and out.
 
 `internal/work/worktest` is a conformance suite any adapter can run against
 itself, so "does this behave like a queue?" is a test rather than a review.
@@ -608,6 +670,7 @@ PRs welcome.
 | `herdr-docket daemon` | the worker (Herdr starts it for you) |
 | `herdr-docket init` | bootstrap the fleet dir |
 | `herdr-docket auth basecamp` | sign in to a hosted queue, once |
+| `herdr-docket auth github` | same, for a GitHub Projects board (`--token <pat>` to store one) |
 | `herdr-docket list` | the queue, grouped by phase, with the routed agent |
 | `herdr-docket run TASK-12` | run one task now |
 | `herdr-docket task list` | the queue as the agent sees it (`--all` includes closed work) |
