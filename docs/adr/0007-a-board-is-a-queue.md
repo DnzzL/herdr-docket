@@ -84,6 +84,12 @@ every backend.
   environment, then `gh`, then the stored file. A token changed on disk is
   picked up only after such a failure, which is the price of not running `gh`
   on every tick.
+- **A close that half-applies is safe in the direction it can go wrong.**
+  GitHub runs a document's mutations in order but reports each on its own, so
+  `closeIssue` can fail while the comment lands. What is left is an issue that
+  is still open carrying `Verdict: done` — and the fleet reads a verdict only
+  from a closed issue, so the task stays in the queue and runs again rather
+  than being filed as finished on the strength of a comment.
 - **Signing in is the one write to a board's schema**, and it is deliberate:
   a fleet that added an option mid-run would be rewriting a board a person is
   editing at the same time.
