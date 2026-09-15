@@ -106,6 +106,64 @@ func TestAMissingFileAndAnAbsentSectionAreNotErrors(t *testing.T) {
 	}
 }
 
+// A file that is there but blank is the same state as one that is not: an
+// editor that saved an empty credentials.yaml must not stop a fleet signing
+// in. An empty document is not YAML, so this is the one read that needs a
+// branch of its own.
+func TestAnEmptyFileIsAFileNobodyHasWritten(t *testing.T) {
+	for _, body := range []string{"", "\n", "# no secrets yet\n"} {
+		f := inTempFile(t)
+		if err := os.WriteFile(f.Path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var got section
+		if err := f.Load("github", &got); err != nil {
+			t.Fatalf("Load from %q: %v", body, err)
+		}
+		if got != (section{}) {
+			t.Fatalf("loaded %+v from %q", got, body)
+		}
+		if err := f.Save("github", section{Token: "gh"}); err != nil {
+			t.Fatalf("Save over %q: %v", body, err)
+		}
+	}
+}
+
+// A file that is not YAML is not silently overwritten: it holds somebody's
+// secrets, and a writer that dropped what it could not read would be the
+// failure this package exists to prevent, arriving through the other door.
+func TestACorruptFileIsReportedRatherThanOverwritten(t *testing.T) {
+	f := inTempFile(t)
+	broken := "github: [unclosed\n"
+	if err := os.WriteFile(f.Path, []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var got section
+	if err := f.Load("github", &got); err == nil {
+		t.Error("Load of a file that is not YAML must fail")
+	}
+	if err := f.Save("github", section{Token: "gh"}); err == nil {
+		t.Error("Save over a file that is not YAML must fail rather than drop what it cannot read")
+	}
+	raw, err := os.ReadFile(f.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != broken {
+		t.Errorf("the unreadable file was rewritten as %q, want it left as it was", raw)
+	}
+}
+
+// The default file is beside fleet.yaml in the config dir — where a person
+// looks for it, and where a bug report can be told not to include it.
+func TestTheDefaultFileIsTheFleetsOwn(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", dir)
+	if got, want := Default().Path, filepath.Join(dir, "credentials.yaml"); got != want {
+		t.Errorf("Default() = %q, want %q", got, want)
+	}
+}
+
 // A secret file that was once world-readable must not stay that way. WriteFile
 // only applies its mode when it creates the file.
 func TestSavingTightensTheFileMode(t *testing.T) {
