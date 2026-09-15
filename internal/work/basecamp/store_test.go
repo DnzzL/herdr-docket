@@ -38,16 +38,16 @@ func TestCredentialsRoundTrip(t *testing.T) {
 func TestSavingCredentialsTightensANameableFile(t *testing.T) {
 	inTempConfigDir(t)
 	s := defaultStore()
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.file.Path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(s.path, []byte("basecamp:\n  access_token: leaked\n"), 0o644); err != nil {
+	if err := os.WriteFile(s.file.Path, []byte("basecamp:\n  access_token: leaked\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.save(Token{AccessToken: "at"}); err != nil {
 		t.Fatal(err)
 	}
-	info, err := os.Stat(s.path)
+	info, err := os.Stat(s.file.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
