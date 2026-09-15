@@ -5,7 +5,7 @@
 // be commented on, and work that leaves no trace is not work a fleet can hand
 // on. The issue keeps its own state, its own thread and its own history; the
 // board contributes what an issue has no concept of — an order, a column, and
-// the field that names the agent.
+// the field that names the agent. Its kind in fleet.yaml is `github`.
 package github
 
 import (
@@ -17,9 +17,6 @@ import (
 
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
-
-// Kind is how this adapter is named in fleet.yaml.
-const Kind = "github"
 
 // Defaults for the names on the board. A board has to be told these only when
 // a human has named something differently.
