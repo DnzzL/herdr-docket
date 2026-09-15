@@ -87,3 +87,32 @@ func TestHistoryLineOmitsWhatTheRunHasNotReported(t *testing.T) {
 func defaults(name string) fleet.Defaults {
 	return fleet.Settings{DefaultAgent: name}.Defaults()
 }
+
+// `auth` takes a queue and, for a queue that wants a token handed to it, one
+// flag. What it does *with* them is fleet's business; that it insists on a
+// queue at all, and says which queues exist, is the CLI's.
+func TestAuthWantsAQueueToSignInTo(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"nothing at all", nil, "usage:"},
+		{"a token and no queue", []string{"--token", "ghp_x"}, "usage:"},
+		{"a queue and then another", []string{"github", "basecamp"}, "unexpected"},
+		{"a token with nothing after it", []string{"--token"}, "usage:"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := authCmd(tc.args)
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not mention %q", err, tc.want)
+			}
+			if !strings.Contains(err.Error(), "github") {
+				t.Errorf("error %q must name the queues that can be signed in to", err)
+			}
+		})
+	}
+}

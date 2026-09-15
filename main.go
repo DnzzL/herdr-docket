@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -118,12 +119,15 @@ func initCmd() error {
 // fleet's business, not the CLI's. The name is a queue kind — basecamp,
 // github — or the name of one source when a fleet has several.
 func authCmd(args []string) error {
+	const usage = `usage: herdr-docket auth <queue> [--token <pat>]
+  queues that sign in: basecamp   a Launchpad app of your own, browser flow
+                       github     a PAT with the project scope, or gh's token`
 	name, token := "", ""
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
 		case arg == "--token":
 			if i++; i >= len(args) {
-				return fmt.Errorf("auth: --token wants a personal access token after it")
+				return fmt.Errorf("auth: --token wants a personal access token\n%s", usage)
 			}
 			token = args[i]
 		case strings.HasPrefix(arg, "--token="):
@@ -131,11 +135,11 @@ func authCmd(args []string) error {
 		case name == "":
 			name = arg
 		default:
-			return fmt.Errorf("auth: unexpected %q", arg)
+			return fmt.Errorf("auth: unexpected argument %q\n%s", arg, usage)
 		}
 	}
 	if name == "" {
-		return fmt.Errorf("usage: herdr-docket auth <queue> [--token <pat>]   (queues that sign in: basecamp, github)")
+		return errors.New(usage)
 	}
 	// Settings rather than a constructed source: signing in is how a
 	// half-configured queue gets *configured*, so building the adapter first
