@@ -4,11 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/history"
@@ -257,6 +259,32 @@ func TestDurationReadsAsAOneLineColumn(t *testing.T) {
 	}
 }
 
+// The run in flight was launched by one agent and the task may have been
+// re-routed since; the row counts against the agent that started it, because
+// that is the number the daemon is enforcing.
+func TestRunningRowCountsAgainstTheAgentThatStartedIt(t *testing.T) {
+	task := work.Task{ID: "T-1", Open: true, Phase: "In Progress", Assignee: "ops"}
+	m := model{
+		tasks: []work.Task{task},
+		last:  map[string]*history.Record{"T-1": {Status: history.StatusRunning, Agent: "dev", At: time.Now()}},
+		agents: map[string]fleet.Agent{
+			"dev": {Name: "dev", TimeoutMinutes: 45},
+			"ops": {Name: "ops", TimeoutMinutes: 600},
+		},
+	}
+	if got := m.timeoutFor(task); got != 45 {
+		t.Fatalf("timeoutFor = %d, want the 45 the run was started with", got)
+	}
+
+	// A record that names no agent — one written before the fleet recorded it —
+	// falls back to where the task routes now.
+	rec := m.last["T-1"]
+	rec.Agent = ""
+	if got := m.timeoutFor(task); got != 600 {
+		t.Fatalf("timeoutFor = %d, want the routed agent's 600", got)
+	}
+}
+
 // labels reads a row list the way the board reads it: group headers, task ids
 // and a blank for each spacer.
 func labels(rows []row) []string {
@@ -278,21 +306,56 @@ func labels(rows []row) []string {
 
 // One renderer, two callers: the pane shows exactly what the CLI prints, so the
 // task a person reads in the pane cannot be a different task from the one the
-// agent is prompted with.
-func TestDetailViewIsTheSharedRenderer(t *testing.T) {
-	it := work.Task{
-		ID: "myapp/TASK-12", Title: "Fix the parser", Open: true, Phase: "To Do",
-		Assignee: "dev", Body: "the numbers are not moving",
-		Criteria: []work.Criterion{{Index: 1, Text: "a test fails first"}},
-		Notes:    "tried once",
+// agent is prompted with. The body comes from Get, not from the row the board
+// drew: a List carries what a board needs, and a detail view drawn from it says
+// a task has no description and no notes — and looks right saying it.
+func TestDetailViewReadsTheTaskNotTheRow(t *testing.T) {
+	row := work.Task{ID: "myapp/TASK-12", Title: "Fix the parser", Open: true, Phase: "To Do", Assignee: "dev"}
+	full := row
+	full.Body = "the numbers are not moving"
+	full.Criteria = []work.Criterion{{Index: 1, Text: "a test fails first"}}
+	full.Notes = "tried once"
+	src := &readingSource{rows: []work.Task{row}, full: full}
+	m := model{dir: "/fleet", src: src, tasks: []work.Task{row}}
+	m.rebuildRows()
+	m.clampSel()
+
+	m, cmd := press(m, "v")
+	if cmd == nil {
+		t.Fatal("v must read the task")
 	}
-	m := model{dir: "/fleet", detail: it}
+	tm, ok := cmd().(detailMsg)
+	if !ok {
+		t.Fatal("v must ask the source for the task")
+	}
+	if len(src.gets) != 1 || src.gets[0] != "myapp/TASK-12" {
+		t.Fatalf("read %v, want the row's full id", src.gets)
+	}
+	next, _ := m.Update(tm)
+	m = next.(model)
+
 	got := m.detailView()
-	for _, want := range strings.Split(strings.TrimRight(text.TaskDetail(it), "\n"), "\n") {
+	for _, want := range strings.Split(strings.TrimRight(text.TaskDetail(full), "\n"), "\n") {
 		if !strings.Contains(got, want) {
 			t.Fatalf("detail view is missing %q:\n%s", want, got)
 		}
 	}
+}
+
+// readingSource answers the two reads a backend offers: List for the board's
+// row, Get for the task itself.
+type readingSource struct {
+	work.Source
+	rows []work.Task
+	full work.Task
+	gets []string
+}
+
+func (r *readingSource) List() ([]work.Task, error) { return r.rows, nil }
+
+func (r *readingSource) Get(id string) (work.Task, error) {
+	r.gets = append(r.gets, id)
+	return r.full, nil
 }
 
 // p rewrites one line of AGENT.md: the persona below it is still there, and the
@@ -521,4 +584,140 @@ func (m *multiQueueSource) Names() []string { return m.names }
 func (m *multiQueueSource) CreateIn(name, title, body, assignee string) (string, error) {
 	m.created = []string{name, title, assignee}
 	return name + "/TASK-9", nil
+}
+
+// A header is one style, not two nested: a string that already carries escape
+// codes and is handed to a second Render comes out with those codes drawn as
+// text, so the board would read "[1;36mRunning" instead of a coloured heading.
+// Colours are forced on here because the bug never shows on a dumb terminal,
+// which is exactly why it survives an eyeball test in a plain pipe.
+func TestAPhaseHeaderIsStyledInOnePass(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(1) // the ANSI profile: escape codes, no truecolor
+	defer lipgloss.SetColorProfile(prev)
+
+	escape := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	for _, phase := range []string{runningHeader, work.Done.Label(), work.Blocked.Label(), work.Failed.Label(), "To Do", "A phase of its own"} {
+		got := phaseHeader(phase)
+		if !escape.MatchString(got) {
+			t.Errorf("%s: rendered with no style at all: %q", phase, got)
+		}
+		if rest := escape.ReplaceAllString(got, ""); strings.Contains(rest, "[") {
+			t.Errorf("%s: an escape code is drawn as text: %q", phase, got)
+		}
+	}
+}
+
+func TestWhoCellMarksTheTwoWaysAnAgentCanBeWrong(t *testing.T) {
+	dev := map[string]fleet.Agent{"dev": {Name: "dev"}, "paused": {Name: "paused", Disabled: true}}
+
+	got := whoCell(dev, work.Task{Assignee: "nobody"})
+	if !strings.Contains(got, "nobody?") {
+		t.Errorf("an agent nobody has should be marked: %q", got)
+	}
+	got = whoCell(dev, work.Task{Assignee: "paused"})
+	if !strings.Contains(got, "paused paused") {
+		t.Errorf("a disabled agent should be marked paused: %q", got)
+	}
+	got = whoCell(dev, work.Task{Assignee: "dev"})
+	if strings.Contains(got, "paused") || strings.Contains(got, "?") {
+		t.Errorf("a plain agent should carry no mark: %q", got)
+	}
+	got = whoCell(nil, work.Task{})
+	if !strings.Contains(got, "-") {
+		t.Errorf("an unassigned task should read -: %q", got)
+	}
+}
+
+// A terminal hands over several characters in one read whenever somebody types
+// faster than the reader drains, or pastes. The prompt takes every rune in the
+// message: reading only the one-rune ones silently eats most of a title.
+func TestARunOfCharactersLandsInThePrompt(t *testing.T) {
+	m := model{
+		tasks: []work.Task{{ID: "T-1", Title: "Fix login", Open: true, Phase: "To Do"}},
+		last:  map[string]*history.Record{},
+	}
+	m.rebuildRows()
+	m.clampSel()
+
+	m, _ = press(m, "/")
+	m = types(m, "Fix login")
+	if m.input != "Fix login" {
+		t.Fatalf("search box holds %q, want %q", m.input, "Fix login")
+	}
+	if len(m.rows) != 2 { // the header and the one matching task
+		t.Fatalf("filter kept %d rows, want the header and the match", len(m.rows))
+	}
+
+	m, _ = press(m, "esc", "a")
+	m = types(m, "Fix the parser")
+	m, _ = press(m, "enter")
+	if m.pending != "Fix the parser" {
+		t.Fatalf("the add flow kept %q, want %q", m.pending, "Fix the parser")
+	}
+}
+
+// types sends what a terminal sends for a line of typing: a run of characters
+// per word, and each space as its own event.
+func types(m model, s string) model {
+	for i, word := range strings.Split(s, " ") {
+		if i > 0 {
+			next, _ := m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+			m = next.(model)
+		}
+		next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(word)})
+		m = next.(model)
+	}
+	return m
+}
+
+// The roster's columns are fixed and can outgrow a narrow terminal, so the run
+// column is ordered for the cut: the timer first, the title last. A line that
+// loses its end has still said which run is late.
+func TestTheRosterPutsTheTimerBeforeTheTitle(t *testing.T) {
+	it := work.Task{
+		ID: "myapp/TASK-1", Open: true, Phase: "In Progress", Assignee: "dev",
+		Title: "A title long enough that no terminal of this width could hold it all",
+	}
+	m := model{
+		dir: "/fleet", width: 100,
+		tasks:  []work.Task{it},
+		last:   map[string]*history.Record{"myapp/TASK-1": {Status: history.StatusRunning, Agent: "dev", At: time.Now().Add(-12 * time.Minute)}},
+		agents: map[string]fleet.Agent{"dev": {Name: "dev", Kind: "claude", TimeoutMinutes: 45}},
+	}
+	line := strings.Split(m.agentsView(), "\n")[2]
+	if got := lipgloss.Width(line); got > m.width {
+		t.Fatalf("the roster line is %d wide on a %d-wide terminal: %q", got, m.width, line)
+	}
+	timer, task := strings.Index(line, "12m / 45m"), strings.Index(line, "TASK-1")
+	if timer < 0 {
+		t.Fatalf("the roster lost the run's timer: %q", line)
+	}
+	if task >= 0 && task < timer {
+		t.Fatalf("the title comes before the timer, so a narrow terminal cuts the timer: %q", line)
+	}
+}
+
+// The board's Running row and the roster's busy cell count the same run the
+// same way, and credit the agent running it rather than the agent the task
+// routes to now: re-routing a task mid-run does not move the run.
+func TestTheRosterCreditsTheAgentThatStartedTheRun(t *testing.T) {
+	started := time.Now().Add(-12 * time.Minute)
+	m := model{
+		dir: "/fleet",
+		agents: map[string]fleet.Agent{
+			"dev": {Name: "dev", Kind: "claude", TimeoutMinutes: 45},
+			"ops": {Name: "ops", Kind: "claude", TimeoutMinutes: 600},
+		},
+		tasks: []work.Task{{ID: "myapp/TASK-12", Title: "Fix the parser", Open: true, Phase: "In Progress", Assignee: "ops"}},
+		last:  map[string]*history.Record{"myapp/TASK-12": {Status: history.StatusRunning, Agent: "dev", At: started}},
+	}
+	lines := strings.Split(m.agentsView(), "\n")
+	dev, ops := lines[2], lines[3] // the roster sorts by name
+	if !strings.Contains(dev, "busy") || !strings.Contains(dev, "12m / 45m") {
+		t.Fatalf("the agent running it is not the one credited: %q", dev)
+	}
+	if !strings.Contains(ops, "idle") {
+		t.Fatalf("the agent the task routes to is not the one running it: %q", ops)
+	}
 }

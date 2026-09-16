@@ -248,6 +248,14 @@ type refreshMsg struct {
 type tickMsg time.Time
 type ranMsg struct{ err error }
 
+// detailMsg is one task read in full, by id: an answer for the id it was asked
+// about, even if the cursor has moved since.
+type detailMsg struct {
+	id   string
+	task work.Task
+	err  error
+}
+
 // Run starts the interactive board.
 func Run() error {
 	settings, err := fleet.LoadSettings()
@@ -315,6 +323,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.err.Error()
 		}
 		return m, refresh(m.src, m.dir)
+	case detailMsg:
+		// Ignore a read that lands after the reader closed the task or moved
+		// on: the answer is about a task the pane is no longer showing.
+		if m.view != detailView || m.detail.ID != msg.id {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			return m, nil
+		}
+		m.detail, m.detailAt = msg.task, 0
 	case tea.KeyMsg:
 		if m.mode == searching {
 			return m.updateSearch(msg)
@@ -352,6 +371,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "v":
 			if r := m.selected(); r != nil {
 				m.view, m.detail, m.detailAt = detailView, r.task, 0
+				// The row is a list entry: a List carries what a board draws,
+				// and the body is a second read. Showing the row's own fields
+				// would render a task with no description and no notes —
+				// which is exactly what it looks like when the read fails.
+				return m, getDetail(m.src, r.task.ID)
 			}
 		case "s":
 			if r := m.selected(); r != nil {
@@ -410,13 +434,7 @@ func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input = m.input[:len(m.input)-1]
 		}
 	default:
-		if len(msg.String()) == 1 || msg.String() == "space" {
-			s := msg.String()
-			if s == "space" {
-				s = " "
-			}
-			m.input += s
-		}
+		m.input += typed(msg)
 	}
 	return m, nil
 }
@@ -434,18 +452,38 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.input = m.input[:len(m.input)-1]
 		}
 	default:
-		if len(msg.String()) == 1 || msg.String() == "space" {
-			s := msg.String()
-			if s == "space" {
-				s = " "
-			}
-			m.input += s
-		}
+		m.input += typed(msg)
 	}
 	m.query = m.input
 	m.rebuildRows()
 	m.clampSel()
 	return m, nil
+}
+
+// typed is the text a key adds to a prompt. A run of characters arrives as one
+// message whenever the terminal hands over more than one byte at a time — a
+// paste, or simply typing faster than the reader drains — and the run is split
+// at every space, which arrives as its own event. Reading only the one-rune
+// message is how a fast typist loses half a task title, and it is invisible
+// until it happens to them.
+func typed(msg tea.KeyMsg) string {
+	switch msg.Type {
+	case tea.KeySpace:
+		return " "
+	case tea.KeyRunes:
+		return string(msg.Runes)
+	}
+	return ""
+}
+
+// getDetail reads one task in full. List gives the row and this gives the
+// body: a pane that drew the row as the detail would show a task with no
+// description and no notes, and would look right doing it.
+func getDetail(src work.Source, id string) tea.Cmd {
+	return func() tea.Msg {
+		it, err := src.Get(id)
+		return detailMsg{id: id, task: it, err: err}
+	}
 }
 
 // create adds a task in the queue the person named, or in the only queue the
@@ -564,7 +602,21 @@ func (m model) agentList() []string {
 func (m model) busyWith(name string) (work.Task, *history.Record, bool) {
 	for _, it := range m.tasks {
 		rec := m.last[it.ID]
-		if inFlight(rec) && pick.AssigneeFor(it, m.defaults) == name {
+		if !inFlight(rec) {
+			continue
+		}
+		// The agent that started the run, not the one the task routes to now:
+		// re-routing a task while it runs does not move the run to the new
+		// agent, and the roster would credit the wrong one. A record that names
+		// no agent — one written before the fleet recorded it — falls back to
+		// where the task routes.
+		if who := rec.Agent; who != "" {
+			if who == name {
+				return it, rec, true
+			}
+			continue
+		}
+		if pick.AssigneeFor(it, m.defaults) == name {
 			return it, rec, true
 		}
 	}
@@ -678,10 +730,17 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 // going against the timeout its agent was given.
 func (m model) runningDetail(r row) string { return runDetail(r.last, m.timeoutFor(r.task)) }
 
-// timeoutFor is the timeout the task's agent was given, or the fleet's default
-// for a task routed to a name nobody has.
+// timeoutFor is the timeout the run in flight is held to: the timeout of the
+// agent that started it, which is not necessarily the agent the task routes to
+// now. A task reassigned mid-run keeps the run it has — the daemon enforces the
+// number it launched with — so the board reads the record's agent first and the
+// routing rule only for a record that does not name one.
 func (m model) timeoutFor(it work.Task) int {
-	if a, ok := m.agents[pick.AssigneeFor(it, m.defaults)]; ok && a.TimeoutMinutes > 0 {
+	name := pick.AssigneeFor(it, m.defaults)
+	if rec := m.last[it.ID]; rec != nil && rec.Agent != "" {
+		name = rec.Agent
+	}
+	if a, ok := m.agents[name]; ok && a.TimeoutMinutes > 0 {
 		return a.TimeoutMinutes
 	}
 	return fleet.DefaultTimeoutMinutes
@@ -835,26 +894,12 @@ func (m model) boardView() string {
 			continue
 		}
 		if r.header != "" {
-			fmt.Fprintf(&b, "%s\n", headerStyle.Render(phaseStyle(r.header).Render(r.header)))
+			fmt.Fprintf(&b, "%s\n", phaseHeader(r.header))
 			continue
 		}
 		// A styled cell is padded by its own style, not by the format verb: %-16s
 		// counts escape bytes and would stagger every row with a colour on it.
-		var who string
-		switch name := r.task.Assignee; {
-		case name == "":
-			who = dimStyle.Width(whoWidth).Render("-")
-		default:
-			style := lipgloss.NewStyle().Width(whoWidth)
-			if _, ok := m.agents[name]; !ok {
-				// A red ? is the one cell the board colours on purpose: work
-				// routed to a name nobody has will never be picked up.
-				style, name = failStyle.Width(whoWidth), text.Truncate(name, whoWidth-1)+"?"
-			} else {
-				name = text.Truncate(name, whoWidth)
-			}
-			who = style.Render(name)
-		}
+		who := whoCell(m.agents, r.task)
 		detail := ""
 		switch {
 		case inFlight(r.last):
@@ -890,7 +935,7 @@ func (m model) boardView() string {
 			m.pending, strings.Join(m.queueNames(), ", "), m.input))
 	case addingAssignee:
 		b.WriteString(fmt.Sprintf("assignee for %q (%s): %s▌\n",
-			m.pending, strings.Join(agentNames(m.agents), ", "), m.input))
+			m.pending, strings.Join(m.agentList(), ", "), m.input))
 	case assigningAgent:
 		b.WriteString(fmt.Sprintf("assign %s to (%s): %s▌\n",
 			m.pending, strings.Join(m.agentList(), ", "), m.input))
@@ -961,9 +1006,15 @@ func (m model) agentsView() string {
 		if u := m.usage[name]; pick.BudgetLine(a, u.Runs, u.Minutes) != "" {
 			line += "  " + dimStyle.Render(pick.BudgetLine(a, u.Runs, u.Minutes))
 		}
-		// The run it is on goes last and is not padded with the columns: a long
-		// title may be cut, but the elapsed time at the end never is.
-		line += "  " + m.busyCell(name, a)
+		// The run goes last and takes what is left of the terminal after the
+		// columns above it, the way the board sizes its title. Before the
+		// terminal has reported a size, guess wide rather than draw a column of
+		// ellipses.
+		room := 60
+		if m.width > 0 {
+			room = m.width - lipgloss.Width(line) - 2
+		}
+		line += "  " + m.busyCell(name, room)
 		if i == m.asel {
 			line = selectedStyle.Render(line)
 		}
@@ -977,20 +1028,63 @@ func (m model) agentsView() string {
 	return b.String()
 }
 
+// phaseHeader is a group heading: the phase's colour, the header's bold and
+// underline, and one Render. Two nested Renders draw the inner escape codes as
+// text instead of colouring the word, which is how a board reads
+// "[1;36mRunning" — and it never shows on a plain pipe, so nothing catches it
+// but a real terminal.
+func phaseHeader(phase string) string {
+	return phaseStyle(phase).Inherit(headerStyle).Render(phase)
+}
+
+// whoCell is the agent column: the name the task is routed to, coloured when
+// the name says something the board should not have to be asked about. A red ?
+// is work routed to a name nobody has — it will never be picked up. A yellow
+// paused is an agent the daemon is skipping: the row is not next, whatever its
+// urgency, until somebody resumes it (r still runs it by hand). An unassigned
+// task is dim, because a default agent the fleet configured is the scheduler's
+// business and not a claim on the row.
+func whoCell(agents map[string]fleet.Agent, it work.Task) string {
+	name := it.Assignee
+	if name == "" {
+		return dimStyle.Width(whoWidth).Render("-")
+	}
+	style := lipgloss.NewStyle().Width(whoWidth)
+	switch a, ok := agents[name]; {
+	case !ok:
+		style, name = failStyle.Width(whoWidth), text.Truncate(name, whoWidth-1)+"?"
+	case a.Disabled:
+		mark := " paused"
+		style, name = warnStyle.Width(whoWidth), text.Truncate(name, whoWidth-len(mark))+mark
+	default:
+		name = text.Truncate(name, whoWidth)
+	}
+	return style.Render(name)
+}
+
 // busyCell is the roster's last column: the task an agent has in flight and
 // how long it has been on it, or idle. It reads the same history records the
 // board's Running group does.
-func (m model) busyCell(name string, a fleet.Agent) string {
+func (m model) busyCell(name string, room int) string {
 	it, rec, busy := m.busyWith(name)
 	if !busy {
 		return dimStyle.Render("idle")
+	}
+	// The timer comes before the task: a terminal too narrow for both cuts the
+	// title, and the number that says the run is late is the one that stays. It
+	// is timeoutFor, the same number the board's Running row counts against, so
+	// the two views cannot disagree about a run.
+	head := runStyle.Render("busy") + " " + runDetail(rec, m.timeoutFor(it))
+	budget := room - lipgloss.Width(head) - 1
+	if budget < 8 { // less than an id and a space is not a task column
+		return head
 	}
 	parts := []string{work.LocalOf(it.ID)}
 	if src := work.SourceOf(it.ID); src != "" {
 		parts = append(parts, src)
 	}
 	parts = append(parts, it.Title)
-	return runStyle.Render("busy") + " " + text.Truncate(strings.Join(parts, " "), 36) + " " + runDetail(rec, a.TimeoutMinutes)
+	return head + " " + text.Truncate(strings.Join(parts, " "), budget)
 }
 
 func agentNames(agents map[string]fleet.Agent) []string {
