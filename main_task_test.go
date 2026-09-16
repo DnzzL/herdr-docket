@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/DnzzL/herdr-docket/internal/text"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -255,5 +256,23 @@ func TestTaskCmdSurfacesTheBackendError(t *testing.T) {
 func TestTaskCloseSurfacesTheBackendError(t *testing.T) {
 	if _, err := runTask(t, &fakeSource{err: errors.New("backend down")}, "done", "TASK-2"); err == nil {
 		t.Fatal("a failed close must reach the caller")
+	}
+}
+
+// One renderer, two callers: the CLI verb and the pane's detail view read the
+// same task the same way, so the verb prints exactly what the shared renderer
+// returns and neither can drift without this failing.
+func TestTaskViewIsTheSharedRenderer(t *testing.T) {
+	it := work.Task{
+		ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "To Do",
+		Body: "do it", Notes: "so far",
+		Criteria: []work.Criterion{{Index: 1, Text: "works"}},
+	}
+	got, err := runTask(t, &fakeSource{item: it}, "view", "TASK-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := text.TaskDetail(it); got != want {
+		t.Fatalf("task view drifted from the shared renderer:\ngot  %q\nwant %q", got, want)
 	}
 }

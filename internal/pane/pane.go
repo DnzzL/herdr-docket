@@ -1,6 +1,8 @@
-// Package pane is the plugin's Herdr overlay pane: a live board of the fleet
-// queue grouped by phase, with one-key "run now", "jump to the run's
-// workspace", and a minimal add-task flow.
+// Package pane is the plugin's Herdr overlay pane: the fleet's board. It shows
+// what the fleet works next and what it is working on now, and it acts on both.
+// What it shows and what it refuses are decided in
+// docs/adr/0005-the-board-is-a-triage-surface.md: it renders the fleet's Task,
+// not the backend's page, and it never closes a task with a verdict.
 package pane
 
 import (
@@ -30,7 +32,15 @@ var (
 	failStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	okStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	warnStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	runStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 )
+
+// projectColors are the colours a queue's name is drawn in: enough to tell a
+// fleet's queues apart, avoiding the three the board already means — red is
+// failed, green is done, yellow is blocked. A queue keeps its colour because
+// they are handed out in the sorted order of the names, not the order tasks
+// happened to arrive in.
+var projectColors = []lipgloss.Color{"4", "5", "6", "12", "13", "14"}
 
 // row is one line of the board: a phase header, a spacer between groups, or
 // a task under a header.
@@ -43,23 +53,69 @@ type row struct {
 
 func (r row) selectable() bool { return r.header == "" && !r.spacer }
 
-// rows lays the board out: every phase the queue actually uses, tasks under
-// each, a header per non-empty group and a blank spacer between groups. When
-// query is non-empty only tasks whose ID or title contain it (case-insensitive)
-// are included. Pure, so the layout is testable without a terminal.
+// The board's fixed columns: the id, the agent and the detail line. The title
+// is the only column that flexes with the terminal, and the project column
+// exists only when a fleet has more than one queue.
+const (
+	idWidth     = 9
+	whoWidth    = 16
+	detailWidth = 32
+)
+
+// runningHeader heads the group a task with a run in flight is shown under. It
+// is not a phase: nothing writes it, and the task keeps whatever phase its
+// backend gave it. It sorts above every phase because what is happening now is
+// the first thing a person opens the board to ask.
+const runningHeader = "Running"
+
+// inFlight reports whether a task has a run in flight, as its last history
+// record tells it. A record no run ever closed — a daemon that died mid-run —
+// reads as in flight here too, which is why the row marks it stale rather than
+// drawing it as busy.
+func inFlight(r *history.Record) bool {
+	return r != nil && r.Status == history.StatusRunning
+}
+
+// rows lays the board out: the running group first, then every phase the queue
+// actually uses, tasks under each, a header per non-empty group and a blank
+// spacer between groups. An open phase is ordered the way the scheduler works
+// it; a closed one keeps the order its backend gave. When query is non-empty
+// only tasks whose id, queue or title contain it (case-insensitive) are
+// included. Pure, so the layout is testable without a terminal.
 func rows(items []work.Task, last map[string]*history.Record, query string) []row {
 	query = strings.ToLower(query)
 	var out []row
+	var live []row
+	for _, it := range items {
+		if rec := last[it.ID]; inFlight(rec) && matches(it, query) {
+			live = append(live, row{task: it, last: rec})
+		}
+	}
+	sortByUrgency(live)
+	if len(live) > 0 {
+		out = append(out, row{header: runningHeader})
+		out = append(out, live...)
+	}
 	for _, phase := range work.PhasesOf(items) {
 		var group []row
+		open := false
 		for _, it := range items {
-			if it.Phase != phase || !matches(it, query) {
+			if it.Phase != phase || !matches(it, query) || inFlight(last[it.ID]) {
 				continue
 			}
+			open = open || it.Open
 			group = append(group, row{task: it, last: last[it.ID]})
 		}
 		if len(group) == 0 {
 			continue
+		}
+		// An open group is drawn in the order the scheduler works it; a closed
+		// one keeps the order its backend gave, because urgency is meaningless
+		// once a task has ended. Open is the port's own field, so a backend
+		// with phases of its own is sorted by what it says about the work and
+		// not by whether this file recognises the phase word.
+		if open {
+			sortByUrgency(group)
 		}
 		if len(out) > 0 {
 			out = append(out, row{spacer: true})
@@ -74,8 +130,14 @@ func rows(items []work.Task, last map[string]*history.Record, query string) []ro
 	return out
 }
 
-// matches reports whether the task's ID or title contains query, which the
-// caller has already lowercased. An empty query matches everything.
+// sortByUrgency puts a group in the order the fleet works it: the scheduler's
+// own comparison, so the board and the daemon agree about what is next.
+func sortByUrgency(group []row) {
+	sort.SliceStable(group, func(i, j int) bool { return pick.Before(group[i].task, group[j].task) })
+}
+
+// matches reports whether the task's id, queue or title contains query, which
+// the caller has already lowercased. An empty query matches everything.
 func matches(it work.Task, query string) bool {
 	if query == "" {
 		return true
@@ -84,12 +146,43 @@ func matches(it work.Task, query string) bool {
 		strings.Contains(strings.ToLower(it.Title), query)
 }
 
+// projectsOf lists the queues these tasks come from, in a stable order. Empty
+// or one name means there is nothing on a row to distinguish, and the board
+// draws no project column at all.
+func projectsOf(items []work.Task) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, it := range items {
+		name := work.SourceOf(it.ID)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// projectStyle colours a queue's name, so two queues stay apart at a glance
+// even when the eye skips the text.
+func projectStyle(projects []string, name string) lipgloss.Style {
+	for i, p := range projects {
+		if p == name {
+			return lipgloss.NewStyle().Foreground(projectColors[i%len(projectColors)])
+		}
+	}
+	return dimStyle
+}
+
 // phaseStyle colours a group heading by the fleet's own words for the common
 // phases — the port owns those words, so this file spells none of them itself.
 // A backend with phases of its own — or none — renders plain, which is why
 // nothing depends on this: the board is readable either way.
 func phaseStyle(phase string) lipgloss.Style {
 	switch phase {
+	case runningHeader:
+		return runStyle
 	case work.Done.Label(), string(work.PhaseInProgress):
 		return okStyle
 	case work.Failed.Label():
@@ -105,7 +198,9 @@ type mode int
 const (
 	browsing mode = iota
 	addingTitle
+	addingProject
 	addingAssignee
+	assigningAgent
 	searching
 )
 
@@ -114,6 +209,7 @@ type view int
 const (
 	boardView view = iota
 	agentsView
+	detailView
 )
 
 type model struct {
@@ -126,14 +222,19 @@ type model struct {
 	rows     []row
 	agents   map[string]fleet.Agent
 	sel      int
+	selID    string // the task the cursor is on, so a reorder cannot move it
+	asel     int    // the agent the roster cursor is on
 	width    int
 	height   int
 	status   string
 	mode     mode
 	view     view
 	input    string
-	pending  string // the title typed before the assignee is asked
+	pending  string // what the flow is about, while a prompt is open
+	project  string // the queue the add flow chose, empty for a single queue
 	query    string // active task filter, live-edited while mode == searching
+	detail   work.Task
+	detailAt int // first line of the detail view on screen
 	runs     *runner.Runner
 }
 
@@ -231,8 +332,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.view = boardView
 			}
 		}
-		if m.view != boardView {
-			return m, nil
+		if m.view == agentsView {
+			return m.updateAgents(msg)
+		}
+		if m.view == detailView {
+			return m.updateDetail(msg)
 		}
 		switch msg.String() {
 		case "j", "down":
@@ -240,9 +344,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "k", "up":
 			m.move(-1)
 		case "a":
-			m.mode, m.input, m.status = addingTitle, "", ""
+			m.mode, m.input, m.status, m.project = addingTitle, "", "", ""
 		case "r":
 			return m.runSelected()
+		case "x":
+			return m, m.stopSelected()
+		case "v":
+			if r := m.selected(); r != nil {
+				m.view, m.detail, m.detailAt = detailView, r.task, 0
+			}
+		case "s":
+			if r := m.selected(); r != nil {
+				m.mode, m.input, m.pending, m.status = assigningAgent, "", r.task.ID, ""
+			}
 		case "enter":
 			return m, m.jumpSelected()
 		case "/":
@@ -254,6 +368,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.clampSel()
 			}
 		}
+		// No verdict key, by design: the pane routes work and never judges it.
+		// See the refusal list in docs/adr/0005-the-board-is-a-triage-surface.md.
 	}
 	return m, nil
 }
@@ -261,23 +377,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.mode, m.input = browsing, ""
+		m.mode, m.input, m.pending, m.project = browsing, "", "", ""
 	case "enter":
-		if m.mode == addingTitle {
+		switch m.mode {
+		case addingTitle:
 			if strings.TrimSpace(m.input) == "" {
 				m.mode = browsing
 				return m, nil
 			}
-			m.pending, m.input, m.mode = strings.TrimSpace(m.input), "", addingAssignee
+			m.pending, m.input = strings.TrimSpace(m.input), ""
+			// A composite source cannot invent a queue and refuses to try, so
+			// the flow asks before it writes rather than failing after it.
+			if len(m.queueNames()) > 1 {
+				m.mode = addingProject
+			} else {
+				m.mode = addingAssignee
+			}
 			return m, nil
+		case addingProject:
+			m.project, m.input, m.mode = strings.TrimSpace(m.input), "", addingAssignee
+			return m, nil
+		case assigningAgent:
+			id, agent, src := m.pending, strings.TrimSpace(m.input), m.src
+			m.mode, m.input, m.pending = browsing, "", ""
+			return m, assign(src, id, agent)
 		}
-		title, assignee := m.pending, strings.TrimSpace(m.input)
-		m.mode, m.input, m.pending = browsing, "", ""
-		src := m.src
-		return m, func() tea.Msg {
-			_, err := src.Create(title, "", assignee)
-			return ranMsg{err: err}
-		}
+		title, assignee, project, src := m.pending, strings.TrimSpace(m.input), m.project, m.src
+		m.mode, m.input, m.pending, m.project = browsing, "", "", ""
+		return m, create(src, project, title, assignee)
 	case "backspace":
 		if len(m.input) > 0 {
 			m.input = m.input[:len(m.input)-1]
@@ -321,26 +448,178 @@ func (m model) updateSearch(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// create adds a task in the queue the person named, or in the only queue the
+// source has. A MultiSource wants a queue name and cannot invent one — its own
+// refusal to guess is why the pane asks for it up front.
+func create(src work.Source, project, title, assignee string) tea.Cmd {
+	return func() tea.Msg {
+		if project != "" {
+			if multi, ok := src.(work.MultiSource); ok {
+				_, err := multi.CreateIn(project, title, "", assignee)
+				return ranMsg{err: err}
+			}
+		}
+		_, err := src.Create(title, "", assignee)
+		return ranMsg{err: err}
+	}
+}
+
+// assign re-routes a task and nothing else. Routing is the board's business;
+// a verdict is not, so there is no verb here for one.
+func assign(src work.Source, id, agent string) tea.Cmd {
+	return func() tea.Msg {
+		a, ok := src.(work.Assigner)
+		if !ok {
+			return ranMsg{err: fmt.Errorf("%s: this queue decides routing on its own board, not here", id)}
+		}
+		return ranMsg{err: a.Assign(id, agent)}
+	}
+}
+
+// queueNames is the queues the source offers, empty for a backend that has
+// only one queue and cannot be asked which.
+func (m model) queueNames() []string {
+	if multi, ok := m.src.(work.MultiSource); ok {
+		return multi.Names()
+	}
+	return nil
+}
+
+func (m model) updateAgents(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	names := m.agentList()
+	// The roster is re-sorted on every refresh and agents come and go with it,
+	// so the cursor is clamped here rather than trusted.
+	if m.asel >= len(names) {
+		m.asel = len(names) - 1
+	}
+	if m.asel < 0 {
+		m.asel = 0
+	}
+	switch msg.String() {
+	case "j", "down":
+		if m.asel < len(names)-1 {
+			m.asel++
+		}
+	case "k", "up":
+		if m.asel > 0 {
+			m.asel--
+		}
+	case "p":
+		if len(names) == 0 {
+			return m, nil
+		}
+		return m.toggleAgent(names[m.asel])
+	}
+	return m, nil
+}
+
+// toggleAgent pauses or resumes one agent by editing the disabled line of its
+// AGENT.md — the persona below it is left byte for byte as it was. Pausing
+// stops the daemon from picking work up; it does not touch a run already in
+// flight, which is why the status line says so and points at x.
+func (m model) toggleAgent(name string) (tea.Model, tea.Cmd) {
+	a := m.agents[name]
+	if err := fleet.SetDisabled(m.dir, name, !a.Disabled); err != nil {
+		m.status = err.Error()
+		return m, nil
+	}
+	if a.Disabled {
+		m.status = name + " enabled — the daemon will schedule it again"
+	} else {
+		m.status = name + " paused — a run already in flight keeps going; x stops it"
+	}
+	// Re-read the fleet rather than patching m.agents: the file is the truth,
+	// and a reload also proves the edit left an agent the fleet can still use.
+	return m, refresh(m.src, m.dir)
+}
+
+func (m model) updateDetail(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	lines := strings.Count(text.TaskDetail(m.detail), "\n")
+	switch msg.String() {
+	case "esc", "v":
+		m.view = boardView
+	case "j", "down":
+		if m.detailAt < lines {
+			m.detailAt++
+		}
+	case "k", "up":
+		if m.detailAt > 0 {
+			m.detailAt--
+		}
+	}
+	return m, nil
+}
+
+// agentList is the roster in the order it is drawn: by name, so the cursor's
+// position means the same thing between two frames.
+func (m model) agentList() []string {
+	names := agentNames(m.agents)
+	sort.Strings(names)
+	return names
+}
+
+// busyWith returns the run an agent has in flight, from the same records the
+// board's rows read, so the roster and the board cannot disagree about what is
+// running. A task routes by its assignee, which is what the daemon picks with.
+func (m model) busyWith(name string) (work.Task, *history.Record, bool) {
+	for _, it := range m.tasks {
+		rec := m.last[it.ID]
+		if inFlight(rec) && pick.AssigneeFor(it, m.defaults) == name {
+			return it, rec, true
+		}
+	}
+	return work.Task{}, nil, false
+}
+
 func (m *model) move(d int) {
 	for i := m.sel + d; i >= 0 && i < len(m.rows); i += d {
 		if m.rows[i].selectable() {
-			m.sel = i
+			m.sel, m.selID = i, m.rows[i].task.ID
 			return
 		}
 	}
 }
 
+// clampSel keeps the cursor on the task it was on. Selection is by task id
+// because the list reorders whenever a run starts or ends: a cursor held by
+// position would land the next keypress — run, stop, re-route — on a different
+// task. A task that has left the list takes the cursor to the nearest
+// surviving row, never back to the top.
 func (m *model) clampSel() {
+	if m.selID != "" {
+		for i, r := range m.rows {
+			if r.selectable() && r.task.ID == m.selID {
+				m.sel = i
+				return
+			}
+		}
+	}
 	if m.sel >= len(m.rows) {
 		m.sel = len(m.rows) - 1
 	}
-	if m.sel < 0 || (m.sel < len(m.rows) && !m.rows[m.sel].selectable()) {
+	if m.sel < 0 {
 		m.sel = 0
-		m.move(1)
-		if m.sel == 0 && len(m.rows) > 1 {
-			m.sel = 1
+	}
+	m.nearest()
+}
+
+// nearest walks out from the cursor to the closest selectable row either way.
+func (m *model) nearest() {
+	if m.sel < len(m.rows) && m.rows[m.sel].selectable() {
+		m.selID = m.rows[m.sel].task.ID
+		return
+	}
+	for d := 1; d < len(m.rows); d++ {
+		if i := m.sel + d; i < len(m.rows) && m.rows[i].selectable() {
+			m.sel, m.selID = i, m.rows[i].task.ID
+			return
+		}
+		if i := m.sel - d; i >= 0 && m.rows[i].selectable() {
+			m.sel, m.selID = i, m.rows[i].task.ID
+			return
 		}
 	}
+	m.sel, m.selID = 0, ""
 }
 
 func (m model) selected() *row {
@@ -384,8 +663,55 @@ func (m model) runSelected() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	task, runs, src := r.task, m.runs, m.src
-	m.status = "running " + task.ID
+	// A manual run beats a pause: the pause is a rule for the scheduler, and a
+	// person pressing r is not the scheduler. Saying so keeps a run that starts
+	// on a paused agent from looking like a bug later.
+	if agent.Disabled {
+		m.status = fmt.Sprintf("%s: agent %s is paused — running it anyway", task.ID, name)
+	} else {
+		m.status = "running " + task.ID
+	}
 	return m, func() tea.Msg { return ranMsg{err: runs.Run(src, task, agent, history.TriggerManual)} }
+}
+
+// runningDetail is the detail column of a run in flight: how long it has been
+// going against the timeout its agent was given.
+func (m model) runningDetail(r row) string { return runDetail(r.last, m.timeoutFor(r.task)) }
+
+// timeoutFor is the timeout the task's agent was given, or the fleet's default
+// for a task routed to a name nobody has.
+func (m model) timeoutFor(it work.Task) int {
+	if a, ok := m.agents[pick.AssigneeFor(it, m.defaults)]; ok && a.TimeoutMinutes > 0 {
+		return a.TimeoutMinutes
+	}
+	return fleet.DefaultTimeoutMinutes
+}
+
+// runDetail is a run in flight as one cell: elapsed against timeout. Past the
+// timeout it is marked stale rather than drawn as busy: nothing beats a
+// heartbeat, so a daemon that died under a run leaves a record that never
+// closes, and a control surface showing that as live work is telling the one
+// lie it cannot afford.
+func runDetail(rec *history.Record, timeout int) string {
+	elapsed := time.Since(rec.At)
+	raw := fmt.Sprintf("%s / %dm", duration(elapsed), timeout)
+	if elapsed > time.Duration(timeout)*time.Minute {
+		return warnStyle.Render(text.Truncate("stale "+raw, detailWidth))
+	}
+	return dimStyle.Render(text.Truncate(raw, detailWidth))
+}
+
+// duration is elapsed time the way a one-line column reads it: "<1m" under a
+// minute, minutes under an hour, then hours and minutes.
+func duration(d time.Duration) string {
+	if d < time.Minute {
+		return "<1m"
+	}
+	mins := int(d.Minutes())
+	if mins < 60 {
+		return fmt.Sprintf("%dm", mins)
+	}
+	return fmt.Sprintf("%dh%02dm", mins/60, mins%60)
 }
 
 func (m *model) jumpSelected() tea.Cmd {
@@ -404,9 +730,37 @@ func (m *model) jumpSelected() tea.Cmd {
 	}
 }
 
+// stopSelected stops the run on the cursor by closing its workspace. The
+// runner already reads a closed workspace as cancellation and ends the task
+// Blocked, so the pane makes the call and says so; there is no confirmation
+// because the key is the confirmation and a run left going is a workspace left
+// open. Nothing here writes a verdict: the cancellation path does that.
+func (m *model) stopSelected() tea.Cmd {
+	r := m.selected()
+	if r == nil {
+		return nil
+	}
+	if !inFlight(r.last) || r.last.WorkspaceID == "" {
+		m.status = "no run to stop"
+		return nil
+	}
+	last := *r.last
+	m.status = "stopping " + r.task.ID + "…"
+	return func() tea.Msg {
+		var c herdr.Client
+		if err := c.WorkspaceClose(last.WorkspaceID); err != nil {
+			return refreshMsg{err: err}
+		}
+		return nil
+	}
+}
+
 func (m model) View() string {
-	if m.view == agentsView {
+	switch m.view {
+	case agentsView:
 		return m.agentsView()
+	case detailView:
+		return m.detailView()
 	}
 	return m.boardView()
 }
@@ -419,19 +773,38 @@ func (m model) boardView() string {
 	}
 	b.WriteString("\n\n")
 
-	// Fixed columns (id, who, detail) plus their separating spaces, so the
-	// title is the only column that flexes with terminal width. Detail is
-	// capped at 32 to fit "last run <longest status> Mon 15:04" (~30 chars).
-	const idWidth, whoWidth, detailWidth = 9, 16, 32
+	// Fixed columns (id, project, who, detail) plus their separating spaces, so
+	// the title is the only column that flexes with terminal width. Detail is
+	// capped to fit "last run <longest status> Mon 15:04" (~30 chars).
+	projects := projectsOf(m.tasks)
+	projectWidth := 0
+	if len(projects) > 1 {
+		projectWidth = 6
+		for _, p := range projects {
+			if n := len([]rune(p)); n > projectWidth {
+				projectWidth = n
+			}
+		}
+		if projectWidth > 12 {
+			projectWidth = 12
+		}
+	}
+	fixed := idWidth + whoWidth + detailWidth + 5
+	if projectWidth > 0 {
+		fixed += projectWidth + 1
+	}
 	titleWidth := 40
 	if m.width > 0 {
-		if titleWidth = m.width - (idWidth + whoWidth + detailWidth + 5); titleWidth < 15 {
+		if titleWidth = m.width - fixed; titleWidth < 15 {
 			titleWidth = 15
 		} else if titleWidth > 80 {
 			titleWidth = 80
 		}
 	}
-	rowFormat := fmt.Sprintf("  %%-%ds %%-%ds %%-%ds %%s", idWidth, titleWidth, whoWidth)
+	rowFormat := fmt.Sprintf("  %%-%ds %%-%ds %%s %%s", idWidth, titleWidth)
+	if projectWidth > 0 {
+		rowFormat = fmt.Sprintf("  %%-%ds %%s %%-%ds %%s %%s", idWidth, titleWidth)
+	}
 
 	start, end := 0, len(m.rows)
 	if avail := m.availableRows(); avail > 0 && len(m.rows) > avail {
@@ -465,20 +838,38 @@ func (m model) boardView() string {
 			fmt.Fprintf(&b, "%s\n", headerStyle.Render(phaseStyle(r.header).Render(r.header)))
 			continue
 		}
-		who := r.task.Assignee
-		if who == "" {
-			who = "-"
-		} else if _, ok := m.agents[who]; !ok {
-			who = failStyle.Render(text.Truncate(who, whoWidth-1) + "?")
-		} else {
-			who = text.Truncate(who, whoWidth)
+		// A styled cell is padded by its own style, not by the format verb: %-16s
+		// counts escape bytes and would stagger every row with a colour on it.
+		var who string
+		switch name := r.task.Assignee; {
+		case name == "":
+			who = dimStyle.Width(whoWidth).Render("-")
+		default:
+			style := lipgloss.NewStyle().Width(whoWidth)
+			if _, ok := m.agents[name]; !ok {
+				// A red ? is the one cell the board colours on purpose: work
+				// routed to a name nobody has will never be picked up.
+				style, name = failStyle.Width(whoWidth), text.Truncate(name, whoWidth-1)+"?"
+			} else {
+				name = text.Truncate(name, whoWidth)
+			}
+			who = style.Render(name)
 		}
 		detail := ""
-		if r.last != nil {
+		switch {
+		case inFlight(r.last):
+			detail = m.runningDetail(r)
+		case r.last != nil:
 			raw := fmt.Sprintf("last run %s %s", r.last.Status, r.last.At.Format("Mon 15:04"))
 			detail = dimStyle.Render(text.Truncate(raw, detailWidth))
 		}
-		line := fmt.Sprintf(rowFormat, text.Truncate(r.task.ID, idWidth), text.Truncate(r.task.Title, titleWidth), who, detail)
+		fields := []any{text.Truncate(work.LocalOf(r.task.ID), idWidth)}
+		if projectWidth > 0 {
+			name := work.SourceOf(r.task.ID)
+			fields = append(fields, projectStyle(projects, name).Width(projectWidth).Render(text.Truncate(name, projectWidth)))
+		}
+		fields = append(fields, text.Truncate(r.task.Title, titleWidth), who, detail)
+		line := fmt.Sprintf(rowFormat, fields...)
 		if i == m.sel {
 			line = selectedStyle.Render(line)
 		}
@@ -494,13 +885,19 @@ func (m model) boardView() string {
 	switch m.mode {
 	case addingTitle:
 		b.WriteString("new task title: " + m.input + "▌\n")
+	case addingProject:
+		b.WriteString(fmt.Sprintf("queue for %q (%s): %s▌\n",
+			m.pending, strings.Join(m.queueNames(), ", "), m.input))
 	case addingAssignee:
 		b.WriteString(fmt.Sprintf("assignee for %q (%s): %s▌\n",
 			m.pending, strings.Join(agentNames(m.agents), ", "), m.input))
+	case assigningAgent:
+		b.WriteString(fmt.Sprintf("assign %s to (%s): %s▌\n",
+			m.pending, strings.Join(m.agentList(), ", "), m.input))
 	case searching:
 		b.WriteString("search: " + m.input + "▌\n")
 	default:
-		b.WriteString(dimStyle.Render("j/k move · r run · enter jump to run · a add · / search · g agents · q quit"))
+		b.WriteString(dimStyle.Render("j/k move · r run · x stop · enter jump · v read · s assign · a add · / search · g agents · q quit"))
 	}
 	if m.status != "" {
 		b.WriteString("\n" + warnStyle.Render(m.status))
@@ -508,8 +905,43 @@ func (m model) boardView() string {
 	return b.String()
 }
 
-// agentsView renders the read-only fleet roster: name, kind/model, workspace
-// mode and whether the daemon will schedule it.
+// detailView shows one task read-only, through the same renderer the CLI's
+// task view prints: the fleet's Task — what the prompt is built from — not the
+// backend's page, which would offer links, markdown and a comment thread the
+// pane deliberately has no way to use.
+func (m model) detailView() string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("fleet — " + m.dir))
+	b.WriteString("\n\n")
+	lines := strings.Split(strings.TrimRight(text.TaskDetail(m.detail), "\n"), "\n")
+	start, end := 0, len(lines)
+	if avail := m.availableRows(); avail > 0 && len(lines) > avail {
+		start = m.detailAt
+		if start > len(lines)-1 {
+			start = len(lines) - 1
+		}
+		end = start + avail
+		if end > len(lines) {
+			end = len(lines)
+		}
+	}
+	for _, line := range lines[start:end] {
+		b.WriteString(line + "\n")
+	}
+	if end < len(lines) {
+		fmt.Fprintf(&b, "%s\n", dimStyle.Render(fmt.Sprintf("  ↓ %d more below", len(lines)-end)))
+	}
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("j/k scroll · esc board · g agents · q quit"))
+	if m.status != "" {
+		b.WriteString("\n" + warnStyle.Render(m.status))
+	}
+	return b.String()
+}
+
+// agentsView renders the fleet roster: name, kind/model, workspace mode,
+// whether the daemon will schedule it, and what it is doing right now. p is a
+// decision rather than a blind toggle only because the last column is here.
 func (m model) agentsView() string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("fleet agents — " + m.dir))
@@ -517,10 +949,10 @@ func (m model) agentsView() string {
 	if len(m.agents) == 0 {
 		b.WriteString(dimStyle.Render("  no agents — add one under agents/<name>/AGENT.md\n"))
 	}
-	names := agentNames(m.agents)
-	sort.Strings(names)
-	for _, name := range names {
+	for i, name := range m.agentList() {
 		a := m.agents[name]
+		// disabled is the word the persona file uses; the status line is where
+		// p explains what pausing did and did not do.
 		status := okStyle.Render("enabled")
 		if a.Disabled {
 			status = warnStyle.Render("disabled")
@@ -529,14 +961,36 @@ func (m model) agentsView() string {
 		if u := m.usage[name]; pick.BudgetLine(a, u.Runs, u.Minutes) != "" {
 			line += "  " + dimStyle.Render(pick.BudgetLine(a, u.Runs, u.Minutes))
 		}
+		// The run it is on goes last and is not padded with the columns: a long
+		// title may be cut, but the elapsed time at the end never is.
+		line += "  " + m.busyCell(name, a)
+		if i == m.asel {
+			line = selectedStyle.Render(line)
+		}
 		b.WriteString(line + "\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("g board · q quit"))
+	b.WriteString(dimStyle.Render("j/k move · p pause/resume · g board · q quit"))
 	if m.status != "" {
 		b.WriteString("\n" + warnStyle.Render(m.status))
 	}
 	return b.String()
+}
+
+// busyCell is the roster's last column: the task an agent has in flight and
+// how long it has been on it, or idle. It reads the same history records the
+// board's Running group does.
+func (m model) busyCell(name string, a fleet.Agent) string {
+	it, rec, busy := m.busyWith(name)
+	if !busy {
+		return dimStyle.Render("idle")
+	}
+	parts := []string{work.LocalOf(it.ID)}
+	if src := work.SourceOf(it.ID); src != "" {
+		parts = append(parts, src)
+	}
+	parts = append(parts, it.Title)
+	return runStyle.Render("busy") + " " + text.Truncate(strings.Join(parts, " "), 36) + " " + runDetail(rec, a.TimeoutMinutes)
 }
 
 func agentNames(agents map[string]fleet.Agent) []string {

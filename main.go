@@ -421,30 +421,7 @@ func taskView(src work.Source, id string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	state, who := "open", it.Assignee
-	if !it.Open {
-		state = "closed"
-	}
-	if who == "" {
-		who = "-"
-	}
-	fmt.Fprintf(out, "%s — %s\n%s · %s · %s\n", it.ID, it.Title, state, it.Phase, who)
-	if it.Body != "" {
-		fmt.Fprintf(out, "\n## Description\n\n%s\n", it.Body)
-	}
-	if len(it.Criteria) > 0 {
-		fmt.Fprintf(out, "\n## Acceptance criteria\n\n")
-		for _, c := range it.Criteria {
-			box := "[ ]"
-			if c.Checked {
-				box = "[x]"
-			}
-			fmt.Fprintf(out, "- %s #%d %s\n", box, c.Index, c.Text)
-		}
-	}
-	if it.Notes != "" {
-		fmt.Fprintf(out, "\n## Notes\n\n%s\n", it.Notes)
-	}
+	fmt.Fprint(out, text.TaskDetail(it))
 	return nil
 }
 

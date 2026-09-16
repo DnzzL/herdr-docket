@@ -1,4 +1,5 @@
-// Package text holds the two-line string helpers the CLI and the pane share.
+// Package text holds the string helpers the CLI and the pane share, including
+// how one task reads.
 package text
 
 // Truncate shortens s to at most n runes, ellipsis included. Rune-wise:

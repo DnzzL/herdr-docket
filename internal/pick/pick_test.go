@@ -1,6 +1,7 @@
 package pick
 
 import (
+	"sort"
 	"testing"
 	"time"
 
@@ -282,4 +283,42 @@ func TestUnassignedWorkGoesToItsOwnProjectsIntake(t *testing.T) {
 // the whole fleet, which is what these cases are about.
 func defaults(name string) fleet.Defaults {
 	return fleet.Settings{DefaultAgent: name}.Defaults()
+}
+
+// The board shows a phase in this order, so Before is the policy itself rather
+// than a detail of Next: a board sorting its own way would be a list of work,
+// not a queue of it.
+func TestBeforeIsUrgencyThenTheBackendsOrderThenAge(t *testing.T) {
+	base := work.Task{Open: true, Ordinal: 10, CreatedAt: "2026-01-01"}
+	if !Before(base, work.Task{Open: true, Ordinal: 20, CreatedAt: "2026-01-01"}) {
+		t.Error("a lower ordinal should come first")
+	}
+	urgent := base
+	urgent.Priority = 3
+	if !Before(urgent, base) {
+		t.Error("a higher priority should come first")
+	}
+	older := base
+	older.CreatedAt = "2025-01-01"
+	if !Before(older, base) {
+		t.Error("the older task should come first when priority and ordinal tie")
+	}
+	if Before(base, base) {
+		t.Error("a task cannot come before itself")
+	}
+}
+
+// Exactly the order the daemon would work these tasks in, which is the order
+// the board must draw them in.
+func TestBeforeMatchesTheOrderNextPicks(t *testing.T) {
+	items := []work.Task{
+		{ID: "T-3", Open: true, Assignee: "a", Priority: 1, Ordinal: 1, CreatedAt: "2025-01-01"},
+		{ID: "T-1", Open: true, Assignee: "a", Priority: 5, Ordinal: 9, CreatedAt: "2026-01-01"},
+		{ID: "T-2", Open: true, Assignee: "a", Priority: 5, Ordinal: 2, CreatedAt: "2026-01-01"},
+	}
+	sorted := append([]work.Task(nil), items...)
+	sort.SliceStable(sorted, func(i, j int) bool { return Before(sorted[i], sorted[j]) })
+	if sorted[0].ID != Next(items, agents("a"), defaults("")).Task.ID {
+		t.Fatalf("board order %v disagrees with the scheduler", sorted[0].ID)
+	}
 }

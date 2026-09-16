@@ -141,6 +141,16 @@ type Source interface {
 	Close(id string, verdict Verdict) error
 }
 
+// LocalOf reads the backend's own id off a prefixed one: the part after the
+// queue name, which is what a person reads and retypes. A bare id is its own
+// local id, so a fleet with one prefixless queue is unchanged.
+func LocalOf(id string) string {
+	if _, rest, ok := strings.Cut(id, "/"); ok && rest != "" {
+		return rest
+	}
+	return id
+}
+
 // SourceOf reads the queue name off a prefixed id, and is empty for a bare
 // one. The prefix convention belongs to the port rather than to the composite
 // that writes it, so routing a task back to its project is one function

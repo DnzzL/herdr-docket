@@ -66,3 +66,19 @@ func TestPhasesOfOnNothingIsNothing(t *testing.T) {
 		t.Fatalf("PhasesOf(nil) = %v, want empty", got)
 	}
 }
+
+// A prefixed id is read by people as the backend's own id: the queue name is
+// the board's column, not something to retype next to it.
+func TestLocalOfStripsTheQueueAndLeavesABareIdAlone(t *testing.T) {
+	for _, tc := range []struct{ id, want string }{
+		{"myapp/TASK-12", "TASK-12"},
+		{"agency/987654", "987654"},
+		{"TASK-12", "TASK-12"},
+		{"", ""},
+		{"myapp/", "myapp/"},
+	} {
+		if got := LocalOf(tc.id); got != tc.want {
+			t.Errorf("LocalOf(%q) = %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}

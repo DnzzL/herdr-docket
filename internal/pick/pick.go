@@ -38,15 +38,7 @@ func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defau
 	// Most urgent first, then the backend's own order, then oldest first. The
 	// ranks are each backend's to compute and this comparison is the fleet's to
 	// own, so every backend gets the same policy rather than inventing one.
-	sort.SliceStable(open, func(i, j int) bool {
-		if a, b := open[i].Priority, open[j].Priority; a != b {
-			return a > b
-		}
-		if open[i].Ordinal != open[j].Ordinal {
-			return open[i].Ordinal < open[j].Ordinal
-		}
-		return open[i].CreatedAt < open[j].CreatedAt
-	})
+	sort.SliceStable(open, func(i, j int) bool { return Before(open[i], open[j]) })
 
 	var res Result
 	for i, it := range open {
@@ -72,6 +64,22 @@ func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defau
 		}
 	}
 	return res
+}
+
+// Before reports whether a is worked before b: most urgent first, then the
+// backend's own order, then oldest first. The ranks are each backend's to
+// compute and this comparison is the fleet's to own, so every backend gets the
+// same policy rather than inventing one — and the board calls this rather than
+// the backend's list order, so the two agree about what is next. Exported for
+// exactly that: a board that sorted its own way would be a list of work.
+func Before(a, b work.Task) bool {
+	if a.Priority != b.Priority {
+		return a.Priority > b.Priority
+	}
+	if a.Ordinal != b.Ordinal {
+		return a.Ordinal < b.Ordinal
+	}
+	return a.CreatedAt < b.CreatedAt
 }
 
 // AssigneeFor is the one routing rule: the task's assignee, or the default

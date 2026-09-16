@@ -400,9 +400,17 @@ $EDITOR ~/fleet/agents/example/AGENT.md
 herdr-docket task create "First task" -a example
 ```
 
-The board pane (overlay in Herdr, or `herdr-docket pane`) shows the queue grouped
-by phase: `r` runs a task now, `enter` jumps into the workspace a run opened,
-`a` adds a task. Bind it to a chord in `~/.config/herdr/config.toml`:
+The board pane (overlay in Herdr, or `herdr-docket pane`) is the fleet's
+triage surface: what runs next, what is running now, and the keys to act on
+both. `r` runs a task now, `x` stops the run on the selected row, `enter` jumps
+into the workspace a run opened, `v` reads the task, `s` re-routes it, `a` adds
+one, `/` filters, and `g` switches to the agent roster where `p` pauses and
+resumes an agent. Rows show the task's queue and the id its own board uses, the
+Running group sits above the phases, and a run past its agent's timeout is
+marked stale. It never closes a task with a verdict — see
+[ADR 0005](docs/adr/0005-the-board-is-a-triage-surface.md) for what the pane
+shows and what it deliberately refuses. Bind it to a chord in
+`~/.config/herdr/config.toml`:
 
 ```toml
 [[keys.command]]
@@ -507,8 +515,10 @@ sources:
 Each source's tasks carry its name as an id prefix — `myapp/TASK-12`,
 `agency/987654` — so every command that takes an id (`task view`, `note`,
 `done|fail|block`) routes to the right project, and `herdr-docket list` and the
-board show them all together. Creating work then names the project, because a
-bare `task create` cannot guess:
+board show them all together (the board gives each queue a column of its own
+and shows the id without the prefix, which is the part a person retypes).
+Creating work then names the project, because a bare `task create` cannot
+guess — and the pane's `a` asks for it:
 
 ```bash
 herdr-docket task create "Triage the backlog" -a pm -s myapp
@@ -682,7 +692,7 @@ PRs welcome.
 | `herdr-docket agent list` | the agents, and which are parked |
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket history [TASK-12]` | recent runs |
-| `herdr-docket pane` | the interactive board |
+| `herdr-docket pane` | the interactive board: what runs next, what is running now |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |
 
 ## What it isn't

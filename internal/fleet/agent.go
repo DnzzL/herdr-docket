@@ -12,6 +12,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// DefaultTimeoutMinutes is how long a run may take when its agent does not say.
+// Exported because the board draws the same timeout the run is held to: a row
+// saying 12m / 60m must be counting against the number the daemon enforces.
+const DefaultTimeoutMinutes = 60
+
 // Agent is one named worker: the parameters a run needs plus the persona the
 // prompt opens with.
 type Agent struct {
@@ -105,7 +110,7 @@ func loadAgent(fleetDir, path, name string) (Agent, error) {
 		return Agent{}, fmt.Errorf("unknown workspace mode %q", a.Workspace)
 	}
 	if a.TimeoutMinutes <= 0 {
-		a.TimeoutMinutes = 60
+		a.TimeoutMinutes = DefaultTimeoutMinutes
 	}
 	if a.Role != "" {
 		brief, err := os.ReadFile(filepath.Join(fleetDir, "roles", a.Role+".md"))
