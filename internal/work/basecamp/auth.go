@@ -226,7 +226,7 @@ func Login(out io.Writer) error {
 	if err := s.save(tok); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Basecamp authorized. Credentials stored in %s\n", s.path)
+	fmt.Fprintf(out, "Basecamp authorized. Credentials stored in %s\n", s.file.Path)
 	return nil
 }
 

@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"sort"
 
 	"github.com/DnzzL/herdr-docket/internal/work"
 	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
 	"github.com/DnzzL/herdr-docket/internal/work/basecamp"
+	"github.com/DnzzL/herdr-docket/internal/work/github"
 	"github.com/DnzzL/herdr-docket/internal/work/multi"
 )
 
@@ -15,6 +17,7 @@ import (
 const (
 	kindBacklogmd = "backlogmd"
 	kindBasecamp  = "basecamp"
+	kindGithub    = "github"
 )
 
 // SourceConfig is the `source:` block of fleet.yaml: which backend the queue
@@ -35,6 +38,9 @@ type SourceConfig struct {
 	// Basecamp is the block that kind reads. Each adapter owns the shape of
 	// its own configuration; this package only hands it over.
 	Basecamp basecamp.Config `yaml:"basecamp"`
+	// Github is the block kind github reads: which board, and which repository
+	// its issues live in.
+	Github github.Config `yaml:"github"`
 }
 
 // kind is the source kind with the default filled in.
@@ -103,6 +109,8 @@ func newQueue(c SourceConfig, dir string) (work.Source, error) {
 		return backlogmd.New(c.dirFrom(dir), c.Statuses), nil
 	case kindBasecamp:
 		return basecamp.New(c.Basecamp)
+	case kindGithub:
+		return github.New(c.Github)
 	}
 	return nil, unknownQueue(c.Kind)
 }
@@ -125,18 +133,53 @@ func (c SourceConfig) dirFrom(fleetDir string) string {
 // Which queues exist is stated once, in the switch above, and this is how both
 // the config and the CLI report one that does not.
 func unknownQueue(kind string) error {
-	return fmt.Errorf("unknown queue %q: the fleet speaks %s or %s", kind, kindBacklogmd, kindBasecamp)
+	return fmt.Errorf("unknown queue %q: the fleet speaks %s, %s or %s", kind, kindBacklogmd, kindBasecamp, kindGithub)
 }
 
 // Auth signs the fleet in to a queue that needs it, and says so plainly for
 // one that does not. A local queue has no account to authenticate against,
 // which is a fact about the queue rather than a failure.
-func Auth(kind string, out io.Writer) error {
-	switch (SourceConfig{Kind: kind}).kind() {
+//
+// It takes the whole Settings rather than a kind, because signing in to a
+// hosted queue means knowing *which* board or project it is, and that is
+// configuration. The name is a source's own name when the fleet has several,
+// which is also how a fleet with two boards signs in to one of them.
+func Auth(s Settings, name, token string, out io.Writer) error {
+	c := s.authSubject(name)
+	switch c.kind() {
 	case kindBacklogmd:
 		return fmt.Errorf("%s is a local queue: there is nothing to sign in to", kindBacklogmd)
 	case kindBasecamp:
 		return basecamp.Login(out)
+	case kindGithub:
+		return github.Login(c.Github, agentNames(s), token, out)
 	}
-	return unknownQueue(kind)
+	return unknownQueue(name)
+}
+
+// authSubject is the source block a sign-in is about. A fleet with several
+// sources names one by its own name; a fleet with one gets it when it is of
+// the kind being signed in to. Anything else answers with a block of that kind
+// and nothing in it, so that a queue which is not configured says *what* is
+// missing rather than that it is unknown.
+func (s Settings) authSubject(name string) SourceConfig {
+	if named, ok := s.Sources[name]; ok {
+		return named
+	}
+	if s.Source.kind() == name {
+		return s.Source
+	}
+	return SourceConfig{Kind: name}
+}
+
+// agentNames is who a queue can route to: the agents this fleet describes,
+// sorted so that signing in twice reads the same.
+func agentNames(s Settings) []string {
+	agents, _ := LoadAgents(s.Dir)
+	names := make([]string, 0, len(agents))
+	for name := range agents {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
