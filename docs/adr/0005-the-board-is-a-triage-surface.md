@@ -61,7 +61,9 @@ on the project's own board. The pane offers no done, no fail, no block.
 **Pause is a scheduler fact and it never kills anything.** Pausing an agent
 writes `disabled:` into its `AGENT.md`, which takes it out of `pick.Next` within
 a tick and leaves every run in flight alone; `herdr-docket run` still reaches a
-paused agent, because a person asking is not the scheduler. Stopping a run is a
+paused agent, because a person asking is not the scheduler. The board reads the
+same fact where the work is listed: a row whose agent is paused carries the word
+in its agent column, so a queue that is not moving says why. Stopping a run is a
 different action with a different key, and it closes the run's workspace — the
 cancellation path that already exists, which ends the task `Blocked` so a human
 says what happens next.

@@ -407,7 +407,19 @@ into the workspace a run opened, `v` reads the task, `s` re-routes it, `a` adds
 one, `/` filters, and `g` switches to the agent roster where `p` pauses and
 resumes an agent. Rows show the task's queue and the id its own board uses, the
 Running group sits above the phases, and a run past its agent's timeout is
-marked stale. It never closes a task with a verdict — see
+marked stale.
+
+```
+  TASK-12   myapp  Fix the parser           dev paused      12m / 45m
+  TASK-4    ops    Rotate the deploy keys   example         last run done Wed 14:28
+```
+
+The queue column appears only when the fleet has more than one, and the agent
+column says the two ways routing can be wrong: yellow `paused` for an agent the
+scheduler is skipping, red `ghost?` for a name nobody answers to. The last
+column is the run — elapsed against the timeout it was started with, marked
+stale past it — or how the last run ended. It never closes a task with a
+verdict: see
 [ADR 0005](docs/adr/0005-the-board-is-a-triage-surface.md) for what the pane
 shows and what it deliberately refuses. Bind it to a chord in
 `~/.config/herdr/config.toml`:
