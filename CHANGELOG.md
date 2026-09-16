@@ -2,18 +2,8 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## v0.4.0 — unreleased
+## v0.5.0 — 2026-09-16
 
-- **The plugin is `herdr-docket`, where it was `herdr-fleet`.** The id moves
-  with it — `dnzzl.herdr-docket` — so the config dir, the state dir, and every
-  command (`herdr-docket ...`) follow. Re-link or reinstall, and point any
-  existing fleet setup at the new id.
-- `herdr-docket install-skill` writes the bundled agent skill into a runtime's
-  own skill location, so an agent learns the queue verbs — `note`,
-  `done`/`fail`/`block`, `assign`, `create` — instead of you copying the file by
-  hand.
-- Reading `herdr`'s error envelope from the stream it actually writes: a failing
-  `herdr` call used to surface as a parse error instead of the real message.
 - **A GitHub Projects board can be the queue.** `kind: github` with the board's
   `owner`, its `project` number and the `repo` its issues live in: a task is a
   real issue that has been put on the board, `assign` writes the board's
@@ -31,6 +21,19 @@ What changed for someone using the plugin. Dates are release dates.
 - The README named `HERDR_FLEET_BASECAMP_CLIENT_ID` and `_SECRET` for the
   Launchpad app. The names the code reads are `HERDR_DOCKET_BASECAMP_CLIENT_ID`
   and `HERDR_DOCKET_BASECAMP_CLIENT_SECRET`.
+
+## v0.4.0 — 2026-09-14
+
+- **The plugin is `herdr-docket`, where it was `herdr-fleet`.** The id moves
+  with it — `dnzzl.herdr-docket` — so the config dir, the state dir, and every
+  command (`herdr-docket ...`) follow. Re-link or reinstall, and point any
+  existing fleet setup at the new id.
+- `herdr-docket install-skill` writes the bundled agent skill into a runtime's
+  own skill location, so an agent learns the queue verbs — `note`,
+  `done`/`fail`/`block`, `assign`, `create` — instead of you copying the file by
+  hand.
+- Reading `herdr`'s error envelope from the stream it actually writes: a failing
+  `herdr` call used to surface as a parse error instead of the real message.
 
 ## v0.3.0 — 2026-09-13
 
