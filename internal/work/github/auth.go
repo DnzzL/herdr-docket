@@ -261,13 +261,15 @@ func missingOptions(f *field, agents []string) []string {
 // the API has to name one.
 var optionColors = []string{"BLUE", "GREEN", "YELLOW", "ORANGE", "PINK", "PURPLE", "RED", "GRAY"}
 
-// colored turns names into options, colouring each in turn.
-func colored(names []string, from int) []map[string]any {
+// colored turns names into options, colouring each in turn. offset is where to
+// pick the cycle up: options already on the field keep the colours they have,
+// so a second sign-in colours only what it adds.
+func colored(names []string, offset int) []map[string]any {
 	options := make([]map[string]any, 0, len(names))
 	for i, name := range names {
 		options = append(options, map[string]any{
 			"name":  name,
-			"color": optionColors[(from+i)%len(optionColors)],
+			"color": optionColors[(offset+i)%len(optionColors)],
 		})
 	}
 	return options

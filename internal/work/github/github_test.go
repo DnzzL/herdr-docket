@@ -543,3 +543,23 @@ func TestNewRefusesAConfigurationItCannotRoute(t *testing.T) {
 		})
 	}
 }
+
+// The repository is split once, where the configuration is read, so the rule
+// about what a repository may look like lives here and not at each document.
+func TestARepositoryIsAnOwnerAndAName(t *testing.T) {
+	for _, s := range []string{"acme/widgets", "acme/one", "a-b_c/9"} {
+		r, err := parseRepo(s)
+		if err != nil {
+			t.Fatalf("parseRepo(%q): %v", s, err)
+		}
+		owner, name, _ := strings.Cut(s, "/")
+		if r != (repo{owner: owner, name: name}) {
+			t.Errorf("parseRepo(%q) = %+v, want %s and %s", s, r, owner, name)
+		}
+	}
+	for _, s := range []string{"", "acme", "/widgets", "acme/", "/", "acme/widgets/extra"} {
+		if r, err := parseRepo(s); err == nil {
+			t.Errorf("parseRepo(%q) = %+v, want a refusal", s, r)
+		}
+	}
+}

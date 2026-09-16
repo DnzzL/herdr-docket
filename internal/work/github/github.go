@@ -68,17 +68,26 @@ func (c Config) inProgress() string {
 	return c.InProgress
 }
 
-// repoParts splits the configured repository into owner and name.
-func (c Config) repoParts() (string, string) {
-	owner, name, _ := strings.Cut(c.Repo, "/")
-	return owner, name
+// repo is the repository Create writes into and List reads: the configured
+// "owner/name", split once where the configuration is read rather than at every
+// document that needs the two halves.
+type repo struct{ owner, name string }
+
+// parseRepo reads "owner/name". A name with a slash in it is not a repository.
+func parseRepo(s string) (repo, error) {
+	owner, name, ok := strings.Cut(strings.TrimSpace(s), "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return repo{}, fmt.Errorf("github: source.github.repo is %q, want owner/name", s)
+	}
+	return repo{owner: owner, name: name}, nil
 }
 
 // Source is the adapter. Its fields are unexported so a test can swap the API
 // client for one that talks to a fake, exactly as basecamp's does.
 type Source struct {
-	cfg Config
-	api *api
+	cfg  Config
+	repo repo
+	api  *api
 }
 
 var (
@@ -91,7 +100,6 @@ var (
 // the fleet builds a Source on every tick, and a tick must not fail because
 // GitHub is briefly unreachable.
 func New(c Config) (*Source, error) {
-	owner, name := c.repoParts()
 	switch {
 	case strings.TrimSpace(c.Owner) == "":
 		return nil, fmt.Errorf("github: source.github.owner is required — the org or user that owns the board")
@@ -99,11 +107,14 @@ func New(c Config) (*Source, error) {
 		return nil, fmt.Errorf("github: source.github.project is required — the number in .../projects/<n>")
 	case strings.TrimSpace(c.Repo) == "":
 		return nil, fmt.Errorf("github: source.github.repo is required — owner/name, the repository Create writes issues to")
-	case owner == "" || name == "" || strings.Contains(name, "/"):
-		return nil, fmt.Errorf("github: source.github.repo is %q, want owner/name", c.Repo)
+	}
+	r, err := parseRepo(c.Repo)
+	if err != nil {
+		return nil, err
 	}
 	return &Source{
-		cfg: c,
+		cfg:  c,
+		repo: r,
 		api: &api{
 			url:    GraphQLURL,
 			http:   defaultHTTP(),
@@ -475,7 +486,6 @@ func (s *Source) locate(id string) (location, error) {
 }
 
 func (s *Source) createTarget() (writeTarget, error) {
-	owner, name := s.cfg.repoParts()
 	var out struct {
 		Organization *boardHalf `json:"organization"`
 		User         *boardHalf `json:"user"`
@@ -486,8 +496,8 @@ func (s *Source) createTarget() (writeTarget, error) {
 	if err := s.api.do("Create", createQuery, map[string]any{
 		"owner":     s.cfg.Owner,
 		"project":   s.cfg.Project,
-		"repoOwner": owner,
-		"repoName":  name,
+		"repoOwner": s.repo.owner,
+		"repoName":  s.repo.name,
 	}, &out); err != nil {
 		return writeTarget{}, err
 	}
@@ -622,12 +632,11 @@ func issueNumber(id string) (int, error) {
 }
 
 func (s *Source) issueVars(number int) map[string]any {
-	owner, name := s.cfg.repoParts()
 	return map[string]any{
 		"owner":       s.cfg.Owner,
 		"project":     s.cfg.Project,
-		"repoOwner":   owner,
-		"repoName":    name,
+		"repoOwner":   s.repo.owner,
+		"repoName":    s.repo.name,
 		"issue":       number,
 		"agentField":  s.cfg.agentField(),
 		"statusField": s.cfg.statusField(),
