@@ -161,16 +161,16 @@ func TestMatchesFindsTheQueueName(t *testing.T) {
 	}
 }
 
-func TestProjectsOfListsTheQueuesInAStableOrder(t *testing.T) {
-	got := projectsOf([]work.Task{
+func TestQueuesOfListsTheQueuesInAStableOrder(t *testing.T) {
+	got := queuesOf([]work.Task{
 		{ID: "zeta/T-1"}, {ID: "alpha/T-2"}, {ID: "zeta/T-3"},
 	})
 	want := []string{"alpha", "zeta"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
-	if got := projectsOf([]work.Task{{ID: "TASK-1"}}); len(got) != 0 {
-		t.Fatalf("a prefixless queue has no project column: %v", got)
+	if got := queuesOf([]work.Task{{ID: "TASK-1"}}); len(got) != 0 {
+		t.Fatalf("a prefixless queue has no queue column: %v", got)
 	}
 }
 
@@ -471,7 +471,7 @@ func TestAddFlowAsksForTheQueueOnlyWhenThereAreSeveral(t *testing.T) {
 	m := model{src: multi, agents: map[string]fleet.Agent{"dev": {Name: "dev"}}}
 	m.mode, m.input = addingTitle, "Fix the parser"
 	m, _ = press(m, "enter")
-	if m.mode != addingProject {
+	if m.mode != addingQueue {
 		t.Fatalf("mode = %v, want the queue step", m.mode)
 	}
 	m.input = "zeta"

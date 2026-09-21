@@ -1,7 +1,7 @@
 // Package pane is the plugin's Herdr overlay pane: the fleet's board. It shows
 // what the fleet works next and what it is working on now, and it acts on both.
 // What it shows and what it refuses are decided in
-// docs/adr/0005-the-board-is-a-triage-surface.md: it renders the fleet's Task,
+// docs/adr/0008-the-board-is-a-triage-surface.md: it renders the fleet's Task,
 // not the backend's page, and it never closes a task with a verdict.
 package pane
 
@@ -35,12 +35,12 @@ var (
 	runStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 )
 
-// projectColors are the colours a queue's name is drawn in: enough to tell a
+// queueColors are the colours a queue's name is drawn in: enough to tell a
 // fleet's queues apart, avoiding the three the board already means — red is
 // failed, green is done, yellow is blocked. A queue keeps its colour because
 // they are handed out in the sorted order of the names, not the order tasks
 // happened to arrive in.
-var projectColors = []lipgloss.Color{"4", "5", "6", "12", "13", "14"}
+var queueColors = []lipgloss.Color{"4", "5", "6", "12", "13", "14"}
 
 // row is one line of the board: a phase header, a spacer between groups, or
 // a task under a header.
@@ -54,7 +54,7 @@ type row struct {
 func (r row) selectable() bool { return r.header == "" && !r.spacer }
 
 // The board's fixed columns: the id, the agent and the detail line. The title
-// is the only column that flexes with the terminal, and the project column
+// is the only column that flexes with the terminal, and the queue column
 // exists only when a fleet has more than one queue.
 const (
 	idWidth     = 9
@@ -146,10 +146,10 @@ func matches(it work.Task, query string) bool {
 		strings.Contains(strings.ToLower(it.Title), query)
 }
 
-// projectsOf lists the queues these tasks come from, in a stable order. Empty
+// queuesOf lists the queues these tasks come from, in a stable order. Empty
 // or one name means there is nothing on a row to distinguish, and the board
-// draws no project column at all.
-func projectsOf(items []work.Task) []string {
+// draws no queue column at all.
+func queuesOf(items []work.Task) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, it := range items {
@@ -164,12 +164,12 @@ func projectsOf(items []work.Task) []string {
 	return out
 }
 
-// projectStyle colours a queue's name, so two queues stay apart at a glance
+// queueStyle colours a queue's name, so two queues stay apart at a glance
 // even when the eye skips the text.
-func projectStyle(projects []string, name string) lipgloss.Style {
-	for i, p := range projects {
+func queueStyle(queues []string, name string) lipgloss.Style {
+	for i, p := range queues {
 		if p == name {
-			return lipgloss.NewStyle().Foreground(projectColors[i%len(projectColors)])
+			return lipgloss.NewStyle().Foreground(queueColors[i%len(queueColors)])
 		}
 	}
 	return dimStyle
@@ -198,7 +198,7 @@ type mode int
 const (
 	browsing mode = iota
 	addingTitle
-	addingProject
+	addingQueue
 	addingAssignee
 	assigningAgent
 	searching
@@ -231,7 +231,7 @@ type model struct {
 	view     view
 	input    string
 	pending  string // what the flow is about, while a prompt is open
-	project  string // the queue the add flow chose, empty for a single queue
+	queue    string // the queue the add flow chose, empty for a single queue
 	query    string // active task filter, live-edited while mode == searching
 	detail   work.Task
 	detailAt int // first line of the detail view on screen
@@ -363,7 +363,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "k", "up":
 			m.move(-1)
 		case "a":
-			m.mode, m.input, m.status, m.project = addingTitle, "", "", ""
+			m.mode, m.input, m.status, m.queue = addingTitle, "", "", ""
 		case "r":
 			return m.runSelected()
 		case "x":
@@ -393,7 +393,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// No verdict key, by design: the pane routes work and never judges it.
-		// See the refusal list in docs/adr/0005-the-board-is-a-triage-surface.md.
+		// See the refusal list in docs/adr/0008-the-board-is-a-triage-surface.md.
 	}
 	return m, nil
 }
@@ -401,7 +401,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.mode, m.input, m.pending, m.project = browsing, "", "", ""
+		m.mode, m.input, m.pending, m.queue = browsing, "", "", ""
 	case "enter":
 		switch m.mode {
 		case addingTitle:
@@ -413,22 +413,22 @@ func (m model) updateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// A composite source cannot invent a queue and refuses to try, so
 			// the flow asks before it writes rather than failing after it.
 			if len(m.queueNames()) > 1 {
-				m.mode = addingProject
+				m.mode = addingQueue
 			} else {
 				m.mode = addingAssignee
 			}
 			return m, nil
-		case addingProject:
-			m.project, m.input, m.mode = strings.TrimSpace(m.input), "", addingAssignee
+		case addingQueue:
+			m.queue, m.input, m.mode = strings.TrimSpace(m.input), "", addingAssignee
 			return m, nil
 		case assigningAgent:
 			id, agent, src := m.pending, strings.TrimSpace(m.input), m.src
 			m.mode, m.input, m.pending = browsing, "", ""
 			return m, assign(src, id, agent)
 		}
-		title, assignee, project, src := m.pending, strings.TrimSpace(m.input), m.project, m.src
-		m.mode, m.input, m.pending, m.project = browsing, "", "", ""
-		return m, create(src, project, title, assignee)
+		title, assignee, queue, src := m.pending, strings.TrimSpace(m.input), m.queue, m.src
+		m.mode, m.input, m.pending, m.queue = browsing, "", "", ""
+		return m, create(src, queue, title, assignee)
 	case "backspace":
 		if len(m.input) > 0 {
 			m.input = m.input[:len(m.input)-1]
@@ -489,11 +489,11 @@ func getDetail(src work.Source, id string) tea.Cmd {
 // create adds a task in the queue the person named, or in the only queue the
 // source has. A MultiSource wants a queue name and cannot invent one — its own
 // refusal to guess is why the pane asks for it up front.
-func create(src work.Source, project, title, assignee string) tea.Cmd {
+func create(src work.Source, queue, title, assignee string) tea.Cmd {
 	return func() tea.Msg {
-		if project != "" {
+		if queue != "" {
 			if multi, ok := src.(work.MultiSource); ok {
-				_, err := multi.CreateIn(project, title, "", assignee)
+				_, err := multi.CreateIn(queue, title, "", assignee)
 				return ranMsg{err: err}
 			}
 		}
@@ -832,25 +832,25 @@ func (m model) boardView() string {
 	}
 	b.WriteString("\n\n")
 
-	// Fixed columns (id, project, who, detail) plus their separating spaces, so
+	// Fixed columns (id, queue, who, detail) plus their separating spaces, so
 	// the title is the only column that flexes with terminal width. Detail is
 	// capped to fit "last run <longest status> Mon 15:04" (~30 chars).
-	projects := projectsOf(m.tasks)
-	projectWidth := 0
-	if len(projects) > 1 {
-		projectWidth = 6
-		for _, p := range projects {
-			if n := len([]rune(p)); n > projectWidth {
-				projectWidth = n
+	queues := queuesOf(m.tasks)
+	queueWidth := 0
+	if len(queues) > 1 {
+		queueWidth = 6
+		for _, p := range queues {
+			if n := len([]rune(p)); n > queueWidth {
+				queueWidth = n
 			}
 		}
-		if projectWidth > 12 {
-			projectWidth = 12
+		if queueWidth > 12 {
+			queueWidth = 12
 		}
 	}
 	fixed := idWidth + whoWidth + detailWidth + 5
-	if projectWidth > 0 {
-		fixed += projectWidth + 1
+	if queueWidth > 0 {
+		fixed += queueWidth + 1
 	}
 	titleWidth := 40
 	if m.width > 0 {
@@ -861,7 +861,7 @@ func (m model) boardView() string {
 		}
 	}
 	rowFormat := fmt.Sprintf("  %%-%ds %%-%ds %%s %%s", idWidth, titleWidth)
-	if projectWidth > 0 {
+	if queueWidth > 0 {
 		rowFormat = fmt.Sprintf("  %%-%ds %%s %%-%ds %%s %%s", idWidth, titleWidth)
 	}
 
@@ -909,9 +909,9 @@ func (m model) boardView() string {
 			detail = dimStyle.Render(text.Truncate(raw, detailWidth))
 		}
 		fields := []any{text.Truncate(work.LocalOf(r.task.ID), idWidth)}
-		if projectWidth > 0 {
+		if queueWidth > 0 {
 			name := work.SourceOf(r.task.ID)
-			fields = append(fields, projectStyle(projects, name).Width(projectWidth).Render(text.Truncate(name, projectWidth)))
+			fields = append(fields, queueStyle(queues, name).Width(queueWidth).Render(text.Truncate(name, queueWidth)))
 		}
 		fields = append(fields, text.Truncate(r.task.Title, titleWidth), who, detail)
 		line := fmt.Sprintf(rowFormat, fields...)
@@ -930,7 +930,7 @@ func (m model) boardView() string {
 	switch m.mode {
 	case addingTitle:
 		b.WriteString("new task title: " + m.input + "▌\n")
-	case addingProject:
+	case addingQueue:
 		b.WriteString(fmt.Sprintf("queue for %q (%s): %s▌\n",
 			m.pending, strings.Join(m.queueNames(), ", "), m.input))
 	case addingAssignee:
