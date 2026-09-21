@@ -1,10 +1,11 @@
 ---
 id: TASK-25
 title: 'An assignee written @name routes to nobody, and the board shows it that way'
-status: To Do
+status: Done
 assignee:
   - fleet-dev
 created_date: '2026-09-13 20:41'
+updated_date: '2026-09-21 13:17'
 labels: []
 dependencies: []
 priority: high
@@ -31,7 +32,7 @@ Whichever way: `@thomas` must still come out as a name the board reports as unkn
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A task assigned @name is routed to the agent named name, and a test pins both spellings
-- [ ] #2 An assignee that matches no agent is still reported as unknown, with the name readable — the @ is normalised, not the signal
-- [ ] #3 The choice between normalising in the adapter and normalising in pick is stated with its reason, in the code or an ADR
+- [x] #1 A task assigned @name is routed to the agent named name, and a test pins both spellings
+- [x] #2 An assignee that matches no agent is still reported as unknown, with the name readable — the @ is normalised, not the signal
+- [x] #3 The choice between normalising in the adapter and normalising in pick is stated with its reason, in the code or an ADR
 <!-- AC:END -->

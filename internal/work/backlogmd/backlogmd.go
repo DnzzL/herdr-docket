@@ -6,6 +6,7 @@ package backlogmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
@@ -154,7 +155,7 @@ func (s *Source) asTask(t task) work.Task {
 	return work.Task{
 		ID:        t.ID,
 		Title:     t.Title,
-		Assignee:  first(t.Assignees),
+		Assignee:  assignee(t.Assignees),
 		Open:      s.vocab.open(t.Status),
 		Phase:     s.vocab.phase(t.Status),
 		Verdict:   s.vocab.verdictOf(t.Status),
@@ -213,9 +214,24 @@ func rank(priority string) int {
 	return 0
 }
 
-func first(xs []string) string {
+// assignee is the task's routing key: the first name on its assignee list,
+// with Backlog.md's sigil taken off. `@name` is how its CLI prints an assignee
+// and how it accepts one, so the sigil lands in the file — TASK-91 on a real
+// board carried '@dishnow-reviewer' — but an agent is a folder in the fleet dir
+// and its name has no `@` in it. The translation belongs here, at the edge,
+// with the rest of the backend's conventions: `pick` decides whose work a task
+// is, the board prints the name, and neither should have to know how one
+// backend decorates one. Doing it in pick would cover every backend at once,
+// including those not written yet, and would teach the core a convention it has
+// no business knowing. A name the fleet cannot match comes back as itself,
+// unknown and readable — not stripped to nothing, which would hand the task to
+// the default agent and look like routing.
+func assignee(xs []string) string {
 	if len(xs) == 0 {
 		return ""
+	}
+	if name := strings.TrimPrefix(xs[0], "@"); name != "" {
+		return name
 	}
 	return xs[0]
 }

@@ -24,6 +24,11 @@ What changed for someone using the plugin. Dates are release dates.
   or idle, and `p` pauses or resumes the agent under the cursor: pausing writes
   `disabled:` to its `AGENT.md` and never touches a run already in flight — `x`
   is the key that stops one, and `r` still runs a paused agent's task by hand.
+- **An assignee written `@name` routes to the agent `name`.** That is how
+  Backlog.md prints an assignee and how its CLI accepts one, so the sigil
+  reaches the task file; it used to carry on into the router, where the task
+  went to nobody while its row looked routed. A name no agent answers to is
+  still shown as unknown — the sigil comes off, the name does not.
 - `a` asks which queue a task belongs in when the fleet has more than one, so
   creating work from the pane no longer fails on a bare `task create`. Nothing
   in the pane closes a task with a verdict: see

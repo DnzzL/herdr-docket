@@ -83,6 +83,12 @@ again. `in_progress` is optional: it is display only, so a project with no word
 for it simply never shows one. A source with a `dir:` of its own is never
 scaffolded or patched by `herdr-docket init`; its config stays yours.
 
+Assignees are agent names. Backlog.md prints one as `@name` and accepts one
+written that way, so a task filed from its own interface carries the sigil into
+the file; the fleet takes it off when it reads the task, because an agent is a
+folder in the fleet dir and its name has no `@` in it. A name no agent answers
+to still shows as unknown — the sigil comes off, the name does not.
+
 ## Several projects at once
 
 One fleet can work several projects, each keeping the tool it already uses. Use

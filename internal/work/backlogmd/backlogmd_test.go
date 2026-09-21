@@ -97,7 +97,48 @@ func TestBacklogPrioritiesRankInOrder(t *testing.T) {
 }
 
 // The routing key is the first assignee: the one field pick reads to decide
-// whose work this is.
+// whose work this is. A person writes an assignee as `@name` — that is how
+// Backlog.md prints one and how its CLI accepts one — so the sigil reaches the
+// file: TASK-91 on a real board carried '@dishnow-reviewer'. An agent is a
+// folder in the fleet dir and its name has no `@` in it, so the sigil stops at
+// the adapter, which is where the backend's conventions are translated. A name
+// the fleet cannot match still comes out as that name — unknown and readable
+// rather than silently unassigned, or silently handed to the default agent.
+func TestAnAssigneeIsReadWithoutBacklogmdsAtSign(t *testing.T) {
+	for _, tc := range []struct{ stored, want string }{
+		{"@dishnow-reviewer", "dishnow-reviewer"},
+		{"dishnow-reviewer", "dishnow-reviewer"},
+		{"@thomas", "thomas"},
+		{"@", "@"},
+	} {
+		items, err := newWith(&fakeClient{tasks: []task{{
+			ID: "T-1", Title: "t", Status: "To Do", Assignees: []string{tc.stored},
+		}}}, Vocabulary{}).List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if items[0].Assignee != tc.want {
+			t.Errorf("stored %q: Assignee = %q, want %q", tc.stored, items[0].Assignee, tc.want)
+		}
+	}
+}
+
+// The second read has to translate the same way: a task opened in the detail
+// view is the one a person presses r on, so a sigil surviving here would route
+// the run to nobody while the row above it looked routed.
+func TestGetReadsAnAssigneeWithoutTheAtSignToo(t *testing.T) {
+	s := newWith(&fakeClient{view: view{
+		task: task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"@dev"}},
+	}}, Vocabulary{})
+	it, err := s.Get("TASK-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Assignee != "dev" {
+		t.Fatalf("Assignee = %q, want %q", it.Assignee, "dev")
+	}
+}
+
 func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
 	items, err := newWith(&fakeClient{tasks: []task{{
 		ID: "TASK-2", Title: "B", Status: "To Do", Priority: "high",
