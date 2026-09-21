@@ -2,7 +2,7 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## v0.6.0 — unreleased
+## v0.6.0 — 2026-09-21
 
 - **The board pane is the fleet's triage surface: what runs next, what is
   running now, and the keys to act on both.** A task with a run in flight is in
