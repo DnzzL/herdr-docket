@@ -66,3 +66,7 @@ nix-shell -p asciinema asciinema-agg tmux jetbrains-mono \
   adapter learns which one answered.
 - Every user-visible change gets a `CHANGELOG.md` entry describing what it means
   for someone using the plugin, not what was refactored.
+- **The README is the landing page; `docs/` is the manual.** A visitor should be
+  able to install the plugin and watch a first run without leaving the README.
+  Everything past that — every agent field, every backend, the worked examples —
+  lives in `docs/`, and the README links to it instead of repeating it.
