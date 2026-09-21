@@ -428,8 +428,12 @@ shows and what it deliberately refuses. Bind it to a chord in
 [[keys.command]]
 key = "prefix+f"
 type = "shell"
-command = "herdr plugin pane open --plugin dnzzl.docket --entrypoint board --placement overlay"
+command = "herdr plugin pane open --plugin dnzzl.herdr-docket --entrypoint board --placement overlay"
 ```
+
+The id is the manifest's — `dnzzl.herdr-docket`, not `dnzzl.docket`: a chord is a
+plain shell command, so a name Herdr does not know answers `plugin_not_found`
+and the key does nothing at all.
 
 Nothing happens when you press the chord? A linked plugin is registered but not
 necessarily *built*, and it can be *disabled* — and because the chord is a plain
@@ -438,13 +442,17 @@ for the pane directly, which prints the error the keybinding swallows:
 
 ```bash
 herdr plugin list                      # enabled? and does bin/ actually exist?
-herdr plugin pane open --plugin dnzzl.docket --entrypoint board --placement overlay
-herdr plugin pane close PANE_ID        # this opens the board without any chord
+herdr plugin pane open --plugin dnzzl.herdr-docket --entrypoint board --placement overlay
+herdr plugin pane close PANE_ID        # closes the board again, given the id open printed
 ```
 
-`plugin_disabled` → `herdr plugin enable dnzzl.docket`. `... because it does not
-exist` → run the manifest's build step (`sh scripts/install.sh`). Both take
-effect without restarting the Herdr server, so no running agent loses its pane.
+`plugin_not_found` → the plugin is not installed or linked; on a checkout, build
+it and link it (`go build -o bin/herdr-docket . && herdr plugin link .`), because
+the manifest's build step fetches the *released* binary, not the tree you are in.
+`plugin_disabled` → `herdr plugin enable dnzzl.herdr-docket`. `... because it
+does not exist` → run the manifest's build step (`sh scripts/install.sh`). All of
+these take effect without restarting the Herdr server, so no running agent loses
+its pane.
 
 Config is optional — `fleet.yaml` in the plugin config dir:
 
