@@ -41,7 +41,7 @@ sources:
     )
 
 
-def rec(run_id, task, agent, status, **ago):
+def rec(run_id, task, agent, status, workspace, **ago):
     return json.dumps(
         {
             "run_id": run_id,
@@ -50,8 +50,12 @@ def rec(run_id, task, agent, status, **ago):
             "trigger": "poll",
             "status": status,
             "at": (now - dt.timedelta(**ago)).strftime("%Y-%m-%dT%H:%M:%S.000000Z"),
-            "workspace_id": "",
-            "pane_id": "",
+            # The workspace the run happened in, and the pane inside it: the id
+            # `x` closes. A running record without one is not a shape the
+            # daemon writes, and a fixture that had one would answer "no run to
+            # stop" on a row that reads Running.
+            "workspace_id": workspace,
+            "pane_id": workspace + ":p1",
         }
     )
 
@@ -59,10 +63,10 @@ def rec(run_id, task, agent, status, **ago):
 # A fresh run and a stale one: `example` has no timeout_minutes, so its run
 # counts against the fleet's default of 60 and has been past it for hours.
 lines = [
-    rec("myapp/TASK-1-1", "myapp/TASK-1", "dev", "running", minutes=12),
-    rec("myapp/TASK-2-2", "myapp/TASK-2", "example", "running", hours=4, minutes=30),
-    rec("ops/TASK-2-3", "ops/TASK-2", "ops", "done", hours=3),
-    rec("myapp/TASK-4-4", "myapp/TASK-4", "dev", "done", days=1),
+    rec("myapp/TASK-1-1", "myapp/TASK-1", "dev", "running", "wR:p7", minutes=12),
+    rec("myapp/TASK-2-2", "myapp/TASK-2", "example", "running", "wR:p8", hours=4, minutes=30),
+    rec("ops/TASK-2-3", "ops/TASK-2", "ops", "done", "wR:p9", hours=3),
+    rec("myapp/TASK-4-4", "myapp/TASK-4", "dev", "done", "wR:pA", days=1),
 ]
 with open(os.path.join(demo, "state", "history.jsonl"), "w") as f:
     f.write("\n".join(lines) + "\n")

@@ -448,6 +448,86 @@ func TestStopSaysStoppingAndOnlyWithARunInFlight(t *testing.T) {
 	}
 }
 
+// fakeHerdr is the herdr binary the pane's stop call goes through. Closing a
+// workspace that no longer exists is the case the pane has to be able to tell
+// from a close it made, so the answer is scripted at the process boundary
+// rather than faked one level up.
+func fakeHerdr(t *testing.T, gone bool) {
+	t.Helper()
+	script := "#!/bin/sh\nexit 0\n"
+	if gone {
+		script = "#!/bin/sh\n" +
+			`cat >&2 <<'JSON'` + "\n" +
+			`{"error":{"code":"workspace_not_found","message":"no workspace ws-1"},"id":"cli:workspace:close"}` + "\n" +
+			"JSON\nexit 1\n"
+	}
+	path := filepath.Join(t.TempDir(), "herdr")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", path)
+}
+
+// The status line is the only part of a stop the pane can correct: the
+// workspace is herdr's and the record is history's. So the answer decides what
+// the board says, and the stale case — a row whose workspace was gone before
+// anyone pressed a key — is a fact, not a promise the pane cannot keep.
+func TestStopSaysWhatItFoundRatherThanWhatItWants(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		gone bool
+		want string
+	}{
+		{"the workspace was there", false, "closed T-1's workspace"},
+		{"the workspace was already gone", true, "T-1: its workspace is already gone"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fakeHerdr(t, tc.gone)
+			m := model{
+				tasks: []work.Task{{ID: "T-1", Open: true, Phase: "In Progress"}},
+				last:  map[string]*history.Record{"T-1": {Status: history.StatusRunning, WorkspaceID: "ws-1"}},
+			}
+			m.rebuildRows()
+			m.clampSel()
+
+			stopping := m.stopSelected()
+			if stopping == nil {
+				t.Fatal("want the call that closes the workspace")
+			}
+			next, refresh := m.Update(stopping())
+			got := next.(model)
+			if got.status != tc.want {
+				t.Errorf("status = %q, want %q", got.status, tc.want)
+			}
+			if refresh == nil {
+				t.Error("the row has to be re-read: what the pane just said changes what it shows")
+			}
+		})
+	}
+}
+
+// A close that really failed keeps its own words: a pane that flattened every
+// answer into "closed" would report a dead herdr as a stopped run.
+func TestStopReportsTheErrorWhenTheCloseFailsForAnotherReason(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "herdr")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\necho 'boom: herdr is not running' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", path)
+	m := model{
+		tasks: []work.Task{{ID: "T-1", Open: true, Phase: "In Progress"}},
+		last:  map[string]*history.Record{"T-1": {Status: history.StatusRunning, WorkspaceID: "ws-1"}},
+	}
+	m.rebuildRows()
+	m.clampSel()
+
+	next, _ := m.Update(m.stopSelected()())
+	if got := next.(model).status; !strings.Contains(got, "herdr is not running") {
+		t.Fatalf("status = %q, want the failure itself", got)
+	}
+}
+
 // s re-routes through the port's Assigner, and a backend that cannot reassign
 // says so in its own words rather than being papered over.
 func TestAssignReachesTheSourcesAssignerAndReportsARefusal(t *testing.T) {

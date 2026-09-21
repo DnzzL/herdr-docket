@@ -20,7 +20,9 @@ What changed for someone using the plugin. Dates are release dates.
   criteria and notes, the same renderer as `herdr-docket task view` — and `s`
   re-routes it to another agent. `x` stops the run on the selected row, which
   closes its workspace and ends the task `Blocked` through the path a cancelled
-  run already took. `g` now shows the roster with each agent busy (and on what)
+  run already took — and then says which of the two it found: `closed
+  TASK-12's workspace`, or `its workspace is already gone` when the record
+  outlived the run. `g` now shows the roster with each agent busy (and on what)
   or idle, and `p` pauses or resumes the agent under the cursor: pausing writes
   `disabled:` to its `AGENT.md` and never touches a run already in flight — `x`
   is the key that stops one, and `r` still runs a paused agent's task by hand.

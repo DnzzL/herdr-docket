@@ -1,6 +1,7 @@
 package host
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ type fakeOps struct {
 	paneRun         func(paneID string, command ...string) error
 	paneRead        func(paneID string, lines int) (string, error)
 	lookPath        func(file string) error
+	workspaceClose  func(id string) error
 
 	closes int
 
@@ -45,9 +47,12 @@ func (f *fakeOps) WorkspaceCreate(cwd, label string) (string, string, error) {
 	return f.workspaceCreate(cwd, label)
 }
 
-func (f *fakeOps) WorkspaceClose(string) error {
+func (f *fakeOps) WorkspaceClose(id string) error {
 	f.closes++
-	return nil
+	if f.workspaceClose == nil {
+		return nil
+	}
+	return f.workspaceClose(id)
 }
 
 func (f *fakeOps) AgentStart(name, kind, paneID string, args []string) error {
@@ -130,6 +135,41 @@ func fast() knobs {
 
 func apiErr(command, code string) error {
 	return &herdr.APIError{Command: command, Code: code, Message: code}
+}
+
+// A workspace that is already gone is a torn-down workspace: the point was for
+// it not to exist. The runner cleans up after a run through this port and has
+// no reason to log the benign half of it as a failure. Both shapes herdr can
+// hand back are covered — the code, which the low-level client recovers from,
+// and the sentinel, which is what it reports — and a real failure still
+// surfaces instead of being read as a success.
+func TestCloseTreatsAGoneWorkspaceAsTornDown(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"herdr says the workspace is not there", apiErr("workspace close", herdr.CodeWorkspaceGone)},
+		{"the client already read it as gone", herdr.ErrGone},
+		{"nothing wrong", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := &fakeOps{workspaceClose: func(string) error { return tc.err }}
+			h := &live{ops: ops, knobs: fast()}
+
+			if err := h.Close(Session{WorkspaceID: "w1"}); err != nil {
+				t.Fatalf("got %v, want a torn-down workspace", err)
+			}
+			if ops.closes != 1 {
+				t.Fatalf("closes = %d, want 1", ops.closes)
+			}
+		})
+	}
+
+	ops := &fakeOps{workspaceClose: func(string) error { return errors.New("herdr: connection refused") }}
+	h := &live{ops: ops, knobs: fast()}
+	if err := h.Close(Session{WorkspaceID: "w1"}); err == nil {
+		t.Fatal("a real failure must not be swallowed")
+	}
 }
 
 func TestProvisionOpensAWorktreeOnABranchOfItsOwn(t *testing.T) {

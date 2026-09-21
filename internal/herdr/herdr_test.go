@@ -2,6 +2,9 @@ package herdr
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -67,6 +70,47 @@ func TestAnErrorCodeIsReadFromWhicheverStreamCarriesIt(t *testing.T) {
 		if strings.Contains(err.Error(), "{") {
 			t.Errorf("%s: the raw envelope leaked into the message: %v", tc.name, err)
 		}
+	}
+}
+
+// fakeHerdr stands in for the herdr binary at the process boundary the fleet
+// actually crosses. hostpath.Bin reads HERDR_BIN_PATH per call, so the client
+// under test is the one that ships, exec and all: what the script prints is
+// what herdr prints, on the stream herdr prints it on.
+func fakeHerdr(t *testing.T, stderr string, code int) string {
+	t.Helper()
+	script := "#!/bin/sh\n"
+	if stderr != "" {
+		script += "cat >&2 <<'JSON'\n" + stderr + "\nJSON\n"
+	}
+	script += fmt.Sprintf("exit %d\n", code)
+	path := filepath.Join(t.TempDir(), "herdr")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// Closing a workspace that is already gone is not a failure, but it is a fact
+// — and the two calls that meet the same herdr code have to report it the same
+// way. Focus reported it and WorkspaceClose swallowed it, which left the pane
+// unable to tell "I closed it" from "there was nothing left to close".
+func TestClosingAWorkspaceThatIsGoneSaysSoTheWayFocusDoes(t *testing.T) {
+	gone := `{"error":{"code":"workspace_not_found","message":"no workspace wR:p9"},"id":"cli:workspace:close"}`
+	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, gone, 1))
+
+	var c Client
+	if err := c.WorkspaceClose("wR:p9"); !errors.Is(err, ErrGone) {
+		t.Fatalf("got %v, want ErrGone", err)
+	}
+}
+
+func TestClosingAWorkspaceThatIsThereReportsNothing(t *testing.T) {
+	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, "", 0))
+
+	var c Client
+	if err := c.WorkspaceClose("wR:p9"); err != nil {
+		t.Fatalf("got %v, want nil", err)
 	}
 }
 

@@ -112,6 +112,10 @@ says what happens next.
   follow-a-link, no markdown, no comment thread: a body longer than the screen
   is read with `j`/`k`, and a task whose reading needs more than that belongs
   in the backend.
-- **Stopping a run is not instant.** The pane closes the workspace; the runner
-  notices, reconciles the task to `Blocked` and writes history. The board shows
-  `stopping` until the next refresh brings the truth.
+- **Stopping a run is not instant, and the board does not pretend it is.** The
+  pane closes the workspace; the runner notices, reconciles the task to
+  `Blocked` and writes history. What the pane reports is what the close found —
+  `closed TASK-12's workspace`, or `its workspace is already gone` — rather than
+  a promise about a run it cannot see. A workspace that is gone while the record
+  still says running is the daemon's to reconcile, and until it does the row is
+  all the board has to go on.

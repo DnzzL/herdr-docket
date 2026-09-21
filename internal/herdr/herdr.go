@@ -172,12 +172,16 @@ func (Client) WorktreeList(repo string) ([]Worktree, error) {
 	return res.Worktrees, nil
 }
 
-// WorkspaceClose closes a workspace. Closing one that is already gone is
-// not an error worth reporting — the point was for it not to exist.
+// WorkspaceClose closes a workspace. Closing one that is already gone is not
+// a failure — the point was for it not to exist — but it is still a distinct
+// answer, and the caller is the one that knows whether it cares. Focus reports
+// it as ErrGone; this used to swallow it, and the pane, which is the caller
+// that cares most, could not then tell "I closed it" from "there was nothing
+// left to close".
 func (c Client) WorkspaceClose(workspaceID string) error {
 	err := run(nil, "workspace", "close", workspaceID)
 	if HasCode(err, CodeWorkspaceGone) {
-		return nil
+		return ErrGone
 	}
 	return err
 }
@@ -254,7 +258,10 @@ func (Client) AgentWait(target string, timeout time.Duration) error {
 }
 
 // ErrGone means the run's workspace no longer exists — the expected outcome
-// once you've reviewed and closed it, not a failure worth a stack trace.
+// once you've reviewed and closed it, not a failure worth a stack trace. It is
+// a fact about the workspace, not a verdict about the run: a caller that only
+// wanted the workspace gone treats it as success, and one that was reporting
+// on the workspace says what it found.
 var ErrGone = errors.New("workspace already closed")
 
 // Focus brings a run's workspace to the front, then its agent pane when one

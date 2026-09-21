@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/DnzzL/herdr-docket/internal/herdr"
 )
 
 // Spec is everything Provision and Do need to know about one run: where it
@@ -131,9 +133,16 @@ func (h *live) Do(s Session, a Spec, timeout time.Duration) error {
 	return h.workFor(a).do(s, timeout)
 }
 
-// Close tears the session's workspace down.
+// Close tears the session's workspace down. A workspace that is already gone
+// is torn down already: the runner reaches this from the cleanup path, where
+// the only thing it could do with the distinction is log it. The pane is the
+// caller for which it means something, and it holds the client directly.
 func (h *live) Close(s Session) error {
-	return h.ops.WorkspaceClose(s.WorkspaceID)
+	err := h.ops.WorkspaceClose(s.WorkspaceID)
+	if errors.Is(err, herdr.ErrGone) || h.ops.HasCode(err, herdr.CodeWorkspaceGone) {
+		return nil
+	}
+	return err
 }
 
 // work is one way of getting a task's work done in a session. One adapter

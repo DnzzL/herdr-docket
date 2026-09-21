@@ -6,6 +6,7 @@
 package pane
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -248,6 +249,17 @@ type refreshMsg struct {
 type tickMsg time.Time
 type ranMsg struct{ err error }
 
+// stoppedMsg is what came back from x. The pane can promise nothing about a
+// run — the workspace is herdr's and the record is history's — so the answer
+// decides what the board says. gone is the whole reason there are two answers:
+// a workspace that was already gone means the row's `running` record outlives
+// the run, and the row cannot correct itself.
+type stoppedMsg struct {
+	id   string
+	gone bool
+	err  error
+}
+
 // detailMsg is one task read in full, by id: an answer for the id it was asked
 // about, even if the cursor has moved since.
 type detailMsg struct {
@@ -321,6 +333,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ranMsg:
 		if msg.err != nil {
 			m.status = msg.err.Error()
+		}
+		return m, refresh(m.src, m.dir)
+	case stoppedMsg:
+		if msg.err != nil {
+			m.status = msg.err.Error()
+		} else if msg.gone {
+			// Said and left there: nothing was stopped, because there was
+			// nothing left to stop. The record that still says running is a
+			// run nobody is watching, and saying so is the only correction
+			// this surface can make.
+			m.status = msg.id + ": its workspace is already gone"
+		} else {
+			m.status = "closed " + msg.id + "'s workspace"
 		}
 		return m, refresh(m.src, m.dir)
 	case detailMsg:
@@ -803,14 +828,15 @@ func (m *model) stopSelected() tea.Cmd {
 		m.status = "no run to stop"
 		return nil
 	}
-	last := *r.last
-	m.status = "stopping " + r.task.ID + "…"
+	id, workspace := r.task.ID, r.last.WorkspaceID
+	m.status = "stopping " + id + "…"
 	return func() tea.Msg {
 		var c herdr.Client
-		if err := c.WorkspaceClose(last.WorkspaceID); err != nil {
-			return refreshMsg{err: err}
+		err := c.WorkspaceClose(workspace)
+		if errors.Is(err, herdr.ErrGone) {
+			return stoppedMsg{id: id, gone: true}
 		}
-		return nil
+		return stoppedMsg{id: id, err: err}
 	}
 }
 
