@@ -2,6 +2,34 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## v0.6.0 — unreleased
+
+- **The board pane is the fleet's triage surface: what runs next, what is
+  running now, and the keys to act on both.** A task with a run in flight is in
+  a `Running` group above the phases — shown once, not twice — with the time it
+  has been going against the timeout it was started with, marked `stale` past
+  it. Everything below is in the order the daemon works it, so the top of
+  `To Do` is the task the next tick picks up, which it was not before.
+- A row names the queue a task came from and the id that queue's own board
+  uses — `TASK-12` beside `myapp`, not another truncation of `myapp/TASK-12` —
+  in a colour that stays with the queue. A fleet with a single queue shows no
+  such column. The agent column says the two ways routing can be wrong: yellow
+  `paused` for an agent the scheduler is skipping, red `ghost?` for a name
+  nobody answers to.
+- Three new keys and one new view. `v` reads the selected task — body,
+  criteria and notes, the same renderer as `herdr-docket task view` — and `s`
+  re-routes it to another agent. `x` stops the run on the selected row, which
+  closes its workspace and ends the task `Blocked` through the path a cancelled
+  run already took. `g` now shows the roster with each agent busy (and on what)
+  or idle, and `p` pauses or resumes the agent under the cursor: pausing writes
+  `disabled:` to its `AGENT.md` and never touches a run already in flight — `x`
+  is the key that stops one, and `r` still runs a paused agent's task by hand.
+- `a` asks which queue a task belongs in when the fleet has more than one, so
+  creating work from the pane no longer fails on a bare `task create`. Nothing
+  in the pane closes a task with a verdict: see
+  [ADR 0008](docs/adr/0008-the-board-is-a-triage-surface.md) for what it shows
+  and what it deliberately refuses.
+
 ## v0.5.0 — 2026-09-16
 
 - **A GitHub Projects board can be the queue.** `kind: github` with the board's

@@ -420,7 +420,7 @@ scheduler is skipping, red `ghost?` for a name nobody answers to. The last
 column is the run — elapsed against the timeout it was started with, marked
 stale past it — or how the last run ended. It never closes a task with a
 verdict: see
-[ADR 0005](docs/adr/0005-the-board-is-a-triage-surface.md) for what the pane
+[ADR 0008](docs/adr/0008-the-board-is-a-triage-surface.md) for what the pane
 shows and what it deliberately refuses. Bind it to a chord in
 `~/.config/herdr/config.toml`:
 

@@ -22,12 +22,12 @@ The pane is the fleet board, and it does not currently tell the truth about the 
 - Selection is an index into the row list. Rows already move under it as the queue changes; once the order is the scheduler order they move constantly, and the next r or x lands on whatever took that position.
 - A task with a live run is indistinguishable from one waiting, and nothing says how long it has been going or against what timeout.
 
-The decisions behind the fix are in docs/adr/0005-the-board-is-a-triage-surface.md. This task is the read-only half: it changes what the board shows, and nothing about what it can do. The writes (v, p, x, s, and the queue step in a) are a separate task, so a column-width change does not arrive carrying an irreversible key.
+The decisions behind the fix are in docs/adr/0008-the-board-is-a-triage-surface.md. This task is the read-only half: it changes what the board shows, and nothing about what it can do. The writes (v, p, x, s, and the queue step in a) are a separate task, so a column-width change does not arrive carrying an irreversible key.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Each row shows the queue a task came from and the task local id; actions still route by the full prefixed id. A fleet with one queue shows no project column.
+- [x] #1 Each row shows the queue a task came from and the task local id; actions still route by the full prefixed id. A fleet with one queue shows no queue column.
 - [x] #2 Rows in an open phase are ordered by the same comparison pick.Next uses (priority desc, ordinal, createdAt); closed phases keep backend order. A test pins the board order against the scheduler preference.
 - [x] #3 Selection is keyed by task id and survives a refresh that reorders rows; a task that leaves the list moves the cursor to the nearest surviving row, not to the top. The filter behaves the same way while typing.
 - [x] #4 A task whose latest history record is running appears once, in a Running group ranked above To Do, with elapsed time against the agent timeout_minutes, marked stale past that timeout. It appears nowhere else.

@@ -36,7 +36,7 @@ held by position would land the next keypress on a different task. When the
 selected task leaves the list, the cursor takes the nearest surviving row, not
 the top.
 
-**The project a task came from is on the row.** A fleet working several queues
+**The queue a task came from is on the row.** A fleet working several queues
 shows them together, and a board that mixes them without saying which is which
 makes the reader remember a prefix they can no longer see. A row carries the
 queue's name and the task's local id, in a colour that stays with the queue;
