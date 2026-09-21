@@ -409,6 +409,8 @@ resumes an agent. Rows show the task's queue and the id its own board uses, the
 Running group sits above the phases, and a run past its agent's timeout is
 marked stale.
 
+![The Docket board: the Running group, the queue each task came from, a run past its timeout, and the roster behind g](docs/board.gif)
+
 ```
   TASK-12   myapp  Fix the parser           dev paused      12m / 45m
   TASK-4    ops    Rotate the deploy keys   example         last run done Wed 14:28

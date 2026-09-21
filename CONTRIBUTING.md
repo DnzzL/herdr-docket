@@ -41,6 +41,15 @@ Config lives in `herdr plugin config-dir dnzzl.herdr-docket`, run history in
 `~/.local/state/herdr/plugins/dnzzl.herdr-docket`. Both survive uninstalls;
 delete them by hand for a clean slate.
 
+The README's board image is recorded, not drawn: `scripts/demo/` seeds a
+throwaway fleet of two queues and presses the keys through tmux, because a TUI
+that has no terminal answering its startup probes collapses into one frame.
+
+```bash
+nix-shell -p asciinema asciinema-agg tmux jetbrains-mono \
+  --run scripts/demo/record.sh    # writes docs/board.gif
+```
+
 ## House style
 
 - **Comments explain why, not what.** The code says what it does.
