@@ -141,3 +141,14 @@ func TestHistoryLineShowsTheDelivery(t *testing.T) {
 		}
 	}
 }
+
+// The one-step factory setup is the only flag init takes: an unknown
+// argument is refused before anything on disk is touched, and the refusal
+// names the flag so the discovery path is the error message.
+func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
+	if err := initCmd("--frobnicate"); err == nil {
+		t.Fatal("want an error")
+	} else if !strings.Contains(err.Error(), "--factory") {
+		t.Errorf("error must point at the flag that exists: %v", err)
+	}
+}

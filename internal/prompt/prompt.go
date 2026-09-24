@@ -119,6 +119,13 @@ Then close the task exactly once, reporting exactly one verdict:
   herdr-docket task fail %s --note "<why you could not do it>"
   herdr-docket task block %s --note "<what a human must decide or unblock>"
 
+If your work went out as a pull request, put it on the closing command:
+
+  herdr-docket task done <id> --pr "<the PR url>" --note "..."
+
+The PR is how the run history records where the work landed — a url in prose
+alone is one the fleet cannot read.
+
 A task you leave open with no verdict and no new agent is a task the fleet will
 pick up and run again, so don't leave one open. Do not touch other agents'
 tasks.

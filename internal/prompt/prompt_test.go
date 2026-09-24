@@ -31,6 +31,7 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 		"previous attempt stalled",
 		"herdr-docket task note TASK-7",
 		"herdr-docket task done TASK-7",
+		"--pr",
 		"herdr-docket task fail TASK-7",
 		"herdr-docket task block TASK-7",
 		"herdr-docket task create",

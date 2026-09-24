@@ -2,6 +2,34 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- **The factory loop, installed in one command.** `herdr-docket init --factory`
+  writes the three fleet-side personas (`intake`, `stall`, `lookback`) into an
+  existing fleet — never overwriting one you already have — and appends the
+  four schedules that drive the loop to the automations plugin's config when
+  it is present, pointing `repo:` at the fleet it was installed into. Without
+  the automations plugin the personas still land and the output says they
+  await schedules. The fleet's own `fleet.yaml` is not touched.
+- **The loop is written down**: `docs/factory.md` is the wiring — the cron
+  entries, the dials it leans on, and the refusals (the fleet never merges;
+  agents do, under a policy paragraph in the reviewer's persona). The loop's
+  three new personas join the worked examples, and the dev and reviewer
+  personas gain what makes their stage real: the dev babysits its PR to
+  green, the reviewer's merge policy decides what ships unattended.
+- **A run's delivery is read, not believed.** A worktree-mode run's history
+  records the branch it was provisioned on, how many commits that branch
+  gained, and the pull request it shipped as — reported through the new
+  `herdr-docket task done|fail|block --pr <url>` — so `herdr-docket history`
+  answers *what did this run produce* without reading prose on a task. A
+  root-mode run claims no branch, because it has none to vouch for.
+- **A worktree that still holds uncommitted changes is not torn down.** When a
+  disposable worktree ends `done` with changes nobody committed, the fleet
+  keeps the workspace, says so on the task, records the fact on the run, and
+  moves the task to the human-decides column — the agent's report and the
+  worktree's state disagree, and the board now says which it found. A delivery
+  that cannot be read is kept and called unverified; blindness is not evidence.
+
 ## v0.6.0 — 2026-09-21
 
 - **The board pane is the fleet's triage surface: what runs next, what is

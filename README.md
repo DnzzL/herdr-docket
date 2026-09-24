@@ -85,6 +85,12 @@ It never overrides you in the other direction either: `herdr-docket run TASK-12`
 reaches a paused agent and an over-budget one, because pressing the button is
 human intent, not scheduling.
 
+These levers are also the whole of a running *factory* — intake polling
+sources into verified tasks, a review sweep, a stall sweep, a weekly lookback
+over what keeps recurring. The loop is personas and cron, wired in
+[docs/factory.md](docs/factory.md); `herdr-docket init --factory` writes the
+fleet-side part of it into an existing fleet.
+
 ## The model
 
 Everything lives in one **fleet dir** (default `~/fleet`) — a git repo you can
@@ -186,6 +192,7 @@ when the key does nothing: [the board pane](docs/pane.md).
 | --- | --- |
 | `herdr-docket daemon` | the worker (Herdr starts it for you) |
 | `herdr-docket init` | bootstrap the fleet dir |
+| `herdr-docket init --factory` | …and install the factory loop (see [docs/factory.md](docs/factory.md)) |
 | `herdr-docket auth basecamp` | sign in to a hosted queue, once |
 | `herdr-docket auth github` | same, for a GitHub Projects board (`--token <pat>` to store one) |
 | `herdr-docket list` | the queue, grouped by phase, with the routed agent |
