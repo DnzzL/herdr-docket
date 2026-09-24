@@ -357,8 +357,8 @@ func taskClose(src work.Source, verb string, args []string, out io.Writer) error
 	if !ok {
 		return fmt.Errorf("unknown closing verb %q", verb)
 	}
-	usage := fmt.Sprintf(`usage: herdr-docket task %s <id> [--note "<text>"]`, verb)
-	var id, note string
+	usage := fmt.Sprintf(`usage: herdr-docket task %s <id> [--note "<text>"] [--pr <url>]`, verb)
+	var id, note, pullRequest string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-n", "--note":
@@ -367,6 +367,12 @@ func taskClose(src work.Source, verb string, args []string, out io.Writer) error
 				return err
 			}
 			note = v
+		case "--pr":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			pullRequest = v
 		default:
 			if id != "" {
 				return fmt.Errorf("task %s: unexpected argument %q\n%s", verb, args[i], usage)
@@ -384,6 +390,15 @@ func taskClose(src work.Source, verb string, args []string, out io.Writer) error
 	}
 	if err := src.Close(id, verdict); err != nil {
 		return err
+	}
+	// The pull request rides on the run's history record, not the queue: the
+	// queue is the work, the record is the audit. It is stamped after the
+	// close so a history that cannot write never holds a verdict hostage —
+	// the agent is told instead of left believing the url landed.
+	if pullRequest != "" {
+		if err := history.SetPullRequest(id, pullRequest); err != nil {
+			fmt.Fprintf(out, "%s %s\n%s: pull request was not recorded: %v\n", id, verb, id, err)
+		}
 	}
 	fmt.Fprintf(out, "%s %s\n", id, verb)
 	return nil
@@ -554,6 +569,18 @@ func formatHistory(r history.Record) string {
 	}
 	if r.Verdict != "" {
 		line += "  " + r.Verdict
+	}
+	// The delivery rides beside the verdict: which branch the run produced and
+	// how far it moved. A run with no branch claims none. Uncommitted is louder
+	// than the rest because it is the one fact the fleet checked itself.
+	if r.Branch != "" {
+		line += fmt.Sprintf("  %s  +%d", r.Branch, r.Commits)
+	}
+	if r.Uncommitted {
+		line += "  !uncommitted"
+	}
+	if r.PullRequest != "" {
+		line += "  " + r.PullRequest
 	}
 	if r.Error != "" {
 		line += "  " + r.Error

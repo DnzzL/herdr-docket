@@ -140,6 +140,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 	defer r.release(key)
 
 	rec := recorder{id: history.NewID(t.ID), task: t.ID, agent: a.Name, trigger: trigger, started: time.Now()}
+	var errInspect error
 	v, err := src.Get(t.ID)
 	if err != nil {
 		rec.record(history.StatusFailed, host.Session{}, err.Error())
@@ -162,27 +163,45 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 	session, err := r.host.Provision(spec)
 	if err != nil {
 		v, _ := r.reconcile(src, t.ID, a.Name, err)
-		rec.close(history.StatusFailed, session, v, err.Error())
+		// No run happened past provisioning, so there is no delivery to
+		// report beside the failure.
+		rec.close(history.StatusFailed, session, v, host.Delivery{}, false, err.Error())
 		return err
 	}
 	rec.record(history.StatusRunning, session, "")
 
 	err = r.host.Do(session, spec, time.Duration(a.TimeoutMinutes)*time.Minute)
+	// Read what the run produced while its workspace still exists: a
+	// worktree-mode session has a branch, and the facts about it only survive
+	// until cleanup tears the worktree down. A root-mode session has no
+	// branch and is never asked.
+	var d host.Delivery
+	if session.Branch != "" {
+		d, errInspect = r.host.Inspect(session)
+		if errInspect != nil {
+			log.Printf("inspect delivery of %s: %v", t.ID, errInspect)
+		}
+	}
 	final, handedOn := r.reconcile(src, t.ID, a.Name, err)
-	r.cleanup(src, t.ID, session, final, handedOn)
+	final, keep := r.guardDelivery(src, t.ID, session, final, handedOn, d, session.Branch != "" && errInspect != nil)
+	r.cleanup(src, t.ID, session, final, handedOn, keep)
+	// Uncommitted is the fact the guard acted on: a worktree about to be torn
+	// down holding changes nobody committed. It rides on the record whatever
+	// the run ends as, because it is what the record qualifies.
+	uncommitted := session.Branch != "" && errInspect == nil && d.Dirty
 	switch {
 	case errors.Is(err, host.ErrCancelled):
-		rec.close(history.StatusCancelled, session, final, err.Error())
+		rec.close(history.StatusCancelled, session, final, d, uncommitted, err.Error())
 	case err != nil:
-		rec.close(history.StatusFailed, session, final, err.Error())
+		rec.close(history.StatusFailed, session, final, d, uncommitted, err.Error())
 	case final == work.Failed:
 		// The run mechanics worked, but "the agent settled" is only a success
 		// if it reported a verdict; reconcile turned silence into Failed and
 		// the history must say the same.
 		err = fmt.Errorf("%s: the agent settled without reporting a verdict", t.ID)
-		rec.close(history.StatusFailed, session, final, err.Error())
+		rec.close(history.StatusFailed, session, final, d, uncommitted, err.Error())
 	default:
-		rec.close(history.StatusDone, session, final, "")
+		rec.close(history.StatusDone, session, final, d, uncommitted, "")
 	}
 	return err
 }
@@ -241,14 +260,62 @@ func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) 
 	return verdict, false
 }
 
+// guardDelivery is TASK-23's check, made before the one moment where the
+// evidence disappears: a disposable worktree about to be torn down holding
+// changes nobody committed. It returns the verdict the run should end on and
+// whether the workspace must be kept whatever cleanup thinks.
+//
+// Proven loss of the run's own report: the task is moved to the human-decides
+// column and told why — the agent said done, the worktree disagreed, and the
+// fleet's job is to say so where a human will read it. A queue that refuses a
+// second close keeps its verdict and gets the same note: the report is still
+// doubted, the queue simply will not carry the correction.
+//
+// An unverifiable delivery keeps the workspace and changes nothing: blindness
+// is not evidence. Root-mode runs never reach here — they have no branch, and
+// their edits are the repo's own state by design.
+func (r *Runner) guardDelivery(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn bool, d host.Delivery, unverifiable bool) (work.Verdict, bool) {
+	if s.WorkspaceID == "" || s.Branch == "" || (final != work.Done && !handedOn) {
+		return final, false
+	}
+	workspace := fmt.Sprintf("workspace %s (pane %s)", s.WorkspaceID, s.PaneID)
+	if unverifiable {
+		note := fmt.Sprintf("fleet: this run's delivery could not be read — %s is kept, unverified. The verdict stands.", workspace)
+		if err := src.Comment(taskID, note); err != nil {
+			log.Printf("%s: append note: %v", taskID, err)
+		}
+		return final, true
+	}
+	if !d.Dirty {
+		return final, false
+	}
+	verdict := final
+	after := "the verdict stands as reported"
+	if final == work.Done {
+		if err := src.Close(taskID, work.Blocked); err != nil {
+			log.Printf("%s: re-close as blocked: %v", taskID, err)
+		} else {
+			verdict, after = work.Blocked, "the task is now blocked — a human decides"
+		}
+	}
+	note := fmt.Sprintf("fleet: the run's worktree still holds uncommitted changes — %s is kept, and %s.",
+		workspace, after)
+	if err := src.Comment(taskID, note); err != nil {
+		log.Printf("%s: append note: %v", taskID, err)
+	}
+	return verdict, true
+}
+
 // cleanup decides what happens to the run's workspace. A task that ended Done
 // left nothing to look at — the work is in the repo and the notes — so the
 // workspace is torn down, and a task handed to another agent is the same: the
 // next agent opens its own. Anything else keeps its workspace open as the
 // place to resume: the board's enter-jump lands there, and the note names it
-// for anyone reading the ticket instead of the board.
-func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn bool) {
-	if s.WorkspaceID == "" {
+// for anyone reading the ticket instead of the board. keep is the guard's
+// answer: a workspace it kept has already said why on the task, so it is left
+// alone here rather than described twice.
+func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn, keep bool) {
+	if s.WorkspaceID == "" || keep {
 		return
 	}
 	if final == work.Done || handedOn {
@@ -273,25 +340,35 @@ type recorder struct {
 }
 
 func (r recorder) record(status history.Status, s host.Session, errText string) {
-	r.append(status, s, "", 0, errText)
+	r.appendWith(status, s, "", 0, errText, host.Delivery{}, false, "")
 }
 
-// close is record for the run's final transition: it is where the duration and
-// the verdict are known, so it is where they are written down. Append-only
-// stays append-only — a record from before these fields existed reads as zero
-// and empty.
-func (r recorder) close(status history.Status, s host.Session, verdict work.Verdict, errText string) {
-	r.append(status, s, string(verdict), int(time.Since(r.started).Seconds()), errText)
+// close is record for the run's final transition: it is where the duration,
+// the verdict and the delivery are known, so it is where they are written
+// down. The pull request the agent stamped mid-run is carried forward here —
+// the reader keeps only the latest record per run, so a closer that did not
+// re-read it would drop the url behind the verdict. Append-only stays
+// append-only: a record from before these fields existed reads as zero and
+// empty.
+func (r recorder) close(status history.Status, s host.Session, verdict work.Verdict, d host.Delivery, unverified bool, errText string) {
+	pr, err := history.PullRequestFor(r.id)
+	if err != nil {
+		log.Printf("carry pull request for %s: %v", r.id, err)
+	}
+	r.appendWith(status, s, string(verdict), int(time.Since(r.started).Seconds()), errText, d, unverified, pr)
 }
 
-// append is the one writer: every transition of a run is this call with the
-// fields known at that moment, so the record shape lives in exactly one place
-// and an in-flight run can only ever differ by what its caller passed.
-func (r recorder) append(status history.Status, s host.Session, verdict string, seconds int, errText string) {
+// appendWith is the one writer: every transition of a run is this call with
+// the fields known at that moment, so the record shape lives in exactly one
+// place and an in-flight run can only ever differ by what its caller passed.
+// Branch travels on every record that has a session — the provision names it
+// once and the rest of the run only ever reports it back.
+func (r recorder) appendWith(status history.Status, s host.Session, verdict string, seconds int, errText string, d host.Delivery, unverified bool, pullRequest string) {
 	err := history.Append(history.Record{
 		RunID: r.id, Task: r.task, Agent: r.agent, Trigger: r.trigger, Status: status,
-		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID,
+		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, Branch: s.Branch,
 		DurationSeconds: seconds, Verdict: verdict, Error: errText,
+		Commits: d.Commits, Uncommitted: unverified, PullRequest: pullRequest,
 	})
 	if err != nil {
 		log.Printf("history append failed: %v", err)

@@ -46,10 +46,25 @@ const (
 )
 
 // Session is a provisioned place for a run to happen: a workspace and the pane
-// its agent will live in.
+// its agent will live in. Branch is the branch a worktree-mode run was cut on
+// — only Provision names it, so it is the one place a downstream record can
+// learn it from — and is empty in root mode, where there is no branch to claim.
+// Repo is the checkout the workspace opened on; Inspect needs it to find the
+// worktree a run actually works in.
 type Session struct {
 	WorkspaceID string
 	PaneID      string
+	Branch      string
+	Repo        string
+}
+
+// Delivery is what a run's worktree produced, read from git rather than from
+// the agent's word: Commits is how far the branch has moved beyond the repo's
+// own checkout, Dirty is whether the worktree holds changes nobody committed —
+// the state that is lost the moment the workspace is torn down.
+type Delivery struct {
+	Commits int
+	Dirty   bool
 }
 
 // Host provisions somewhere for a run to happen, does the work there, and
@@ -57,6 +72,11 @@ type Session struct {
 type Host interface {
 	Provision(a Spec) (Session, error)
 	Do(s Session, a Spec, timeout time.Duration) error
+	// Inspect reads what the run's workspace produced. It is asked before a
+	// teardown, because it is the only answer that survives the teardown —
+	// and it refuses a session with no branch rather than report a clean
+	// delivery for a run that has none to report.
+	Inspect(s Session) (Delivery, error)
 	// Close tears the session's workspace down. Called only when the run left
 	// nothing a human still needs to look at.
 	Close(s Session) error
@@ -114,23 +134,46 @@ func defaultKnobs() knobs {
 // Provision opens the workspace the automation asked for.
 func (h *live) Provision(a Spec) (Session, error) {
 	label := "fleet: " + a.Name
-	var workspaceID, paneID string
+	var workspaceID, paneID, branch string
 	var err error
 	switch a.Workspace {
 	case WorkspaceWorktree:
-		branch := fmt.Sprintf("fleet/%s-%s", slug(a.Name), time.Now().Format("20060102-1504"))
+		branch = fmt.Sprintf("fleet/%s-%s", slug(a.Name), time.Now().Format("20060102-1504"))
 		workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, label)
 	case WorkspaceRoot:
 		workspaceID, paneID, err = h.ops.WorkspaceCreate(a.Repo, label)
 	default:
 		err = fmt.Errorf("unknown workspace mode %q", a.Workspace)
 	}
-	return Session{WorkspaceID: workspaceID, PaneID: paneID}, err
+	return Session{WorkspaceID: workspaceID, PaneID: paneID, Branch: branch, Repo: a.Repo}, err
 }
 
 // Do runs the automation's work in the session and reports whether it worked.
 func (h *live) Do(s Session, a Spec, timeout time.Duration) error {
 	return h.workFor(a).do(s, timeout)
+}
+
+// Inspect answers with what git says about the run's branch, not what anybody
+// claims about it: the worktree's path is found by branch name, and both facts
+// are read there. Every error is kept — a delivery that cannot be read must
+// reach the caller as a refusal, never as a clean, zero-value answer.
+func (h *live) Inspect(s Session) (Delivery, error) {
+	if s.Branch == "" {
+		return Delivery{}, fmt.Errorf("a run without a branch has no delivery to inspect")
+	}
+	path, err := h.ops.WorktreePath(s.Repo, s.Branch)
+	if err != nil {
+		return Delivery{}, err
+	}
+	dirty, err := h.ops.WorktreeDirty(path)
+	if err != nil {
+		return Delivery{}, err
+	}
+	commits, err := h.ops.CommitsAhead(s.Repo, s.Branch)
+	if err != nil {
+		return Delivery{}, err
+	}
+	return Delivery{Commits: commits, Dirty: dirty}, nil
 }
 
 // Close tears the session's workspace down. A workspace that is already gone

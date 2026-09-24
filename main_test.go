@@ -116,3 +116,28 @@ func TestAuthWantsAQueueToSignInTo(t *testing.T) {
 		})
 	}
 }
+
+// The history line carries the delivery beside the verdict: which branch the
+// run produced, how far it moved, the pull request it went out as, and — the
+// one fact the fleet checks itself — that a worktree was about to be destroyed
+// holding uncommitted work.
+func TestHistoryLineShowsTheDelivery(t *testing.T) {
+	r := history.Record{
+		At:              time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC),
+		Status:          history.StatusDone,
+		Task:            "TASK-1",
+		Trigger:         "poll",
+		Verdict:         "done",
+		Branch:          "fleet/a-1",
+		Commits:         3,
+		PullRequest:     "https://example.com/pr/5",
+		Uncommitted:     true,
+		DurationSeconds: 12,
+	}
+	line := formatHistory(r)
+	for _, want := range []string{"fleet/a-1", "+3", "https://example.com/pr/5", "uncommitted"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("history line %q missing %q", line, want)
+		}
+	}
+}

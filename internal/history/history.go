@@ -69,6 +69,48 @@ type Record struct {
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	PaneID      string `json:"pane_id,omitempty"`
 	Error       string `json:"error,omitempty"`
+	// Branch is the branch the run was provisioned on — written from the
+	// session, never derived later. Commits is how far it moved beyond the
+	// repo's own checkout, and Uncommitted says the worktree was about to be
+	// torn down holding changes nobody committed: the one delivery fact the
+	// fleet checks itself rather than trusting the agent's verdict.
+	Branch      string `json:"branch,omitempty"`
+	Commits     int    `json:"commits,omitempty"`
+	Uncommitted bool   `json:"uncommitted,omitempty"`
+	// PullRequest is where the run's work went out as, reported by the
+	// agent's own `task close --pr` rather than looked up: the fleet knows
+	// nothing of forges.
+	PullRequest string `json:"pull_request,omitempty"`
+}
+
+// SetPullRequest records the pull request on the task's newest run record —
+// a copy of it, PR field set, appended in place. A caller knows the task and
+// not its run id, because the only callers are agents closing their own work
+// through the CLI.
+func SetPullRequest(task, url string) error {
+	r, err := LastRun(task)
+	if err != nil {
+		return err
+	}
+	if r == nil {
+		return fmt.Errorf("no run recorded for %s", task)
+	}
+	r.PullRequest = url
+	return Append(*r)
+}
+
+// PullRequestFor returns the pull request recorded on a run, or "". It is how
+// the closing record carries forward what the CLI stamped mid-run: the reader
+// collapses to the latest record per run, so a closer that did not re-read it
+// would silently drop the url behind a verdict.
+func PullRequestFor(runID string) (string, error) {
+	var pr string
+	err := each(func(r Record) {
+		if r.RunID == runID && r.PullRequest != "" {
+			pr = r.PullRequest
+		}
+	})
+	return pr, err
 }
 
 func path() string { return filepath.Join(hostpath.StateDir(), "history.jsonl") }

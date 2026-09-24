@@ -6,7 +6,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/text"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
@@ -274,5 +276,48 @@ func TestTaskViewIsTheSharedRenderer(t *testing.T) {
 	}
 	if want := text.TaskDetail(it); got != want {
 		t.Fatalf("task view drifted from the shared renderer:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+// The pull request is where a run's work went out as. The agent knows it at
+// the moment it closes, and that is the only moment the fleet learns it: the
+// flag stamps it onto the run's history record so the delivery never lives in
+// prose on the task. The queue's close comes first — a history that cannot
+// write is reported, not allowed to hold the verdict hostage.
+func TestTaskCloseRecordsThePullRequest(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := history.Append(history.Record{
+		RunID: "r1", Task: "TASK-2", Status: history.StatusRunning, At: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	src := &fakeSource{}
+	const url = "https://example.com/pr/9"
+	if _, err := runTask(t, src, "done", "TASK-2", "--note", "shipped", "--pr", url); err != nil {
+		t.Fatal(err)
+	}
+	if len(src.verdicts) != 1 || src.verdicts[0] != work.Done {
+		t.Fatalf("verdicts = %v, want the close to stand", src.verdicts)
+	}
+	r, err := history.LastRun("TASK-2")
+	if err != nil || r == nil || r.PullRequest != url {
+		t.Fatalf("run record = %+v, %v, want the PR stamped on it", r, err)
+	}
+}
+
+// A close outside any recorded run still closes: the PR cannot be stamped
+// anywhere, and the agent is told so rather than left believing it landed.
+func TestTaskCloseWithoutARecordedRunSaysThePRCouldNotBeStamped(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := &fakeSource{}
+	out, err := runTask(t, src, "done", "TASK-2", "--pr", "https://example.com/pr/9")
+	if err != nil {
+		t.Fatalf("a history miss must not fail the close: %v", err)
+	}
+	if len(src.verdicts) != 1 {
+		t.Fatalf("verdicts = %v, want the close to stand", src.verdicts)
+	}
+	if !strings.Contains(out, "pull request") {
+		t.Fatalf("output %q must say the PR could not be recorded", out)
 	}
 }

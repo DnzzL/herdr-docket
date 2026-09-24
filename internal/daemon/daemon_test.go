@@ -117,6 +117,9 @@ type fakeHost struct{}
 func (fakeHost) Provision(host.Spec) (host.Session, error) {
 	return host.Session{WorkspaceID: "ws", PaneID: "p"}, nil
 }
+func (fakeHost) Inspect(host.Session) (host.Delivery, error) {
+	return host.Delivery{}, nil
+}
 func (fakeHost) Close(host.Session) error { return nil }
 func (fakeHost) Do(host.Session, host.Spec, time.Duration) error {
 	return nil

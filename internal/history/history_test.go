@@ -107,3 +107,75 @@ func TestUsageSinceCountsCompletedRunsInTheRollingWindow(t *testing.T) {
 		t.Fatal("a record with no agent must not be attributed to nobody")
 	}
 }
+
+// The delivery record is the fleet's own evidence about a run — what branch
+// it produced, how far that branch moved, and whether the worktree was about
+// to be destroyed holding uncommitted changes. It lives on the closing record
+// beside the verdict it qualifies.
+func TestClosingRecordCarriesTheDelivery(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := Append(Record{
+		RunID: "r1", Task: "TASK-1", Status: StatusDone, At: time.Now(),
+		Branch: "fleet/x-1", Commits: 3, Uncommitted: true, Verdict: "done",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	r, err := LastRun("TASK-1")
+	if err != nil || r == nil {
+		t.Fatal(err)
+	}
+	if r.Branch != "fleet/x-1" || r.Commits != 3 || !r.Uncommitted {
+		t.Fatalf("delivery on closing record = %+v", r)
+	}
+}
+
+// The pull request arrives from the agent's CLI, which knows the task but not
+// its run id: SetPullRequest stamps the task's newest record, and the closing
+// writer picks the url up through PullRequestFor, so the latest state a
+// reader sees carries both the verdict and the PR it shipped as.
+func TestPullRequestLandsOnTheRunAndSurvivesTheClosingRecord(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := Append(Record{
+		RunID: "r1", Task: "TASK-1", Status: StatusRunning, At: time.Now(), Branch: "fleet/x-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetPullRequest("TASK-1", "https://example.com/pr/7"); err != nil {
+		t.Fatal(err)
+	}
+	r, err := LastRun("TASK-1")
+	if err != nil || r == nil || r.PullRequest != "https://example.com/pr/7" {
+		t.Fatalf("after SetPullRequest = %+v, %v", r, err)
+	}
+	if r.Status != StatusRunning {
+		t.Fatalf("status = %s, want the record it copied", r.Status)
+	}
+
+	pr, err := PullRequestFor("r1")
+	if err != nil || pr != "https://example.com/pr/7" {
+		t.Fatalf("PullRequestFor(r1) = %q, %v", pr, err)
+	}
+
+	// The closing record is written later, with the PR carried forward: a
+	// reader must not have to merge two lines to know how the run ended.
+	if err := Append(Record{
+		RunID: "r1", Task: "TASK-1", Status: StatusDone, At: time.Now(),
+		Verdict: "done", DurationSeconds: 12, Branch: "fleet/x-1", Commits: 2,
+		PullRequest: pr,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := LastRun("TASK-1")
+	if got.Verdict != "done" || got.PullRequest == "" || got.Commits != 2 {
+		t.Fatalf("closing record = %+v", got)
+	}
+}
+
+// A task with no run at all is an error: the CLI reports it, never invents a
+// run to hang the url on.
+func TestSetPullRequestOnATaskWithNoRunFails(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := SetPullRequest("TASK-404", "https://example.com/pr/1"); err == nil {
+		t.Fatal("want an error when no run exists for the task")
+	}
+}

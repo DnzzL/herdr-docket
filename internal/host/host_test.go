@@ -23,6 +23,9 @@ type fakeOps struct {
 	paneRead        func(paneID string, lines int) (string, error)
 	lookPath        func(file string) error
 	workspaceClose  func(id string) error
+	worktreePath    func(repo, branch string) (string, error)
+	worktreeDirty   func(dir string) (bool, error)
+	commitsAhead    func(repo, branch string) (int, error)
 
 	closes int
 
@@ -38,6 +41,27 @@ func (f *fakeOps) WorktreeCreate(repo, branch, label string) (string, string, er
 		return "w1", "w1:p1", nil
 	}
 	return f.worktreeCreate(repo, branch, label)
+}
+
+func (f *fakeOps) WorktreePath(repo, branch string) (string, error) {
+	if f.worktreePath == nil {
+		return "/wt/" + branch, nil
+	}
+	return f.worktreePath(repo, branch)
+}
+
+func (f *fakeOps) WorktreeDirty(dir string) (bool, error) {
+	if f.worktreeDirty == nil {
+		return false, nil
+	}
+	return f.worktreeDirty(dir)
+}
+
+func (f *fakeOps) CommitsAhead(repo, branch string) (int, error) {
+	if f.commitsAhead == nil {
+		return 0, nil
+	}
+	return f.commitsAhead(repo, branch)
 }
 
 func (f *fakeOps) WorkspaceCreate(cwd, label string) (string, string, error) {
@@ -197,6 +221,14 @@ func TestProvisionOpensAWorktreeOnABranchOfItsOwn(t *testing.T) {
 	if gotLabel != "fleet: Weekly sprint planning" {
 		t.Errorf("label = %q", gotLabel)
 	}
+	// The session carries the branch it was cut on: only the host ever knows
+	// it, and everything downstream (the delivery record) reads it from here.
+	if s.Branch != gotBranch || s.Branch == "" {
+		t.Errorf("session branch = %q, want the branch created for it (%q)", s.Branch, gotBranch)
+	}
+	if s.Repo != "/x" {
+		t.Errorf("session repo = %q, want the repo it opened on", s.Repo)
+	}
 }
 
 func TestProvisionRootModeOpensTheRepoItself(t *testing.T) {
@@ -210,13 +242,22 @@ func TestProvisionRootModeOpensTheRepoItself(t *testing.T) {
 	}}
 	h := &live{ops: ops, knobs: fast()}
 
-	if _, err := h.Provision(Spec{
+	s, err := h.Provision(Spec{
 		Name: "n", Repo: "/repo", Workspace: WorkspaceRoot,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 	if !called {
 		t.Fatal("root mode must not create a worktree")
+	}
+	// Root mode has no branch of its own — inventing one would be the fleet
+	// claiming an output it cannot vouch for. The repo is still recorded.
+	if s.Branch != "" {
+		t.Errorf("branch = %q, want none for a root-mode run", s.Branch)
+	}
+	if s.Repo != "/repo" {
+		t.Errorf("repo = %q, want the repo it opened on", s.Repo)
 	}
 }
 
