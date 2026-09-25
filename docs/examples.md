@@ -97,10 +97,11 @@ review comment sits unanswered: answer every comment in the thread — fix it,
 or reply with why it is wrong — and re-read the thread before you close.
 Babysitting will not always fit the time you have; when it does not, hand the
 task on instead of closing it: a note saying exactly what is still open on
-the PR, then `herdr-docket task assign` it to `reviewer`. When you do close,
-put the PR on the closing command — `herdr-docket task done <id> --pr <url>`
-— so the run history records where the work landed instead of leaving it in
-prose. A PR the fleet inherits described beats a `done` nobody can act on.
+the PR, then `herdr-docket task assign` it to `reviewer`. And when the PR is
+green and every comment is answered, that is how the run ends too: a note
+carrying the PR url and what you verified, then `herdr-docket task assign`
+it to `reviewer` — no verdict of your own. The task closes when the work
+merges; your run's job ends with a PR the reviewer can judge from one note.
 ```
 
 Every run lands on its own `fleet/…` branch and opens a PR. That PR is the
@@ -157,6 +158,10 @@ no schema, migration, API-boundary, or permission work in it. When they all
 hold, merge it and close your task with the PR on the flag — `--pr <url>` —
 and in the note. When any of them does not, block your task with the one
 question that would decide it: a human merges what you cannot.
+
+A task handed to you from `dev` carries its PR url in the notes — that is
+the review shape you expect, and the sweep exists only for PRs nobody handed
+over (a crash before the handoff, a human's own PR).
 
 A review is worth exactly its evidence: every claim names a file, a line, or a
 test you ran. Read the ticket before the diff, then re-derive every acceptance
