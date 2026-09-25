@@ -1,6 +1,7 @@
 # herdr-docket
 
-**A shared task queue worked by your coding agents.** A [Backlog.md](https://backlog.md)
+**A shared task queue worked by your coding agents — and the software
+factory that runs on it.** A [Backlog.md](https://backlog.md)
 project as the queue — or Basecamp, or a GitHub Projects board, if that's where
 your work already lives (see [Where the queue lives](docs/queues.md)) —
 `AGENT.md` personas as the workers, and a daemon that routes every open task to
@@ -9,6 +10,13 @@ the agent it names — agents in parallel, one run each, in
 
 *docket*: the list on the wall of the work a crew will get to — what the queue is, all of it.
 Part of the [Herdr plugin family](https://herdr.dev/docs/plugins/).
+
+Wired end to end — intake polling sources into verified tasks, the dev
+carrying each PR to green, the reviewer's own merge policy, a weekly lookback
+over what keeps recurring, and the merged worktrees pruned behind it — the
+queue becomes a loop. The personas, the schedules and the refusals live in
+[The factory](docs/factory.md); `herdr-docket init --factory` writes the
+fleet-side half of it in one command.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26-00ADD8.svg)](https://go.dev)
@@ -41,7 +49,8 @@ autonomy as a dial you set yourself, per project, rather than a mode you switch
 on.
 
 **Docs:** [writing an agent](docs/agents.md) · [worked examples](docs/examples.md) ·
-[where the queue lives](docs/queues.md) · [the board pane](docs/pane.md)
+[the factory](docs/factory.md) · [where the queue lives](docs/queues.md) ·
+[the board pane](docs/pane.md)
 
 ## Install and first run
 
