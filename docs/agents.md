@@ -140,7 +140,7 @@ runs age out. `herdr-docket agent list` (and the board's `g` view) shows the
 spend for any agent that has a budget:
 
 ```bash
-herdr-docket agent list           # dev  active  ~/Projects/myapp  4/6 runs today, 130/180 min
+herdr-docket agent list           # dev  active  ~/Projects/myapp  4/6 runs in 24h, 130/180 min
 ```
 
 Budgets are scheduling policy, not a lock: `herdr-docket run TASK-12` still

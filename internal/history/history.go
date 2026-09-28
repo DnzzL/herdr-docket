@@ -204,21 +204,70 @@ const Window = 24 * time.Hour
 // now. Records written before the fleet recorded an agent or a duration are
 // ignored: an honest zero beats a guessed one, and a budget must never be
 // spent against a number the log never carried.
+//
+// The unit is the run, not the record. The log is append-only and a run owns
+// several lines of it — and more than one of them can be a closing line, since
+// stamping a pull request on a run that has already closed appends a copy of
+// its closing record. Counting lines charged an agent twice for one run, which
+// reads as a wrong number and behaves as a smaller budget: OverBudget parks an
+// agent that still had spend. So collapse per run first, exactly as Runs does,
+// and count what is left.
 func UsageSince(now time.Time) map[string]Usage {
 	cutoff := now.Add(-Window)
-	usage := map[string]Usage{}
+	latest := map[string]Record{}
 	// A read failure is not this function's to report: a caller treats an empty
 	// window as "no spend recorded", which is the safe default for a budget.
 	_ = each(func(r Record) {
-		if r.Agent == "" || !r.Status.closes() || r.At.Before(cutoff) {
+		if r.At.Before(cutoff) {
 			return
+		}
+		latest[r.RunID] = r
+	})
+	usage := map[string]Usage{}
+	for _, r := range latest {
+		if r.Agent == "" || !r.Status.closes() {
+			continue
 		}
 		u := usage[r.Agent]
 		u.Runs++
 		u.Minutes += (r.DurationSeconds + 59) / 60
 		usage[r.Agent] = u
-	})
+	}
 	return usage
+}
+
+// LatestPerTask returns the newest run's latest record for each of ids, in a
+// single pass over the log. It answers exactly what LastRun answers, for many
+// tasks at once: the board draws a record per row and refreshes on a timer, so
+// asking per task walked the whole file per row, and the cost of a refresh
+// grew with the fleet's length times its history's — on a log nothing here
+// ever truncates. A task with no run is absent from the map rather than nil in
+// it, so a caller reads it the way it reads any other miss.
+func LatestPerTask(ids []string) map[string]*Record {
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	// Records arrive in file order, so a run id seen for the first time is the
+	// newest run of its task — the same "latest run wins, latest record of it
+	// wins" rule Runs applies, said once for every task.
+	current := make(map[string]string, len(ids))
+	seen := map[string]bool{}
+	out := make(map[string]*Record, len(ids))
+	_ = each(func(r Record) {
+		if !want[r.Task] {
+			return
+		}
+		if !seen[r.RunID] {
+			seen[r.RunID] = true
+			current[r.Task] = r.RunID
+		}
+		if current[r.Task] == r.RunID {
+			rec := r
+			out[r.Task] = &rec
+		}
+	})
+	return out
 }
 
 // LastRun returns the most recent record for a task, or nil.

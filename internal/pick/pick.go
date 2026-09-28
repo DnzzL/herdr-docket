@@ -108,12 +108,17 @@ func OverBudget(a fleet.Agent, runs, minutes int) bool {
 }
 
 // BudgetLine renders an agent's spend against its limits for the roster and
-// the board, e.g. "4/6 runs today, 130/180 min". Empty for an agent with no
+// the board, e.g. "4/6 runs in 24h, 130/180 min". Empty for an agent with no
 // budget, because unbounded is not a number to show.
+//
+// "in 24h" and not "today" because the window is a rolling one: a line that
+// said today would promise a reset at midnight that never comes, and the
+// first person to read it at 00:05 would be told an agent is spent by runs
+// they can see were yesterday's.
 func BudgetLine(a fleet.Agent, runs, minutes int) string {
 	var parts []string
 	if a.RunsPerDay > 0 {
-		parts = append(parts, fmt.Sprintf("%d/%d runs today", runs, a.RunsPerDay))
+		parts = append(parts, fmt.Sprintf("%d/%d runs in 24h", runs, a.RunsPerDay))
 	}
 	if a.MinutesPerDay > 0 {
 		parts = append(parts, fmt.Sprintf("%d/%d min", minutes, a.MinutesPerDay))

@@ -187,8 +187,11 @@ marked stale.
 ```
 
 The queue column appears only when the fleet has more than one, and the agent
-column says the two ways routing can be wrong: yellow `paused` for an agent the
-scheduler is skipping, red `ghost?` for a name nobody answers to. The last
+column says the three ways routing can be wrong: yellow `paused` for an agent
+the scheduler is skipping, red `ghost?` for a name nobody answers to, and red
+`broken` for a persona that exists and did not parse — a different repair, so a
+different word. The roster names the broken file and the reason under the
+agents, where `p` deliberately cannot reach it. The last
 column is the run — elapsed against the timeout it was started with, marked
 stale past it — or how the last run ended. It never closes a task with a
 verdict: see

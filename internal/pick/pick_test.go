@@ -220,10 +220,10 @@ func TestBudgetDecidesWhetherAnAgentStillRuns(t *testing.T) {
 // no budget says nothing, because "unbounded" is not a number.
 func TestBudgetLineRendersOnlyWhatIsBudgeted(t *testing.T) {
 	a := fleet.Agent{Name: "dev", RunsPerDay: 6, MinutesPerDay: 180}
-	if got := BudgetLine(a, 4, 130); got != "4/6 runs today, 130/180 min" {
+	if got := BudgetLine(a, 4, 130); got != "4/6 runs in 24h, 130/180 min" {
 		t.Fatalf("BudgetLine = %q", got)
 	}
-	if got := BudgetLine(fleet.Agent{Name: "dev", RunsPerDay: 6}, 4, 130); got != "4/6 runs today" {
+	if got := BudgetLine(fleet.Agent{Name: "dev", RunsPerDay: 6}, 4, 130); got != "4/6 runs in 24h" {
 		t.Fatalf("a runs-only budget should show only runs, got %q", got)
 	}
 	if got := BudgetLine(fleet.Agent{Name: "dev"}, 4, 130); got != "" {

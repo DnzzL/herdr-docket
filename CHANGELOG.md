@@ -4,6 +4,24 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A budget counts runs, not log lines.** Attaching a pull request to a run
+  that had already closed appended a second closing record for it, and the
+  budget charged both — an agent that had run four times read as `5/4` and was
+  parked with spend left. The window now collapses per run, the way the run
+  list always has. The line also says the window it measures: `4/6 runs in 24h`,
+  because the window is a rolling day and never reset at midnight.
+- **A persona that does not load is named on the board.** `agent list` printed
+  it and the daemon logged it; the pane dropped it, so the agent vanished from
+  the roster and its work drew as `ghost?` — telling you to fix an assignee
+  when the fault was a file you had just edited. The roster now names the file
+  and the reason, and the agent column says `broken` rather than `ghost?`.
+- **The board refreshes in one pass over the history.** It read a record per
+  row, so a refresh walked the whole log once per task — 1.4s every five
+  seconds on a fleet of 80 tasks, on a file the plugin never truncates. Now
+  30ms, and it grows with the log rather than with the log times the board.
+- **`g` reaches the roster from the task detail**, which is what the line under
+  it always said; it went to the board instead.
+
 - **The factory loop, installed in one command.** `herdr-docket init --factory`
   writes all six personas into an existing fleet — never overwriting one you
   already have — and appends the four schedules that drive the loop to the

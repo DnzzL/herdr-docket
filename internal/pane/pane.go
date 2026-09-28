@@ -222,6 +222,7 @@ type model struct {
 	usage    map[string]history.Usage
 	rows     []row
 	agents   map[string]fleet.Agent
+	diags    []fleet.Diagnostic
 	sel      int
 	selID    string // the task the cursor is on, so a reorder cannot move it
 	asel     int    // the agent the roster cursor is on
@@ -244,6 +245,7 @@ type refreshMsg struct {
 	last   map[string]*history.Record
 	usage  map[string]history.Usage
 	agents map[string]fleet.Agent
+	diags  []fleet.Diagnostic
 	err    error
 }
 type tickMsg time.Time
@@ -300,12 +302,16 @@ func refresh(src work.Source, dir string) tea.Cmd {
 		if err != nil {
 			return refreshMsg{err: err}
 		}
-		last := map[string]*history.Record{}
+		// One pass for the whole board, not one per row: the log is
+		// append-only and this runs on a timer, so a record read per task made
+		// the refresh cost grow with the fleet times its own history.
+		ids := make([]string, 0, len(items))
 		for _, it := range items {
-			last[it.ID], _ = history.LastRun(it.ID)
+			ids = append(ids, it.ID)
 		}
-		agents, _ := fleet.LoadAgents(dir)
-		return refreshMsg{tasks: items, last: last, usage: history.UsageSince(time.Now()), agents: agents}
+		last := history.LatestPerTask(ids)
+		agents, diags := fleet.LoadAgents(dir)
+		return refreshMsg{tasks: items, last: last, usage: history.UsageSince(time.Now()), agents: agents, diags: diags}
 	}
 }
 
@@ -325,7 +331,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.tasks, m.last, m.agents = msg.tasks, msg.last, msg.agents
-		m.usage = msg.usage
+		m.usage, m.diags = msg.usage, msg.diags
 		m.rebuildRows()
 		m.clampSel()
 	case tickMsg:
@@ -370,10 +376,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "g":
-			if m.view == boardView {
-				m.view = agentsView
-			} else {
+			// Every footer offers g as the roster, the detail view's included.
+			// Toggling against boardView sent g from the detail view to the
+			// board — esc's job — and made the line under it wrong.
+			if m.view == agentsView {
 				m.view = boardView
+			} else {
+				m.view = agentsView
 			}
 		}
 		if m.view == agentsView {
@@ -925,7 +934,7 @@ func (m model) boardView() string {
 		}
 		// A styled cell is padded by its own style, not by the format verb: %-16s
 		// counts escape bytes and would stagger every row with a colour on it.
-		who := whoCell(m.agents, r.task)
+		who := whoCell(m.agents, m.brokenAgents(), r.task)
 		detail := ""
 		switch {
 		case inFlight(r.last):
@@ -1046,6 +1055,12 @@ func (m model) agentsView() string {
 		}
 		b.WriteString(line + "\n")
 	}
+	// A persona that did not load is named here and nowhere else: it is not a
+	// roster row, because p on a file that will not parse would write a
+	// disabled line into it and still not give the fleet an agent.
+	for _, d := range m.diags {
+		fmt.Fprintf(&b, "  %s\n", failStyle.Render(fmt.Sprintf("%-16s did not load — %s", d.Agent, d.Message)))
+	}
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("j/k move · p pause/resume · g board · q quit"))
 	if m.status != "" {
@@ -1065,18 +1080,24 @@ func phaseHeader(phase string) string {
 
 // whoCell is the agent column: the name the task is routed to, coloured when
 // the name says something the board should not have to be asked about. A red ?
-// is work routed to a name nobody has — it will never be picked up. A yellow
-// paused is an agent the daemon is skipping: the row is not next, whatever its
-// urgency, until somebody resumes it (r still runs it by hand). An unassigned
-// task is dim, because a default agent the fleet configured is the scheduler's
-// business and not a claim on the row.
-func whoCell(agents map[string]fleet.Agent, it work.Task) string {
+// is work routed to a name nobody has — it will never be picked up. A red
+// broken is a persona that exists and did not parse, which is a different
+// repair: the file, not the assignee, and saying ? there sends the reader to
+// rename work that was routed correctly all along. A yellow paused is an agent
+// the daemon is skipping: the row is not next, whatever its urgency, until
+// somebody resumes it (r still runs it by hand). An unassigned task is dim,
+// because a default agent the fleet configured is the scheduler's business and
+// not a claim on the row.
+func whoCell(agents map[string]fleet.Agent, broken map[string]bool, it work.Task) string {
 	name := it.Assignee
 	if name == "" {
 		return dimStyle.Width(whoWidth).Render("-")
 	}
 	style := lipgloss.NewStyle().Width(whoWidth)
 	switch a, ok := agents[name]; {
+	case !ok && broken[name]:
+		mark := " broken"
+		style, name = failStyle.Width(whoWidth), text.Truncate(name, whoWidth-len(mark))+mark
 	case !ok:
 		style, name = failStyle.Width(whoWidth), text.Truncate(name, whoWidth-1)+"?"
 	case a.Disabled:
@@ -1111,6 +1132,20 @@ func (m model) busyCell(name string, room int) string {
 	}
 	parts = append(parts, it.Title)
 	return head + " " + text.Truncate(strings.Join(parts, " "), budget)
+}
+
+// brokenAgents is the set of personas the loader could not read. They are not
+// agents — nothing can be scheduled on them — but the board must not call them
+// missing either, so the agent column can tell the two apart.
+func (m model) brokenAgents() map[string]bool {
+	if len(m.diags) == 0 {
+		return nil
+	}
+	broken := make(map[string]bool, len(m.diags))
+	for _, d := range m.diags {
+		broken[d.Agent] = true
+	}
+	return broken
 }
 
 func agentNames(agents map[string]fleet.Agent) []string {

@@ -691,19 +691,19 @@ func TestAPhaseHeaderIsStyledInOnePass(t *testing.T) {
 func TestWhoCellMarksTheTwoWaysAnAgentCanBeWrong(t *testing.T) {
 	dev := map[string]fleet.Agent{"dev": {Name: "dev"}, "paused": {Name: "paused", Disabled: true}}
 
-	got := whoCell(dev, work.Task{Assignee: "nobody"})
+	got := whoCell(dev, nil, work.Task{Assignee: "nobody"})
 	if !strings.Contains(got, "nobody?") {
 		t.Errorf("an agent nobody has should be marked: %q", got)
 	}
-	got = whoCell(dev, work.Task{Assignee: "paused"})
+	got = whoCell(dev, nil, work.Task{Assignee: "paused"})
 	if !strings.Contains(got, "paused paused") {
 		t.Errorf("a disabled agent should be marked paused: %q", got)
 	}
-	got = whoCell(dev, work.Task{Assignee: "dev"})
+	got = whoCell(dev, nil, work.Task{Assignee: "dev"})
 	if strings.Contains(got, "paused") || strings.Contains(got, "?") {
 		t.Errorf("a plain agent should carry no mark: %q", got)
 	}
-	got = whoCell(nil, work.Task{})
+	got = whoCell(nil, nil, work.Task{})
 	if !strings.Contains(got, "-") {
 		t.Errorf("an unassigned task should read -: %q", got)
 	}
@@ -799,5 +799,63 @@ func TestTheRosterCreditsTheAgentThatStartedTheRun(t *testing.T) {
 	}
 	if !strings.Contains(ops, "idle") {
 		t.Fatalf("the agent the task routes to is not the one running it: %q", ops)
+	}
+}
+
+// A persona that does not parse is the one failure the board used to hide.
+// LoadAgents reports it, the CLI prints it and the daemon logs it — the pane
+// dropped it, so the agent simply vanished from the roster and its work drew
+// as routed to a name nobody has. The reader is then told to fix an assignee
+// when the truth is a file they just edited. The roster says which file, and
+// why, and does not offer p on it: pausing a file that will not load writes a
+// line into a file nobody can read.
+func TestTheRosterNamesAPersonaThatWouldNotLoad(t *testing.T) {
+	m := model{
+		dir:    "/fleet",
+		agents: map[string]fleet.Agent{"dev": {Name: "dev", Kind: "claude"}},
+		diags:  []fleet.Diagnostic{{Agent: "reviewer", Message: "frontmatter has no workdir"}},
+	}
+	got := m.agentsView()
+	for _, want := range []string{"reviewer", "frontmatter has no workdir", "dev"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("roster is missing %q:\n%s", want, got)
+		}
+	}
+	// It is not a roster row: the cursor must not land on something p cannot act on.
+	if names := m.agentList(); len(names) != 1 || names[0] != "dev" {
+		t.Fatalf("a persona that did not load is not selectable: %v", names)
+	}
+}
+
+// The board's two red words mean different things and lead to different fixes.
+// A name nobody has is a routing mistake on the task; a persona that did not
+// parse is a file. Telling the second as the first sends the reader to the
+// wrong one.
+func TestWhoCellTellsABrokenPersonaFromAGhost(t *testing.T) {
+	agents := map[string]fleet.Agent{"dev": {Name: "dev"}}
+	broken := map[string]bool{"reviewer": true}
+
+	ghost := whoCell(agents, broken, work.Task{ID: "myapp/TASK-1", Assignee: "nobody"})
+	if !strings.Contains(ghost, "?") {
+		t.Errorf("a name nobody answers to still reads as a ghost: %q", ghost)
+	}
+	bad := whoCell(agents, broken, work.Task{ID: "myapp/TASK-2", Assignee: "reviewer"})
+	if strings.Contains(bad, "?") || !strings.Contains(bad, "broken") {
+		t.Errorf("a persona that did not parse must not read as a ghost: %q", bad)
+	}
+	ok := whoCell(agents, broken, work.Task{ID: "myapp/TASK-3", Assignee: "dev"})
+	if strings.Contains(ok, "?") || strings.Contains(ok, "broken") {
+		t.Errorf("a working agent is drawn plain: %q", ok)
+	}
+}
+
+// The detail view's footer offers g, and README calls g the roster key. It
+// went to the board instead, which is esc's job — a key that does something
+// other than what the line under it says.
+func TestGReachesTheRosterFromTheDetailView(t *testing.T) {
+	m := model{view: detailView, detail: work.Task{ID: "myapp/TASK-1", Title: "Fix the parser"}}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	if got := next.(model).view; got != agentsView {
+		t.Errorf("g from the detail view must reach the roster its footer names, got view %v", got)
 	}
 }

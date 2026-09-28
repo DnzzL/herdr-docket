@@ -1,6 +1,7 @@
 package history
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -177,5 +178,112 @@ func TestSetPullRequestOnATaskWithNoRunFails(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	if err := SetPullRequest("TASK-404", "https://example.com/pr/1"); err == nil {
 		t.Fatal("want an error when no run exists for the task")
+	}
+}
+
+// A budget counts runs, and the log counts records. History is append-only
+// with several records per run — attaching a pull request to a run that has
+// already closed appends a second closing record for it — so an agent that
+// ran four times must read as four, not five. Observed live as "dev 5/4 runs"
+// against a cap of four, which does not just misreport: OverBudget then parks
+// an agent that has spend left.
+func TestABudgetCountsRunsNotClosingRecords(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	now := time.Now()
+	for i := 1; i <= 4; i++ {
+		run, task := fmt.Sprintf("run-%d", i), fmt.Sprintf("myapp/TASK-%d", i)
+		mustAppend(t, Record{RunID: run, Task: task, Agent: "dev", Status: StatusRunning, At: now})
+		mustAppend(t, Record{RunID: run, Task: task, Agent: "dev", Status: StatusDone, At: now, DurationSeconds: 600})
+	}
+	// The url lands after the verdict, so the copy is a second closing record.
+	if err := SetPullRequest("myapp/TASK-3", "https://example.com/pr/9"); err != nil {
+		t.Fatal(err)
+	}
+
+	u := UsageSince(now.Add(time.Minute))["dev"]
+	if u.Runs != 4 {
+		t.Errorf("four runs happened; the budget counted %d", u.Runs)
+	}
+	if u.Minutes != 40 {
+		t.Errorf("four ten-minute runs is 40 minutes; the budget counted %d", u.Minutes)
+	}
+}
+
+// The other direction of the same fix: collapsing per run must not widen a
+// cap. Four separate runs are four, however their records interleave.
+func TestCollapsingDoesNotWidenTheCap(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	now := time.Now()
+	for i := 1; i <= 5; i++ {
+		run := fmt.Sprintf("run-%d", i)
+		mustAppend(t, Record{RunID: run, Task: "myapp/TASK-1", Agent: "dev", Status: StatusDone, At: now, DurationSeconds: 60})
+	}
+	if got := UsageSince(now.Add(time.Minute))["dev"].Runs; got != 5 {
+		t.Errorf("five runs on one task is five spent runs, got %d", got)
+	}
+}
+
+// A run still open spends nothing: the window counts what finished.
+func TestARunInFlightIsNotSpendYet(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	now := time.Now()
+	mustAppend(t, Record{RunID: "r1", Task: "myapp/TASK-1", Agent: "dev", Status: StatusRunning, At: now})
+	if got := UsageSince(now.Add(time.Minute))["dev"].Runs; got != 0 {
+		t.Errorf("a run in flight is not spend; got %d", got)
+	}
+}
+
+func mustAppend(t *testing.T, r Record) {
+	t.Helper()
+	if err := Append(r); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The board draws one history record per row and refreshes every few seconds.
+// Asking for them one task at a time walked the whole log per row, so the cost
+// of a refresh grew with the fleet's length times its history's — measured at
+// 1.4s for 80 tasks, on a log the plugin never truncates. One pass answers the
+// whole board, and it must answer it identically to LastRun.
+func TestLatestPerTaskAnswersTheWholeBoardInOnePass(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	base := time.Now()
+	steps := []Record{
+		// TASK-1: an old run, then a newer one still in flight.
+		{RunID: "r1", Task: "myapp/TASK-1", Status: StatusRunning, At: base},
+		{RunID: "r1", Task: "myapp/TASK-1", Status: StatusFailed, At: base.Add(time.Minute)},
+		{RunID: "r3", Task: "myapp/TASK-1", Status: StatusRunning, At: base.Add(2 * time.Minute)},
+		// TASK-2: one run, closed, with a url stamped on afterwards.
+		{RunID: "r2", Task: "myapp/TASK-2", Status: StatusRunning, At: base},
+		{RunID: "r2", Task: "myapp/TASK-2", Status: StatusDone, At: base.Add(time.Minute)},
+		{RunID: "r2", Task: "myapp/TASK-2", Status: StatusDone, At: base.Add(time.Minute), PullRequest: "https://example.com/pr/1"},
+		// A task the board is not showing.
+		{RunID: "r9", Task: "other/TASK-9", Status: StatusDone, At: base},
+	}
+	for _, r := range steps {
+		mustAppend(t, r)
+	}
+
+	ids := []string{"myapp/TASK-1", "myapp/TASK-2", "myapp/TASK-404"}
+	got := LatestPerTask(ids)
+
+	for _, id := range ids {
+		want, err := LastRun(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case want == nil && got[id] != nil:
+			t.Errorf("%s: LastRun has no record, the pass invented %+v", id, got[id])
+		case want == nil:
+		case got[id] == nil:
+			t.Errorf("%s: LastRun found %s, the pass found nothing", id, want.Status)
+		case got[id].RunID != want.RunID || got[id].Status != want.Status || got[id].PullRequest != want.PullRequest:
+			t.Errorf("%s: pass has %+v, LastRun has %+v", id, *got[id], *want)
+		}
+	}
+	// A task nobody asked about is not carried back.
+	if _, ok := got["other/TASK-9"]; ok {
+		t.Error("the pass returned a task the board did not ask for")
 	}
 }
