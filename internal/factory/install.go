@@ -19,10 +19,13 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
-// The fleet-side personas: the three stages whose workdir is the fleet itself
-// (intake, stall and lookback read the queue, not a project). The per-project
-// personas — dev, reviewer — are copied by hand from docs/examples.md, since
-// only the owner knows the repo they work in.
+// The loop's six personas, in two kinds. The fleet-side three — intake, stall
+// and lookback — read the queue, so their workdir is the fleet itself and they
+// run the moment they land. The project-side three — pm, dev and reviewer —
+// work a repo only the owner can name, so they land paused, carrying the
+// example's placeholder workdir: every stage the loop refers to exists from
+// the first install, and none of them runs until a human has pointed it
+// somewhere real.
 //
 //go:embed personas/intake.md
 var intakePersona string
@@ -33,10 +36,29 @@ var stallPersona string
 //go:embed personas/lookback.md
 var lookbackPersona string
 
-var personas = []struct{ name, body string }{
-	{"intake", intakePersona},
-	{"stall", stallPersona},
-	{"lookback", lookbackPersona},
+//go:embed personas/pm.md
+var pmPersona string
+
+//go:embed personas/dev.md
+var devPersona string
+
+//go:embed personas/reviewer.md
+var reviewerPersona string
+
+// placeholder is the workdir the project-side personas carry out of
+// docs/examples.md — the line the owner edits before resuming one.
+const placeholder = "workdir: ~/Projects/myapp\n"
+
+var personas = []struct {
+	name, body string
+	project    bool
+}{
+	{"intake", intakePersona, false},
+	{"stall", stallPersona, false},
+	{"lookback", lookbackPersona, false},
+	{"pm", pmPersona, true},
+	{"dev", devPersona, true},
+	{"reviewer", reviewerPersona, true},
 }
 
 // entries are the four automations that drive the loop, verbatim as
@@ -54,7 +76,11 @@ const entries = `  # Delete "Report only." from the intake entry after you have 
         -d "Poll the sources in your persona's prompt — Sentry via mcp_config,
         gh issue list — and apply the gate. Report only."
 
+  # The review sweep drives the reviewer persona, which lands paused because
+  # only you know the repo it works. Point its workdir there, resume it, then
+  # delete this line.
   - name: review-sweep
+    disabled: true
     cron: "30 9 * * 1-5"
     repo: ~/fleet
     workspace: root
@@ -102,11 +128,20 @@ func Install(dir string, out io.Writer) error {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}
-		body := strings.Replace(p.body, "workdir: ~/fleet", "workdir: "+dir, 1)
+		body, note := p.body, ""
+		if p.project {
+			// Paused on arrival, and the workdir left as the example wrote it:
+			// a persona pointed at a repo that isn't yours is a guess, and a
+			// guess that runs is worse than one that waits.
+			body = strings.Replace(body, placeholder, placeholder+"disabled: true\n", 1)
+			note = fmt.Sprintf(" — paused; point its workdir at your repo, then: herdr-docket agent resume %s", p.name)
+		} else {
+			body = strings.Replace(body, "workdir: ~/fleet", "workdir: "+dir, 1)
+		}
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "factory: wrote agents/%s/AGENT.md\n", p.name)
+		fmt.Fprintf(out, "factory: wrote agents/%s/AGENT.md%s\n", p.name, note)
 	}
 
 	cfg, err := automationsConfigDir()
@@ -148,10 +183,11 @@ func Install(dir string, out io.Writer) error {
 	return afterInstall(out)
 }
 
-// afterInstall is the one line of orientation every path ends with: the dial
-// to turn before the schedule is trusted, and where the rest is written down.
+// afterInstall is the orientation every path ends with: the two dials to turn
+// before the loop is trusted, and where the rest is written down.
 func afterInstall(out io.Writer) error {
 	fmt.Fprintln(out, `factory: next — read docs/factory.md; the intake entry files nothing until you delete "Report only."`)
+	fmt.Fprintln(out, "factory: pm, dev and reviewer are paused until their workdir names your repo; the review-sweep entry is disabled until the reviewer runs")
 	return nil
 }
 

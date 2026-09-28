@@ -15,8 +15,9 @@ Wired end to end — intake polling sources into verified tasks, the dev
 carrying each PR to green, the reviewer's own merge policy, a weekly lookback
 over what keeps recurring, and the merged worktrees pruned behind it — the
 queue becomes a loop. The personas, the schedules and the refusals live in
-[The factory](docs/factory.md); `herdr-docket init --factory` writes the
-fleet-side half of it in one command.
+[The factory](docs/factory.md); `herdr-docket init --factory` writes it in
+one command — the queue-side stages running, the ones that work your repo
+paused until you point them at it.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26-00ADD8.svg)](https://go.dev)
@@ -97,8 +98,8 @@ human intent, not scheduling.
 These levers are also the whole of a running *factory* — intake polling
 sources into verified tasks, a review sweep, a stall sweep, a weekly lookback
 over what keeps recurring. The loop is personas and cron, wired in
-[docs/factory.md](docs/factory.md); `herdr-docket init --factory` writes the
-fleet-side part of it into an existing fleet.
+[docs/factory.md](docs/factory.md); `herdr-docket init --factory` writes it
+into an existing fleet, the repo-side personas paused until you name the repo.
 
 ## The model
 

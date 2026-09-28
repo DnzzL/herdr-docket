@@ -215,3 +215,114 @@ func TestInstallLeavesTheFleetsOwnConfigAlone(t *testing.T) {
 		t.Errorf("fleet.yaml changed:\n%s", raw)
 	}
 }
+
+// entryBlock is one automation out of a written config, as a reader sees it:
+// the comment lines leading up to it, its name, and everything down to the
+// next entry or the end of the file.
+func entryBlock(yaml, name string) string {
+	at := strings.Index(yaml, "- name: "+name)
+	if at < 0 {
+		return ""
+	}
+	start := at
+	for {
+		prev := strings.LastIndex(yaml[:start], "\n  #")
+		if prev < 0 || strings.Count(yaml[prev+1:start], "\n") > 1 {
+			break
+		}
+		start = prev + 1
+	}
+	if next := strings.Index(yaml[at:], "\n  - name: "); next >= 0 {
+		return yaml[start : at+next]
+	}
+	return yaml[start:]
+}
+
+// The review sweep is the one entry whose persona lands paused: `reviewer`
+// works a project, and only its owner knows which. Live, it would file a task
+// every weekday onto an agent that is not scheduling, so it ships disabled —
+// and the output names the dial, the same way the intake entry names the
+// phrase to delete.
+func TestTheReviewSweepShipsDisabledUntilTheProjectPersonasExist(t *testing.T) {
+	dir := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, cfg, 0))
+
+	var out bytes.Buffer
+	if err := Install(dir, &out); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(cfg, "automations.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(raw)
+
+	sweep := entryBlock(got, "review-sweep")
+	if sweep == "" {
+		t.Fatalf("no review-sweep entry:\n%s", got)
+	}
+	if !strings.Contains(sweep, "disabled: true") {
+		t.Errorf("review-sweep must ship disabled — it names a persona init never wrote:\n%s", sweep)
+	}
+	if !strings.Contains(sweep, "resume") {
+		t.Errorf("the entry must say what has to happen before it is enabled:\n%s", sweep)
+	}
+
+	// The fleet-side three drive personas this command did write, so they run.
+	for _, name := range []string{"intake", "stall-sweep", "lookback"} {
+		if b := entryBlock(got, name); strings.Contains(b, "disabled:") {
+			t.Errorf("%s drives a persona init wrote; it must not ship disabled:\n%s", name, b)
+		}
+	}
+
+	for _, owed := range []string{"pm", "dev", "reviewer"} {
+		if !strings.Contains(out.String(), owed) {
+			t.Errorf("output must name the stage still waiting on a human (%q):\n%s", owed, out.String())
+		}
+	}
+}
+
+// Every stage the loop's prose refers to exists after one install. intake
+// files unclear items to pm and lookback files its patterns to pm; a fleet
+// where pm is a name nobody answers to routes that work to nobody. So the
+// project-side three land too — paused, carrying the example's placeholder
+// workdir, because only their owner knows the repo they work.
+func TestInstallWritesTheProjectPersonasPaused(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, "", 1))
+
+	var out bytes.Buffer
+	if err := Install(dir, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"pm", "dev", "reviewer"} {
+		raw, err := os.ReadFile(filepath.Join(dir, "agents", name, "AGENT.md"))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		body := string(raw)
+		if !strings.Contains(body, "disabled: true") {
+			t.Errorf("%s must land paused — it points at a repo nobody named yet:\n%s", name, firstLine(body))
+		}
+		// The workdir stays the example's: this command cannot know the repo,
+		// and a guessed one that happens to exist is the worse failure.
+		if !strings.Contains(body, "workdir: ~/Projects/myapp") {
+			t.Errorf("%s workdir must stay the placeholder the owner edits", name)
+		}
+		if !strings.Contains(body, "workspace:") {
+			t.Errorf("%s frontmatter damaged by the pause:\n%s", name, body)
+		}
+	}
+	// The fleet-side three still run on arrival: they work the queue, which
+	// this command does know where to find.
+	for _, name := range []string{"intake", "stall", "lookback"} {
+		raw, _ := os.ReadFile(filepath.Join(dir, "agents", name, "AGENT.md"))
+		if strings.Contains(string(raw), "disabled:") {
+			t.Errorf("%s reads the queue this command just named; it must not land paused", name)
+		}
+	}
+	if !strings.Contains(out.String(), "resume") {
+		t.Errorf("output must name the gesture that starts a paused stage:\n%s", out.String())
+	}
+}

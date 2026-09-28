@@ -5,12 +5,18 @@ What changed for someone using the plugin. Dates are release dates.
 ## Unreleased
 
 - **The factory loop, installed in one command.** `herdr-docket init --factory`
-  writes the three fleet-side personas (`intake`, `stall`, `lookback`) into an
-  existing fleet — never overwriting one you already have — and appends the
-  four schedules that drive the loop to the automations plugin's config when
-  it is present, pointing `repo:` at the fleet it was installed into. Without
-  the automations plugin the personas still land and the output says they
-  await schedules. The fleet's own `fleet.yaml` is not touched.
+  writes all six personas into an existing fleet — never overwriting one you
+  already have — and appends the four schedules that drive the loop to the
+  automations plugin's config when it is present, pointing `repo:` at the
+  fleet it was installed into. The three that read the queue (`intake`,
+  `stall`, `lookback`) are pointed at the fleet and run; the three that work a
+  repo (`pm`, `dev`, `reviewer`) land paused on a placeholder workdir, because
+  every stage the loop names has to exist — intake and lookback file to `pm`,
+  the reviewer takes the dev's handoff — and none of them may run against a
+  repo you did not choose. Edit the workdir, `herdr-docket agent resume`, and
+  drop the `disabled: true` the `review-sweep` entry ships with. Without the
+  automations plugin the personas still land and the output says they await
+  schedules. The fleet's own `fleet.yaml` is not touched.
 - **The loop is written down**: `docs/factory.md` is the wiring — the cron
   entries, the dials it leans on, and the refusals (the fleet never merges;
   agents do, under a policy paragraph in the reviewer's persona). The loop's

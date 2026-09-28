@@ -54,7 +54,11 @@ automations:
         -d "Poll the sources in your persona's prompt — Sentry via mcp_config,
         gh issue list — and apply the gate. Report only."
 
+  # The review sweep drives the reviewer persona, which lands paused because
+  # only you know the repo it works. Point its workdir there, resume it, then
+  # delete this line.
   - name: review-sweep
+    disabled: true
     cron: "30 9 * * 1-5"
     repo: ~/fleet
     workspace: root
@@ -127,11 +131,26 @@ The loop is one command, but it does not have to be run as one:
 herdr-docket init --factory
 ```
 
-Writes the three fleet-side personas (`intake`, `stall`, `lookback`) into an
-existing fleet dir — never overwriting one you already have — appends the
-entries above when the automations plugin's config is present, and points you
-at this page. The per-project personas (`dev`, `reviewer`) are yours to copy
-from [examples](examples.md), because only you know the repo they work in.
+Writes all six personas into an existing fleet dir — never overwriting one
+you already have — appends the entries above when the automations plugin's
+config is present, and points you at this page.
+
+The three that read the queue (`intake`, `stall`, `lookback`) are pointed at
+the fleet dir and run from the first tick. The three that work a repo (`pm`,
+`dev`, `reviewer`) land **paused**, carrying the placeholder workdir from
+[examples](examples.md): the loop refers to all three by name — intake files
+its unclear items to `pm`, lookback files its patterns there, the reviewer
+takes the dev's handoff — so a fleet missing them routes that work to nobody.
+They exist, and they wait:
+
+```bash
+$EDITOR ~/fleet/agents/dev/AGENT.md     # workdir: your repo
+herdr-docket agent resume dev
+```
+
+The `review-sweep` entry ships `disabled: true` for the same reason — a sweep
+that files onto a paused reviewer is a pile, not a loop. Enable it once the
+reviewer runs.
 
 ## What it refuses
 
