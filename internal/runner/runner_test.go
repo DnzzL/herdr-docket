@@ -491,3 +491,49 @@ func hasNoteContaining(b *fakeBoard, want string) bool {
 	}
 	return false
 }
+
+// An agent that reports `fail` did its job: it ran, it judged, it said so.
+// The run is recorded as failed because the task is, but the reason must not
+// accuse it of silence — that sentence is reserved for an agent that closed
+// nothing, and it is the whole way a person tells a broken agent from a
+// correctly refused ticket. Observed on a live fleet where every blocked
+// review — the reviewer doing exactly what its persona asks — was filed as
+// "the agent settled without reporting a verdict".
+func TestAReportedFailureIsNotCalledSilence(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{after: func() { b.Close("TASK-1", work.Failed) }}
+	err := run(t, h, b)
+	if err == nil {
+		t.Fatal("a task that ended Failed is still a failed run")
+	}
+	if strings.Contains(err.Error(), "without reporting") {
+		t.Errorf("the agent reported; the run must not call it silence: %v", err)
+	}
+	runs, rerr := history.Runs("TASK-1", 1)
+	if rerr != nil || len(runs) != 1 {
+		t.Fatalf("history = %+v, %v", runs, rerr)
+	}
+	if runs[0].Status != history.StatusFailed {
+		t.Errorf("history status = %q, want failed", runs[0].Status)
+	}
+	if strings.Contains(runs[0].Error, "without reporting") {
+		t.Errorf("the record repeats the accusation: %q", runs[0].Error)
+	}
+}
+
+// The same for a verdict of blocked, which is what a reviewer writes when it
+// refuses to merge and hands the decision to a human. A fleet whose config
+// points failed and blocked at one column reads it back as Failed, so this is
+// the common case, not the rare one.
+func TestAReportedBlockIsNotCalledSilence(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{after: func() { b.Close("TASK-1", work.Blocked) }}
+	err := run(t, h, b)
+	if err != nil && strings.Contains(err.Error(), "without reporting") {
+		t.Errorf("a blocked task was reported by its agent: %v", err)
+	}
+	runs, _ := history.Runs("TASK-1", 1)
+	if len(runs) == 1 && strings.Contains(runs[0].Error, "without reporting") {
+		t.Errorf("the record repeats the accusation: %q", runs[0].Error)
+	}
+}

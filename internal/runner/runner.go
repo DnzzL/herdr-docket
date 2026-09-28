@@ -162,7 +162,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 	}
 	session, err := r.host.Provision(spec)
 	if err != nil {
-		v, _ := r.reconcile(src, t.ID, a.Name, err)
+		v, _, _ := r.reconcile(src, t.ID, a.Name, err)
 		// No run happened past provisioning, so there is no delivery to
 		// report beside the failure.
 		rec.close(history.StatusFailed, session, v, host.Delivery{}, false, err.Error())
@@ -182,7 +182,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 			log.Printf("inspect delivery of %s: %v", t.ID, errInspect)
 		}
 	}
-	final, handedOn := r.reconcile(src, t.ID, a.Name, err)
+	final, handedOn, reported := r.reconcile(src, t.ID, a.Name, err)
 	final, keep := r.guardDelivery(src, t.ID, session, final, handedOn, d, session.Branch != "" && errInspect != nil)
 	r.cleanup(src, t.ID, session, final, handedOn, keep)
 	// Uncommitted is the fact the guard acted on: a worktree about to be torn
@@ -195,10 +195,16 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 	case err != nil:
 		rec.close(history.StatusFailed, session, final, d, uncommitted, err.Error())
 	case final == work.Failed:
-		// The run mechanics worked, but "the agent settled" is only a success
-		// if it reported a verdict; reconcile turned silence into Failed and
-		// the history must say the same.
-		err = fmt.Errorf("%s: the agent settled without reporting a verdict", t.ID)
+		// A task that ended Failed is a failed run either way, but why it
+		// failed is the difference between a broken agent and a working one.
+		// An agent that judged the ticket and reported it did its job — a
+		// reviewer refusing to merge reaches here every time — and must not be
+		// filed under the sentence reserved for one that closed nothing.
+		if reported {
+			err = fmt.Errorf("%s: the agent reported %s", t.ID, final)
+		} else {
+			err = fmt.Errorf("%s: the agent settled without reporting a verdict", t.ID)
+		}
 		rec.close(history.StatusFailed, session, final, d, uncommitted, err.Error())
 	default:
 		rec.close(history.StatusDone, session, final, d, uncommitted, "")
@@ -221,20 +227,25 @@ func (r *Runner) claim(src work.Source, id string) {
 }
 
 // reconcile makes the task tell the truth after a run and returns the verdict
-// it ended on, plus whether the agent handed the task to somebody else. The
+// it ended on, whether the agent handed the task to somebody else, and whether
+// that verdict is the agent's own word or one the fleet had to invent. The
 // agent's own verdict stands: if the agent closed the task, there is nothing
 // to do. A task the agent left open gets the verdict the run mechanics imply
 // — a cancelled run (workspace closed under it) goes Blocked, because somebody
 // decided and a human should say what happens next; anything else that leaves
 // the task unreported is Failed.
-func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) (work.Verdict, bool) {
+//
+// reported is what tells those two Faileds apart afterwards. Without it a
+// reviewer that refuses to merge and says so — its whole job — is recorded in
+// the same words as an agent that closed nothing, and a fleet cannot be read.
+func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) (verdict work.Verdict, handedOn, reported bool) {
 	v, err := src.Get(taskID)
 	if err != nil {
 		log.Printf("%s: cannot re-read the task after the run: %v", taskID, err)
-		return "", false
+		return "", false, false
 	}
 	if !v.Open {
-		return v.Verdict, false // the agent reported; its verdict stands
+		return v.Verdict, false, true // the agent reported; its verdict stands
 	}
 	// A task now assigned to somebody else was handed on, not abandoned: it is
 	// open on purpose, with a new owner and its whole history in one place.
@@ -242,7 +253,7 @@ func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) 
 	// route it. Only on a clean run — a task reassigned by an agent that then
 	// crashed is still an unreported task.
 	if runErr == nil && v.Assignee != "" && v.Assignee != agent {
-		return "", true
+		return "", true, true
 	}
 	verdict, note := work.Failed, "fleet: the agent settled without reporting a verdict."
 	switch {
@@ -257,7 +268,7 @@ func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) 
 	if err := src.Close(taskID, verdict); err != nil {
 		log.Printf("%s: close as %s: %v", taskID, verdict, err)
 	}
-	return verdict, false
+	return verdict, false, false
 }
 
 // guardDelivery is TASK-23's check, made before the one moment where the

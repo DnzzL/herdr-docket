@@ -4,6 +4,14 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A reported verdict is no longer recorded as silence.** A run whose agent
+  judged the ticket and closed it — a reviewer refusing to merge a migration,
+  say — was filed with the same sentence as an agent that closed nothing:
+  `the agent settled without reporting a verdict`. On a fleet whose config
+  points `failed` and `blocked` at one column, that was every correct refusal.
+  The run still ends failed, because the task did; the record now says whether
+  anybody needs to go and look at the agent.
+
 - **A budget counts runs, not log lines.** Attaching a pull request to a run
   that had already closed appended a second closing record for it, and the
   budget charged both — an agent that had run four times read as `5/4` and was
