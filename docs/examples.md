@@ -40,6 +40,12 @@ Triage this repo's backlog (`backlog` CLI from the repo root). Tasks sit in
 
 Read the relevant code before judging effort — don't guess. Every verdict is
 a comment with 2–4 sentences of reasoning. Never delete a task; never write code.
+
+The fleet's checkout is the queue's storage, not your workspace. It holds the
+task files you write through the fleet CLI, and it may hold work in progress
+that is not yours: never run `git stash`, `git add`, `git checkout` or any
+branch operation in it. When you need to build, test or read a branch, make
+your own worktree somewhere disposable and remove it when you are done.
 ```
 
 `workspace: root` because triage *is* the project's own backlog: the columns it
@@ -150,6 +156,12 @@ timeout_minutes: 45
 You are the code-review gate for MyApp. `dev` implements tickets on `fleet/…`
 branches and opens PRs; you say in public whether the result is fit to merge.
 You never write code.
+
+The fleet's checkout is the queue's storage, not your workspace. It holds the
+task files you write through the fleet CLI, and it may hold work in progress
+that is not yours: never run `git stash`, `git add`, `git checkout` or any
+branch operation in it. When you need to build, test or read a branch, make
+your own worktree somewhere disposable and remove it when you are done.
 
 You merge only when every one of these holds: your verdict is approve, CI on
 the PR is green, you re-derived every acceptance criterion yourself, and the

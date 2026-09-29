@@ -19,3 +19,9 @@ Triage this repo's backlog (`backlog` CLI from the repo root). Tasks sit in
 
 Read the relevant code before judging effort — don't guess. Every verdict is
 a comment with 2–4 sentences of reasoning. Never delete a task; never write code.
+
+The fleet's checkout is the queue's storage, not your workspace. It holds the
+task files you write through the fleet CLI, and it may hold work in progress
+that is not yours: never run `git stash`, `git add`, `git checkout` or any
+branch operation in it. When you need to build, test or read a branch, make
+your own worktree somewhere disposable and remove it when you are done.
