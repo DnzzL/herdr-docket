@@ -2,7 +2,42 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.7.0 — 2026-09-30
+
+- **The factory loop, installed in one command.** `herdr-docket init --factory`
+  writes all six personas into an existing fleet — never overwriting one you
+  already have — and appends the four schedules that drive the loop to the
+  automations plugin's config when it is present, pointing `repo:` at the
+  fleet it was installed into. The three that read the queue (`intake`,
+  `stall`, `lookback`) are pointed at the fleet and run; the three that work a
+  repo (`pm`, `dev`, `reviewer`) land paused on a placeholder workdir, because
+  every stage the loop names has to exist — intake and lookback file to `pm`,
+  the reviewer takes the dev's handoff — and none of them may run against a
+  repo you did not choose. Edit the workdir, `herdr-docket agent resume`, and
+  drop the `disabled: true` the `review-sweep` entry ships with. Without the
+  automations plugin the personas still land and the output says they await
+  schedules. The fleet's own `fleet.yaml` is not touched.
+
+- **The loop is written down**: `docs/factory.md` is the wiring — the cron
+  entries, the dials it leans on, and the refusals (the fleet never merges;
+  agents do, under a policy paragraph in the reviewer's persona). The loop's
+  three new personas join the worked examples, and the dev and reviewer
+  personas gain what makes their stage real: the dev babysits its PR to
+  green, the reviewer's merge policy decides what ships unattended.
+
+- **A run's delivery is read, not believed.** A worktree-mode run's history
+  records the branch it was provisioned on, how many commits that branch
+  gained, and the pull request it shipped as — reported through the new
+  `herdr-docket task done|fail|block --pr <url>` — so `herdr-docket history`
+  answers *what did this run produce* without reading prose on a task. A
+  root-mode run claims no branch, because it has none to vouch for.
+
+- **A worktree that still holds uncommitted changes is not torn down.** When a
+  disposable worktree ends `done` with changes nobody committed, the fleet
+  keeps the workspace, says so on the task, records the fact on the run, and
+  moves the task to the human-decides column — the agent's report and the
+  worktree's state disagree, and the board now says which it found. A delivery
+  that cannot be read is kept and called unverified; blindness is not evidence.
 
 - **A reported verdict is no longer recorded as silence.** A run whose agent
   judged the ticket and closed it — a reviewer refusing to merge a migration,
@@ -18,49 +53,28 @@ What changed for someone using the plugin. Dates are release dates.
   parked with spend left. The window now collapses per run, the way the run
   list always has. The line also says the window it measures: `4/6 runs in 24h`,
   because the window is a rolling day and never reset at midnight.
+
 - **A persona that does not load is named on the board.** `agent list` printed
   it and the daemon logged it; the pane dropped it, so the agent vanished from
   the roster and its work drew as `ghost?` — telling you to fix an assignee
   when the fault was a file you had just edited. The roster now names the file
   and the reason, and the agent column says `broken` rather than `ghost?`.
+
 - **The board refreshes in one pass over the history.** It read a record per
   row, so a refresh walked the whole log once per task — 1.4s every five
   seconds on a fleet of 80 tasks, on a file the plugin never truncates. Now
   30ms, and it grows with the log rather than with the log times the board.
+
 - **`g` reaches the roster from the task detail**, which is what the line under
   it always said; it went to the board instead.
 
-- **The factory loop, installed in one command.** `herdr-docket init --factory`
-  writes all six personas into an existing fleet — never overwriting one you
-  already have — and appends the four schedules that drive the loop to the
-  automations plugin's config when it is present, pointing `repo:` at the
-  fleet it was installed into. The three that read the queue (`intake`,
-  `stall`, `lookback`) are pointed at the fleet and run; the three that work a
-  repo (`pm`, `dev`, `reviewer`) land paused on a placeholder workdir, because
-  every stage the loop names has to exist — intake and lookback file to `pm`,
-  the reviewer takes the dev's handoff — and none of them may run against a
-  repo you did not choose. Edit the workdir, `herdr-docket agent resume`, and
-  drop the `disabled: true` the `review-sweep` entry ships with. Without the
-  automations plugin the personas still land and the output says they await
-  schedules. The fleet's own `fleet.yaml` is not touched.
-- **The loop is written down**: `docs/factory.md` is the wiring — the cron
-  entries, the dials it leans on, and the refusals (the fleet never merges;
-  agents do, under a policy paragraph in the reviewer's persona). The loop's
-  three new personas join the worked examples, and the dev and reviewer
-  personas gain what makes their stage real: the dev babysits its PR to
-  green, the reviewer's merge policy decides what ships unattended.
-- **A run's delivery is read, not believed.** A worktree-mode run's history
-  records the branch it was provisioned on, how many commits that branch
-  gained, and the pull request it shipped as — reported through the new
-  `herdr-docket task done|fail|block --pr <url>` — so `herdr-docket history`
-  answers *what did this run produce* without reading prose on a task. A
-  root-mode run claims no branch, because it has none to vouch for.
-- **A worktree that still holds uncommitted changes is not torn down.** When a
-  disposable worktree ends `done` with changes nobody committed, the fleet
-  keeps the workspace, says so on the task, records the fact on the run, and
-  moves the task to the human-decides column — the agent's report and the
-  worktree's state disagree, and the board now says which it found. A delivery
-  that cannot be read is kept and called unverified; blindness is not evidence.
+- **An agent in root mode is told the checkout is not its workspace.** The
+  `reviewer` and `pm` personas run in the project checkout because the tasks
+  they file are files in it; nothing said the rest of that checkout belongs to
+  a human. Found on a live fleet as a four-day-old `reviewer-stash` holding
+  thirty task files — an agent had stashed a working tree to get a clean one
+  for its own testing and never popped it. Both personas now refuse git in the
+  root checkout and build their own throwaway worktree instead.
 
 ## v0.6.0 — 2026-09-21
 
