@@ -880,3 +880,55 @@ func TestStoppingClosesTheTabOfABorrowedWorkspace(t *testing.T) {
 		t.Errorf("no record is nothing to close: tab=%q workspace=%q", tab, ws)
 	}
 }
+
+// The fleet's one path into a run's live output is enter on its row: the
+// record already carries the workspace and the pane the run lives in, so
+// nobody discovers the generated agent name herdr gave the agent by hand.
+// The argv of the jump is asserted at the process boundary — the same
+// discipline that caught the stop path lying — with the agent's name absent
+// from every command, which is the whole point of the criterion.
+func TestEnterOnARunningRowJumpsToItsLiveOutput(t *testing.T) {
+	argvLog := filepath.Join(t.TempDir(), "herdr-argv.log")
+	script := "#!/bin/sh\necho \"$@\" >> " + argvLog + "\nexit 0\n"
+	path := filepath.Join(t.TempDir(), "herdr")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", path)
+
+	m := model{
+		tasks: []work.Task{{ID: "T-1", Open: true, Phase: "To Do"}},
+		last: map[string]*history.Record{"T-1": {
+			Status: history.StatusRunning, WorkspaceID: "ws-1", PaneID: "p-1",
+		}},
+	}
+	m.rebuildRows()
+	m.clampSel()
+	if cmd := m.jumpSelected(); cmd == nil {
+		t.Fatal("a running row must answer the enter key with the jump")
+	} else {
+		cmd()
+	}
+	argv, err := os.ReadFile(argvLog)
+	if err != nil {
+		t.Fatalf("no herdr call recorded: %v", err)
+	}
+	for _, want := range []string{"workspace focus ws-1", "agent focus p-1"} {
+		if !strings.Contains(string(argv), want) {
+			t.Fatalf("herdr argv %q misses %q", argv, want)
+		}
+	}
+	if strings.Contains(string(argv), "fleet/") || strings.Contains(string(argv), "T-1-") {
+		t.Fatalf("the jump must not need the agent's generated name: %q", argv)
+	}
+}
+
+// A row with no run behind it says so rather than jumping into nothing.
+func TestEnterWithoutARunSaysSo(t *testing.T) {
+	m := model{tasks: []work.Task{{ID: "T-1", Open: true, Phase: "To Do"}}, last: map[string]*history.Record{}}
+	m.rebuildRows()
+	m.clampSel()
+	if cmd := m.jumpSelected(); cmd != nil || m.status != "no run to jump to" {
+		t.Fatalf("cmd=%v status=%q", cmd, m.status)
+	}
+}

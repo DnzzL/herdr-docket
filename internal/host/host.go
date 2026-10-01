@@ -85,6 +85,10 @@ type Host interface {
 	// Close tears the session's workspace down. Called only when the run left
 	// nothing a human still needs to look at.
 	Close(s Session) error
+	// Notify raises Herdr's own desktop notification: the one way a run's
+	// report reaches a human who was not watching. Best-effort by contract —
+	// a caller logs a refusal and moves on, never re-decides what happened.
+	Notify(title, body string) error
 }
 
 // ErrCancelled means the run's workspace was closed while it was working.
@@ -212,6 +216,9 @@ func (h *live) Close(s Session) error {
 	}
 	return err
 }
+
+// Notify raises Herdr's own desktop notification, verbatim on to the ops.
+func (h *live) Notify(title, body string) error { return h.ops.Notify(title, body) }
 
 // work is one way of getting a task's work done in a session. One adapter
 // satisfies it today — an agent taking a prompt — and the seam stays because

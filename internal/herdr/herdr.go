@@ -258,6 +258,18 @@ func (Client) AgentWait(target string, timeout time.Duration) error {
 		"--timeout", fmt.Sprintf("%d", timeout.Milliseconds()))
 }
 
+// Notify raises Herdr's own desktop notification. It is how a run that ended
+// failed reaches a human the daemon could not otherwise address: the fleet
+// reports through the host rather than owning a channel of its own. Reports
+// only — nothing here decides anything.
+func (Client) Notify(title, body string) error {
+	args := []string{"notification", "show", title}
+	if body != "" {
+		args = append(args, "--body", body)
+	}
+	return run(nil, args...)
+}
+
 // ErrGone means the run's workspace no longer exists — the expected outcome
 // once you've reviewed and closed it, not a failure worth a stack trace. It is
 // a fact about the workspace, not a verdict about the run: a caller that only

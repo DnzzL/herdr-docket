@@ -4,6 +4,21 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A failed run shows a desktop notification.** Runs the daemon starts while
+  you are elsewhere — the morning sweep working its way down the queue — used
+  to fail silently: the task read failed on the board, and the record in
+  `herdr-docket history` said so, but only if you came back and looked. The
+  daemon now raises Herdr's own notification (`herdr notification show`) once
+  per failed run, naming the task and the reason. Done and cancelled runs stay
+  quiet — they are the fleet working and a human deciding respectively. The
+  notification is asked for once, best-effort: a channel that cannot fire
+  never changes a verdict's record.
+
+- **`herdr-docket logs` reads the daemon log.** The daemon's stderr has always
+  been redirected into the plugin's state dir, but the path was remembered by
+  whoever set it up. The tail (`-n LINES`, 100 by default) is now one command
+  away — a report of what the daemon has said so far, not a second log.
+
 - **A root-mode run opens a tab in the project's workspace instead of a
   workspace beside it.** A fleet of three projects was putting one sidebar
   entry per run in front of you — 29 of them, of which three meant anything.

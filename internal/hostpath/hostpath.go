@@ -80,3 +80,9 @@ func Root() (string, error) {
 	}
 	return filepath.Dir(filepath.Dir(exe)), nil
 }
+
+// DaemonLog is where the plugin startup hook redirects the daemon's stderr:
+// the one log the fleet writes on its own behalf, and the file `logs` reads.
+// It sits beside the run history in the state dir, following the same
+// mirrored layout StateDir uses outside a plugin context.
+func DaemonLog() string { return filepath.Join(StateDir(), "daemon.log") }

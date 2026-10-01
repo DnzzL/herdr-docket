@@ -218,7 +218,8 @@ when the key does nothing: [the board pane](docs/pane.md).
 | `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence) |
 | `herdr-docket agent list` | the agents, and which are parked |
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
-| `herdr-docket history [TASK-12]` | recent runs |
+| `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
+| `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
 | `herdr-docket pane` | the interactive board: what runs next, what is running now |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |
 

@@ -50,6 +50,7 @@ Usage:
   herdr-docket agent pause <n>  Stop scheduling an agent (a running task finishes)
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket history [id]     Show recent runs
+  herdr-docket logs             Show the daemon log's tail ([-n <lines>])
   herdr-docket pane             Interactive board (used by the Herdr pane)
   herdr-docket install-skill    Teach your coding agent to write fleet tasks
   herdr-docket version          Print the version
@@ -85,6 +86,8 @@ func main() {
 		err = agentCmd(os.Args[2:])
 	case "history":
 		err = historyCmd(os.Args[2:])
+	case "logs":
+		err = logsCmd(os.Args[2:], os.Stdout)
 	case "pane":
 		err = pane.Run()
 	case "install-skill":
@@ -624,4 +627,37 @@ func formatHistory(r history.Record) string {
 		line += "  " + r.Error
 	}
 	return line
+}
+
+// logsCmd prints the daemon log's tail. The log is a fact the fleet already
+// writes — the plugin startup hook redirects the daemon's stderr into the
+// state dir — and a human should reach it without remembering where it lives.
+// The daemon is not this command's to start or read live: it shows what is on
+// disk, which is what the daemon has said so far.
+func logsCmd(args []string, out io.Writer) error {
+	usage := "usage: herdr-docket logs [-n <lines>]"
+	n := 100
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-n", "--lines":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return fmt.Errorf("logs: %w", err)
+			}
+			fmt.Sscanf(v, "%d", &n)
+			if n < 1 {
+				return fmt.Errorf("logs: -n wants a positive number of lines\n%s", usage)
+			}
+		default:
+			return fmt.Errorf("logs: unexpected argument %q\n%s", args[i], usage)
+		}
+	}
+	lines, err := daemon.Tail(hostpath.DaemonLog(), n)
+	if err != nil {
+		return err
+	}
+	for _, l := range lines {
+		fmt.Fprintln(out, l)
+	}
+	return nil
 }

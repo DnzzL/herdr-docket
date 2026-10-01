@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -150,5 +154,33 @@ func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
 		t.Fatal("want an error")
 	} else if !strings.Contains(err.Error(), "--factory") {
 		t.Errorf("error must point at the flag that exists: %v", err)
+	}
+}
+
+// The daemon log is the one log the fleet writes on its own behalf, and a
+// human should reach its tail from the CLI without remembering the state dir.
+// The command reads what is on disk: it is a report, not a second log.
+func TestLogsPrintsTheDaemonLogTail(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := os.WriteFile(filepath.Join(hostpath.StateDir(), "daemon.log"),
+		[]byte("first\nmiddle\nlast\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := logsCmd([]string{"-n", "2"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); got != "middle\nlast\n" {
+		t.Fatalf("logs -n 2 = %q, want the last two lines", got)
+	}
+}
+
+// A missing log is an answer, not an empty screen: where it looked, and why
+// there is nothing there.
+func TestLogsNamesTheLogItCouldNotFind(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	err := logsCmd(nil, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "daemon.log") {
+		t.Fatalf("err = %v, want the log's path named", err)
 	}
 }

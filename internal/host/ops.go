@@ -46,6 +46,10 @@ type ops interface {
 	// HasCode reports whether err is a Herdr API error with the given code.
 	// It travels with the ops so a fake can answer for its own errors.
 	HasCode(err error, code string) bool
+
+	// Notify raises Herdr's desktop notification: a report to a human about
+	// something that already happened, never a step of the work itself.
+	Notify(title, body string) error
 }
 
 // herdrOps is the production ops. The Herdr calls come from the embedded
