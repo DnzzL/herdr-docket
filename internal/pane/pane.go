@@ -837,11 +837,20 @@ func (m *model) stopSelected() tea.Cmd {
 		m.status = "no run to stop"
 		return nil
 	}
-	id, workspace := r.task.ID, r.last.WorkspaceID
+	// Stop what the run owns, which the record says: a run that borrowed its
+	// workspace owns one tab in it, and closing the workspace would stop
+	// every other run sharing it — and whatever the human had open there.
+	id := r.task.ID
+	tab, workspace := closeTarget(r.last)
 	m.status = "stopping " + id + "…"
 	return func() tea.Msg {
 		var c herdr.Client
-		err := c.WorkspaceClose(workspace)
+		var err error
+		if tab != "" {
+			err = c.TabClose(tab)
+		} else {
+			err = c.WorkspaceClose(workspace)
+		}
 		if errors.Is(err, herdr.ErrGone) {
 			return stoppedMsg{id: id, gone: true}
 		}
@@ -1154,4 +1163,18 @@ func agentNames(agents map[string]fleet.Agent) []string {
 		names = append(names, n)
 	}
 	return names
+}
+
+// closeTarget is what stopping a run must close, and the one decision in the
+// stop path worth pinning: a run that borrowed its workspace owns a single tab
+// in it, and closing the workspace would stop every run sharing it along with
+// whatever the human had open there. Exactly one of the two is ever returned.
+func closeTarget(r *history.Record) (tab, workspace string) {
+	if r == nil {
+		return "", ""
+	}
+	if r.TabID != "" {
+		return r.TabID, ""
+	}
+	return "", r.WorkspaceID
 }

@@ -56,6 +56,11 @@ type Session struct {
 	PaneID      string
 	Branch      string
 	Repo        string
+	// TabID is set when the run borrowed a workspace rather than opening one:
+	// it owns this tab and nothing else. Closing the workspace instead would
+	// end every other run in it, and the human's own work beside them, so
+	// what a run owns travels with the session and onto its history record.
+	TabID string
 }
 
 // Delivery is what a run's worktree produced, read from git rather than from
@@ -134,18 +139,29 @@ func defaultKnobs() knobs {
 // Provision opens the workspace the automation asked for.
 func (h *live) Provision(a Spec) (Session, error) {
 	label := "fleet: " + a.Name
-	var workspaceID, paneID, branch string
+	var workspaceID, paneID, branch, tabID string
 	var err error
 	switch a.Workspace {
 	case WorkspaceWorktree:
 		branch = fmt.Sprintf("fleet/%s-%s", slug(a.Name), time.Now().Format("20060102-1504"))
 		workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, label)
 	case WorkspaceRoot:
+		// A root run works the project's own checkout, which is usually
+		// already open in a workspace. Borrow it as a tab rather than stacking
+		// another workspace beside it: same directory, same thing on screen,
+		// one entry in the sidebar instead of one per run. A project nobody
+		// has open gets a workspace of its own, as before — the fleet never
+		// creates the primary it would then be borrowing.
+		if primary, perr := h.ops.PrimaryWorkspace(a.Repo); perr == nil && primary != "" {
+			paneID, tabID, err = h.ops.TabCreate(primary, a.Repo, label)
+			workspaceID = primary
+			break
+		}
 		workspaceID, paneID, err = h.ops.WorkspaceCreate(a.Repo, label)
 	default:
 		err = fmt.Errorf("unknown workspace mode %q", a.Workspace)
 	}
-	return Session{WorkspaceID: workspaceID, PaneID: paneID, Branch: branch, Repo: a.Repo}, err
+	return Session{WorkspaceID: workspaceID, PaneID: paneID, Branch: branch, Repo: a.Repo, TabID: tabID}, err
 }
 
 // Do runs the automation's work in the session and reports whether it worked.
@@ -181,6 +197,15 @@ func (h *live) Inspect(s Session) (Delivery, error) {
 // the only thing it could do with the distinction is log it. The pane is the
 // caller for which it means something, and it holds the client directly.
 func (h *live) Close(s Session) error {
+	// A borrowed workspace is given back one tab at a time. Closing it whole
+	// would end the runs sharing it and whatever the human had open there.
+	if s.TabID != "" {
+		err := h.ops.TabClose(s.TabID)
+		if errors.Is(err, herdr.ErrGone) || h.ops.HasCode(err, herdr.CodeWorkspaceGone) {
+			return nil
+		}
+		return err
+	}
 	err := h.ops.WorkspaceClose(s.WorkspaceID)
 	if errors.Is(err, herdr.ErrGone) || h.ops.HasCode(err, herdr.CodeWorkspaceGone) {
 		return nil

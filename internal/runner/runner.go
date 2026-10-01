@@ -377,7 +377,7 @@ func (r recorder) close(status history.Status, s host.Session, verdict work.Verd
 func (r recorder) appendWith(status history.Status, s host.Session, verdict string, seconds int, errText string, d host.Delivery, unverified bool, pullRequest string) {
 	err := history.Append(history.Record{
 		RunID: r.id, Task: r.task, Agent: r.agent, Trigger: r.trigger, Status: status,
-		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, Branch: s.Branch,
+		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, TabID: s.TabID, Branch: s.Branch,
 		DurationSeconds: seconds, Verdict: verdict, Error: errText,
 		Commits: d.Commits, Uncommitted: unverified, PullRequest: pullRequest,
 	})

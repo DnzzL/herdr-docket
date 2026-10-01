@@ -859,3 +859,24 @@ func TestGReachesTheRosterFromTheDetailView(t *testing.T) {
 		t.Errorf("g from the detail view must reach the roster its footer names, got view %v", got)
 	}
 }
+
+// Stopping a run must close what that run owns and nothing else. A run that
+// borrowed a project's workspace owns one tab in it; closing the workspace
+// would stop the runs beside it and whatever the human had open there.
+func TestStoppingClosesTheTabOfABorrowedWorkspace(t *testing.T) {
+	borrowed := &history.Record{WorkspaceID: "w15", TabID: "w15:t9", PaneID: "w15:p9"}
+	tab, ws := closeTarget(borrowed)
+	if tab != "w15:t9" || ws != "" {
+		t.Errorf("a borrowed workspace must cost only its tab: tab=%q workspace=%q", tab, ws)
+	}
+
+	owned := &history.Record{WorkspaceID: "w7", PaneID: "w7:p1"}
+	tab, ws = closeTarget(owned)
+	if tab != "" || ws != "w7" {
+		t.Errorf("a workspace the run opened is the workspace it closes: tab=%q workspace=%q", tab, ws)
+	}
+
+	if tab, ws = closeTarget(nil); tab != "" || ws != "" {
+		t.Errorf("no record is nothing to close: tab=%q workspace=%q", tab, ws)
+	}
+}

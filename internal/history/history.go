@@ -68,7 +68,12 @@ type Record struct {
 	Verdict     string `json:"verdict,omitempty"`
 	WorkspaceID string `json:"workspace_id,omitempty"`
 	PaneID      string `json:"pane_id,omitempty"`
-	Error       string `json:"error,omitempty"`
+	// TabID is set when the run borrowed its workspace instead of opening
+	// one. The board stops a run from this record and not from a live
+	// session, so what the run owns has to be written down: closing the
+	// workspace of a borrowed tab ends every run in it.
+	TabID string `json:"tab_id,omitempty"`
+	Error string `json:"error,omitempty"`
 	// Branch is the branch the run was provisioned on — written from the
 	// session, never derived later. Commits is how far it moved beyond the
 	// repo's own checkout, and Uncommitted says the worktree was about to be

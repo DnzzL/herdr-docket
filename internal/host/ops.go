@@ -19,6 +19,14 @@ type ops interface {
 	WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error)
 	WorkspaceClose(workspaceID string) error
 
+	// PrimaryWorkspace is the workspace a repo is already open in, or "" when
+	// it is not open at all. TabCreate borrows that workspace for one run and
+	// TabClose gives it back — closing the workspace would take the sibling
+	// runs, and the human's own tab, with it.
+	PrimaryWorkspace(repoRoot string) (workspaceID string, err error)
+	TabCreate(workspaceID, cwd, label string) (paneID, tabID string, err error)
+	TabClose(tabID string) error
+
 	AgentStart(name, kind, paneID string, extraArgs []string) error
 	AgentSubmit(target, text string) error
 	AgentSubmitPending(paneID string) error
@@ -47,6 +55,21 @@ type herdrOps struct {
 }
 
 func (herdrOps) HasCode(err error, code string) bool { return herdr.HasCode(err, code) }
+
+func (herdrOps) PrimaryWorkspace(repoRoot string) (string, error) {
+	var c herdr.Client
+	return c.PrimaryWorkspace(repoRoot)
+}
+
+func (herdrOps) TabCreate(workspaceID, cwd, label string) (string, string, error) {
+	var c herdr.Client
+	return c.TabCreate(workspaceID, cwd, label)
+}
+
+func (herdrOps) TabClose(tabID string) error {
+	var c herdr.Client
+	return c.TabClose(tabID)
+}
 
 // git is the git side of the ops: three reads, no writes. The fleet has no
 // git of its own — these exist so Inspect can answer before a workspace is

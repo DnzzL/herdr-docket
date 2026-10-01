@@ -4,6 +4,19 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A root-mode run opens a tab in the project's workspace instead of a
+  workspace beside it.** A fleet of three projects was putting one sidebar
+  entry per run in front of you — 29 of them, of which three meant anything.
+  Worktree runs were already grouped: herdr derives that from the repository,
+  not from anything the fleet says. Root runs had no such tie and could not
+  get one, so they borrow the workspace the project is already open in. The
+  parent is found, never configured — a workspace id written into a config
+  file is a reference that rots the first time somebody closes it. A project
+  nobody has open still gets a workspace of its own: the fleet never creates
+  the primary it would then be borrowing. Stopping or cleaning up a borrowed
+  run closes its tab and leaves the workspace, the runs beside it, and your
+  own work in it alone.
+
 - **A task lands in the queue of the project you are standing in.** A fleet
   that grows a second queue used to break every prompt and persona written
   before it: they all call `task create` without naming one, and the CLI

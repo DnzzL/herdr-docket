@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -300,4 +301,72 @@ func (Client) PaneRead(paneID string, lines int) (string, error) {
 		return "", newAPIError([]string{"pane", "read"}, stdout.Bytes(), stderr.String(), err)
 	}
 	return stdout.String(), nil
+}
+
+// tabResult is what `tab create` answers with: the pane to start an agent in,
+// and the tab that holds it — which is what has to be closed again, because a
+// tab-run does not own the workspace it is sitting in.
+type tabResult struct {
+	Tab struct {
+		TabID string `json:"tab_id"`
+	} `json:"tab"`
+	RootPane struct {
+		PaneID string `json:"pane_id"`
+	} `json:"root_pane"`
+}
+
+// TabCreate opens a tab on cwd inside an existing workspace and returns the
+// pane to work in and the tab to close afterwards.
+func (Client) TabCreate(workspaceID, cwd, label string) (paneID, tabID string, err error) {
+	var res tabResult
+	err = run(&res, "tab", "create",
+		"--workspace", workspaceID, "--cwd", cwd, "--label", label, "--no-focus")
+	if err != nil {
+		return "", "", err
+	}
+	if res.RootPane.PaneID == "" || res.Tab.TabID == "" {
+		return "", "", fmt.Errorf("tab create returned no pane/tab id")
+	}
+	return res.RootPane.PaneID, res.Tab.TabID, nil
+}
+
+// TabClose closes one tab. It is how a run that borrowed a workspace gives it
+// back: closing the workspace would take every sibling run — and the human's
+// own tab — with it.
+func (c Client) TabClose(tabID string) error { return run(nil, "tab", "close", tabID) }
+
+// workspaceList is the shape of `workspace list` this package needs: which
+// repository each workspace is a checkout of, and whether it is the primary
+// one or a linked worktree of it.
+type workspaceList struct {
+	Workspaces []struct {
+		WorkspaceID string `json:"workspace_id"`
+		Worktree    *struct {
+			RepoRoot         string `json:"repo_root"`
+			IsLinkedWorktree bool   `json:"is_linked_worktree"`
+		} `json:"worktree"`
+	} `json:"workspaces"`
+}
+
+// PrimaryWorkspace is the workspace a repository is already open in: the one
+// herdr calls primary, as opposed to the linked worktree workspaces grouped
+// under it. Empty means the repo has no workspace open, which is an answer
+// and not a failure — the caller opens its own, as it always did.
+//
+// Derived rather than configured on purpose: a workspace id written into a
+// config file is a reference that rots the first time somebody closes it.
+func (Client) PrimaryWorkspace(repoRoot string) (string, error) {
+	var res workspaceList
+	if err := run(&res, "workspace", "list"); err != nil {
+		return "", err
+	}
+	for _, w := range res.Workspaces {
+		if w.Worktree == nil || w.Worktree.IsLinkedWorktree {
+			continue
+		}
+		if filepath.Clean(w.Worktree.RepoRoot) == filepath.Clean(repoRoot) {
+			return w.WorkspaceID, nil
+		}
+	}
+	return "", nil
 }

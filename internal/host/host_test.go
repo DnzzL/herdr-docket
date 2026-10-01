@@ -14,18 +14,24 @@ import (
 type fakeOps struct {
 	worktreeCreate  func(repo, branch, label string) (string, string, error)
 	workspaceCreate func(cwd, label string) (string, string, error)
-	agentStart      func(name, kind, paneID string, args []string) error
-	agentSubmit     func(target, text string) error
-	submitPending   func(paneID string) error
-	agentStatus     func(target string) (string, error)
-	agentWait       func(target string, d time.Duration) error
-	paneRun         func(paneID string, command ...string) error
-	paneRead        func(paneID string, lines int) (string, error)
-	lookPath        func(file string) error
-	workspaceClose  func(id string) error
-	worktreePath    func(repo, branch string) (string, error)
-	worktreeDirty   func(dir string) (bool, error)
-	commitsAhead    func(repo, branch string) (int, error)
+	// primary is the workspace a repo is already open in; empty means none,
+	// which is the fleet's cue to open one of its own.
+	primary        string
+	tabs           int
+	tabCloses      int
+	closedTab      string
+	agentStart     func(name, kind, paneID string, args []string) error
+	agentSubmit    func(target, text string) error
+	submitPending  func(paneID string) error
+	agentStatus    func(target string) (string, error)
+	agentWait      func(target string, d time.Duration) error
+	paneRun        func(paneID string, command ...string) error
+	paneRead       func(paneID string, lines int) (string, error)
+	lookPath       func(file string) error
+	workspaceClose func(id string) error
+	worktreePath   func(repo, branch string) (string, error)
+	worktreeDirty  func(dir string) (bool, error)
+	commitsAhead   func(repo, branch string) (int, error)
 
 	closes int
 
@@ -346,5 +352,93 @@ func TestTagIsTheRunsSecondAndDistinguishesAttempts(t *testing.T) {
 	}
 	if got := Tag("no-separator-here"); got != "" {
 		t.Fatalf("Tag on an id with no numeric suffix = %q, want empty", got)
+	}
+}
+
+func (f *fakeOps) PrimaryWorkspace(string) (string, error) { return f.primary, nil }
+
+func (f *fakeOps) TabCreate(workspaceID, cwd, label string) (string, string, error) {
+	f.tabs++
+	return workspaceID + ":p9", workspaceID + ":t9", nil
+}
+
+func (f *fakeOps) TabClose(tabID string) error {
+	f.tabCloses++
+	f.closedTab = tabID
+	return nil
+}
+
+// A root run works the project's own checkout, and that checkout is usually
+// already open in a workspace. Borrowing it as a tab is what keeps a fleet of
+// three projects from putting one sidebar entry per run in front of a human.
+func TestARootRunBorrowsTheProjectsWorkspaceAsATab(t *testing.T) {
+	ops := &fakeOps{primary: "w15"}
+	h := &live{ops: ops}
+
+	s, err := h.Provision(Spec{Name: "t", Repo: "/w/app", Workspace: WorkspaceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ops.tabs != 1 {
+		t.Errorf("want one tab opened, got %d", ops.tabs)
+	}
+	if s.WorkspaceID != "w15" || s.TabID == "" {
+		t.Errorf("session = %+v, want the borrowed workspace and a tab of its own", s)
+	}
+}
+
+// The whole hazard in one test: a run that borrowed a workspace must give back
+// only its tab. Closing the workspace would end the runs beside it and
+// whatever the human had open there.
+func TestClosingABorrowedWorkspaceClosesOnlyTheTab(t *testing.T) {
+	ops := &fakeOps{primary: "w15"}
+	h := &live{ops: ops}
+	s, err := h.Provision(Spec{Name: "t", Repo: "/w/app", Workspace: WorkspaceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.Close(s); err != nil {
+		t.Fatal(err)
+	}
+	if ops.closes != 0 {
+		t.Errorf("a borrowed workspace must never be closed: %d closes", ops.closes)
+	}
+	if ops.tabCloses != 1 || ops.closedTab != s.TabID {
+		t.Errorf("want the run's own tab closed, got %d closes of %q", ops.tabCloses, ops.closedTab)
+	}
+}
+
+// A project nobody has open gets a workspace of its own, exactly as before:
+// the fleet never creates the primary it would then be borrowing.
+func TestARootRunOpensItsOwnWorkspaceWhenTheProjectIsNotOpen(t *testing.T) {
+	ops := &fakeOps{primary: ""}
+	h := &live{ops: ops}
+	s, err := h.Provision(Spec{Name: "t", Repo: "/w/app", Workspace: WorkspaceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ops.tabs != 0 || s.TabID != "" {
+		t.Errorf("no primary means no borrowing: tabs=%d session=%+v", ops.tabs, s)
+	}
+	if err := h.Close(s); err != nil {
+		t.Fatal(err)
+	}
+	if ops.closes != 1 || ops.tabCloses != 0 {
+		t.Errorf("a workspace it opened is a workspace it closes: closes=%d tabCloses=%d", ops.closes, ops.tabCloses)
+	}
+}
+
+// Worktree runs are untouched: herdr already groups them under the project by
+// repo_key, so they keep their own workspace and close it as they always did.
+func TestAWorktreeRunIsNotBorrowed(t *testing.T) {
+	ops := &fakeOps{primary: "w15"}
+	h := &live{ops: ops}
+	s, err := h.Provision(Spec{Name: "t", Repo: "/w/app", Workspace: WorkspaceWorktree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ops.tabs != 0 || s.TabID != "" || s.Branch == "" {
+		t.Errorf("a worktree run keeps its own workspace: tabs=%d session=%+v", ops.tabs, s)
 	}
 }
