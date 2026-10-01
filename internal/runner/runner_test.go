@@ -3,13 +3,17 @@ package runner
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
+	"github.com/DnzzL/herdr-docket/internal/hostpath"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -150,6 +154,92 @@ func runWorkspace(t *testing.T, h *fakeHost, b *fakeBoard, ws string) error {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	r := New(h, fleet.Settings{Dir: "/fleet"})
 	return r.Run(b, work.Task{ID: "TASK-1", Title: "T", Open: true}, fleet.Agent{Name: "a", Workdir: "/w", Workspace: ws, Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
+}
+
+// A task mid-run under one routing must not be startable under another,
+// whatever `fleet.yaml` says in between. Seen live: a task unassigned and
+// mid-run under default_agent dev was re-picked by pm one tick after a human
+// flipped default_agent to pm — two workspaces, two agents, one task. The
+// per-task flock is what refuses the second run, so it holds across
+// processes too: the second Runner here stands in for `herdr-docket run` in
+// another process, whose own busy map knows nothing of the first.
+func TestATaskWithARunInFlightCannotBeStartedByAnotherRouting(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	b := newBoard("TASK-1")
+	started, release := make(chan struct{}), make(chan struct{})
+	h := &fakeHost{after: func() { close(started); <-release }}
+	r := New(h, fleet.Settings{Dir: "/fleet"})
+	dev := fleet.Agent{Name: "dev", Workdir: "/w", Workspace: "worktree", TimeoutMinutes: 1}
+	pm := fleet.Agent{Name: "pm", Workdir: "/w", Workspace: "worktree", TimeoutMinutes: 1}
+
+	first := make(chan struct{})
+	go func() { defer close(first); r.Run(b, work.Task{ID: "TASK-1"}, dev, "poll") }()
+	<-started
+
+	// After the flip, the same open task routes to pm — held by a different
+	// LockKey, so the agent/checkout lock says nothing about it. The per-task
+	// lock must refuse it, and a refused run must touch nothing: no claim, no
+	// comment, no history record.
+	clamp := New(&fakeHost{}, fleet.Settings{Dir: "/fleet"})
+	claimed, noted := len(b.phaseSeen), len(b.notes) // the first run claimed once
+	err := clamp.Run(b, work.Task{ID: "TASK-1"}, pm, "manual")
+	if err == nil {
+		t.Fatal("a second routing of a task with a run in flight must be refused")
+	}
+	if len(b.phaseSeen) != claimed || len(b.notes) != noted {
+		t.Errorf("a refused run must not claim or write: phases %v, notes %v", b.phaseSeen, b.notes)
+	}
+
+	// flock dies with the run: once the first run is over, the task is free
+	// again — the self-heal path holds a crashed run's task open for whoever
+	// routes it next.
+	close(release)
+	<-first
+	finish := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}
+	clamp.host = finish
+	if err := clamp.Run(b, work.Task{ID: "TASK-1", Open: true}, pm, "manual"); err != nil {
+		t.Fatalf("a task whose run is over must be startable again: %v", err)
+	}
+}
+
+// flock, not a flag: the claim is a lock on a file another process opens, so
+// a second open file description on the same lock file — what another
+// process, or another Runner, holds — cannot take it while the run is live.
+// In-process here, but the contention is exactly what `herdr-docket run` in
+// a real second process hits, on the same state dir.
+func TestTheTaskClaimIsAnFlockASecondHolderCannotTake(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	b := newBoard("TASK-1")
+	started, release := make(chan struct{}), make(chan struct{})
+	startedDir := make(chan string, 1)
+	h := &fakeHost{after: func() {
+		dir := hostpath.StateDir()
+		startedDir <- dir
+		close(started)
+		<-release
+	}}
+	r := New(h, fleet.Settings{Dir: "/fleet"})
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		r.Run(b, work.Task{ID: "TASK-1"}, fleet.Agent{Name: "dev", Workdir: "/w", Workspace: "worktree", TimeoutMinutes: 1}, "poll")
+	}()
+	<-started
+
+	// A second holder — another process, another Runner — opens the same
+	// lock file and must be refused by the flock.
+	state := <-startedDir
+	other, err := os.OpenFile(filepath.Join(state, "run-taskid-task-1.lock"), os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatalf("open the lock file: %v", err)
+	}
+	defer other.Close()
+	if err := syscall.Flock(int(other.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		t.Fatal("a second holder must not take the task lock while a run is live")
+	}
+
+	close(release)
+	<-first
 }
 
 func TestHappyPathAgentReportsDone(t *testing.T) {
