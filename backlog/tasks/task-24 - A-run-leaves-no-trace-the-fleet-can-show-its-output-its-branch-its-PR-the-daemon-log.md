@@ -3,10 +3,10 @@ id: TASK-24
 title: >-
   A run leaves no trace the fleet can show: its output, its branch, its PR, the
   daemon log
-status: To Do
+status: needs human validation
 assignee: []
 created_date: '2026-09-13 18:14'
-updated_date: '2026-10-01 09:32'
+updated_date: '2026-10-01 11:37'
 labels: []
 dependencies: []
 priority: high
@@ -40,6 +40,10 @@ Where the answer is that Herdr should expose something, say so and stop: a wrapp
 
 <!-- SECTION:NOTES:BEGIN -->
 fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+fleet: the agent settled without reporting a verdict.
+
+fleet: the run's workspace w52 (pane w52:p1) is left open — jump in to resume.
 <!-- SECTION:NOTES:END -->
 
 ## Comments
