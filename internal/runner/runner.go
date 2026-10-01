@@ -156,7 +156,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		Workspace: host.WorkspaceMode(a.Workspace),
 		Agent:     a.Kind,
 		Model:     a.Model,
-		Prompt:    prompt.Assemble(a, v, r.fleetDir, r.settings.WordsFor(t.ID)),
+		Prompt:    prompt.Runnable(prompt.Assemble(a, v, r.fleetDir, r.settings.WordsFor(t.ID))),
 		MCPConfig: a.MCPConfig,
 		AgentArgs: a.AgentArgs,
 	}
