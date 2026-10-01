@@ -478,6 +478,16 @@ func (f *fakeBoard) answer(operation string, vars map[string]any) (any, error) {
 	case "AddComment":
 		return f.addComment(vars)
 
+	case "UpdateIssue":
+		issue, err := f.subject(vars)
+		if err != nil {
+			return nil, err
+		}
+		issue.body = varString(vars, "body")
+		return map[string]any{"updateIssue": map[string]any{
+			"issue": map[string]any{},
+		}}, nil
+
 	case "Close":
 		return f.close(vars)
 

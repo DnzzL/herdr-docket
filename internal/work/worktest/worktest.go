@@ -191,6 +191,39 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 		}
 	})
 
+	t.Run("criteria written at creation come back", func(t *testing.T) {
+		src := newSource(t)
+		w, ok := src.(work.CriterionWriter)
+		if !ok {
+			t.Skip("this backend has no place to store criteria; its own doc states the refusal")
+		}
+		id, err := src.Create("Hand the fix on", "the body", "dev")
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if err := w.WriteCriteria(id, []string{"compiles", "the bar is real"}); err != nil {
+			t.Fatalf("WriteCriteria: %v", err)
+		}
+		it, err := src.Get(id)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if len(it.Criteria) != 2 {
+			t.Fatalf("criteria = %+v, want 2", it.Criteria)
+		}
+		if it.Criteria[0].Text != "compiles" || it.Criteria[1].Text != "the bar is real" {
+			t.Errorf("criteria came back out of order: %+v", it.Criteria)
+		}
+		for i, c := range it.Criteria {
+			if c.Index != i+1 {
+				t.Errorf("criterion %d numbered %d", i, c.Index)
+			}
+			if c.Checked {
+				t.Errorf("a freshly written criterion must not be pre-checked: %+v", c)
+			}
+		}
+	})
+
 	t.Run("asking for work that does not exist fails", func(t *testing.T) {
 		if _, err := newSource(t).Get("no-such-item-4f2a"); err == nil {
 			t.Fatal("Get on an unknown id must fail, not return a zero task")

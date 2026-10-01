@@ -91,8 +91,8 @@ func TestAssembleOmitsEmptySections(t *testing.T) {
 func TestAssembleRoutesTheFollowUpToTheTasksOwnSource(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
 		work.Task{ID: "myapp/TASK-12", Title: "t", Open: true}, "/d", fleet.Words{})
-	if !strings.Contains(got, "task create \"<title>\" -d \"<what and why>\" -a a -s myapp") {
-		t.Fatalf("follow-up create must carry -s myapp:\n%s", got)
+	if !strings.Contains(got, "-a a") || !strings.Contains(got, "-s myapp") {
+		t.Fatalf("follow-up create must carry the agent and -s myapp:\n%s", got)
 	}
 }
 

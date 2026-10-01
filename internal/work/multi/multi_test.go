@@ -111,11 +111,31 @@ func (s *starterSource) CreateTodo(title, body, assignee string) (string, error)
 	return s.memSource.Create(title, body, assignee)
 }
 
+// criterSource is a sub-source that stores criteria, the way the backlogmd
+// one does.
+type criterSource struct {
+	*memSource
+	criteria map[string][]string
+}
+
+func (c *criterSource) WriteCriteria(id string, criteria []string) error {
+	it, ok := c.items[id]
+	if !ok {
+		return fmt.Errorf("no task %q", id)
+	}
+	it.Criteria = nil
+	for i, text := range criteria {
+		it.Criteria = append(it.Criteria, work.Criterion{Index: i + 1, Text: text})
+	}
+	c.items[id] = it
+	return nil
+}
+
 // A composite over one queue is still a Source: the contract every adapter is
 // held to runs against it exactly as it would against the backend beneath.
 func TestCompositeSatisfiesTheSourceContract(t *testing.T) {
 	worktest.Run(t, func(t *testing.T) work.Source {
-		return New(map[string]work.Source{"q": newMem()})
+		return New(map[string]work.Source{"q": &criterSource{memSource: newMem(), criteria: map[string][]string{}}})
 	})
 }
 

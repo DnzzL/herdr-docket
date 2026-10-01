@@ -26,6 +26,8 @@ type fakeSource struct {
 	err   error
 
 	created  []string // title, body, assignee
+	criteria []string
+
 	comments []string
 	verdicts []work.Verdict
 }
@@ -590,5 +592,31 @@ func TestVerdictRefusesAMissingPROrAnUnknownWord(t *testing.T) {
 		if _, err := runTaskPiped(t, &fakeSource{}, &fakeForge{}, args...); err == nil {
 			t.Errorf("%v: want an error", args)
 		}
+	}
+}
+
+// The bar a run hands on must survive the create. Criteria are the thing the
+// prompt insists a follow-up carries; a CLI that cannot spell them is the gap
+// personas route around.
+func (f *fakeSource) WriteCriteria(id string, criteria []string) error {
+	f.criteria = criteria
+	return nil
+}
+
+func TestTaskCreateCarriesCriteria(t *testing.T) {
+	src := &fakeSource{}
+	_, err := runTask(t, src, "create", "Hand the fix on", "-a", "dev",
+		"-d", "why", "--ac", "compiles", "--ac", "the probe stops flaking")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(src.criteria) != 2 || src.criteria[0] != "compiles" || src.criteria[1] != "the probe stops flaking" {
+		t.Fatalf("criteria = %v, want two in order", src.criteria)
+	}
+}
+
+func TestTaskCreateRefusesAnEmptyCriterion(t *testing.T) {
+	if _, err := runTask(t, &fakeSource{}, "create", "T", "--ac", "   "); err == nil {
+		t.Fatal("an empty criterion must be refused, not stored")
 	}
 }

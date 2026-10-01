@@ -233,7 +233,12 @@ finished slice with a good handoff beats a timed-out marathon.
 
 If you find follow-up work, create a task for it instead of expanding this one:
 
-  herdr-docket task create "<title>" -d "<what and why>" -a %s%s
+  herdr-docket task create "<title>" -d "<what and why>" \
+      --ac "<one observable claim per flag, repeatable>" -a %s%s
+
+  The --ac flags carry acceptance criteria — what the run must show to be
+  done. A queue that cannot store them separately says so, and the words
+  land in the description instead of nowhere.
 `, fleetDir, v.ID, endingsIntro(delivered), v.ID, v.ID, v.ID,
 		prParagraph(v.ID, delivered), handOn(v.ID, delivered), wordList(words), a.Name, createSource)
 	return b.String()

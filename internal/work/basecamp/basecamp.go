@@ -134,6 +134,17 @@ func (s *Source) Create(title, body, assignee string) (string, error) {
 	return strconv.Itoa(t.ID), nil
 }
 
+// WriteCriteria replaces the to-do's entire step list with the criteria: the
+// bar is the to-do's own checkboxes, position assigned by Basecamp, none
+// pre-checked. A step list belongs to the to-do, not to a recording.
+func (s *Source) WriteCriteria(id string, criteria []string) error {
+	var steps []stepWork
+	for _, c := range criteria {
+		steps = append(steps, stepWork{Title: c})
+	}
+	return s.api.put("/todos/"+id+".json", content{Steps: steps}, nil)
+}
+
 // Comment appends to the to-do's stream of comments.
 func (s *Source) Comment(id, text string) error {
 	return s.api.post("/recordings/"+id+"/comments.json", content{Content: richText(text)}, nil)
@@ -278,6 +289,14 @@ func richText(s string) string {
 type content struct {
 	Title   string `json:"title,omitempty"`
 	Content string `json:"content"`
+	// Steps are the to-do's checkboxes, opened here through the web-adjacent
+	// endpoint Basecamp serves steps at. Empty means no change to the list.
+	Steps []stepWork `json:"steps"`
+}
+
+// stepWork is what a new step asks for; Basecamp fills in the rest.
+type stepWork struct {
+	Title string `json:"title"`
 }
 
 // todo is the slice of Basecamp's to-do JSON the fleet reads. Field names and

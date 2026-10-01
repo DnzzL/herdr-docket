@@ -53,6 +53,12 @@ func (a *api) post(path string, body, out any) error {
 	return a.do(http.MethodPost, path, body, out)
 }
 
+// put writes a full replacement resource — Basecamp's step list, where a
+// partial body replaces the whole thing rather than merging into it.
+func (a *api) put(path string, body, out any) error {
+	return a.do(http.MethodPut, path, body, out)
+}
+
 func (a *api) do(method, path string, body, out any) error {
 	var payload []byte
 	if body != nil {

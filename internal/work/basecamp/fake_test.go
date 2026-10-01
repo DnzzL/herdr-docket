@@ -16,6 +16,7 @@ import (
 type fakeServer struct {
 	mu       sync.Mutex
 	seq      int
+	seq000   int
 	lists    map[string][]*todoRecord
 	byID     map[string]*todoRecord
 	comments map[string][]comment
@@ -60,7 +61,7 @@ func (f *fakeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case len(seg) == 3 && seg[0] == "todos" && seg[2] == "completion.json":
 		f.complete(w, seg[1])
 	case len(seg) == 2 && seg[0] == "todos" && strings.HasSuffix(seg[1], ".json"):
-		f.oneTodo(w, strings.TrimSuffix(seg[1], ".json"))
+		f.oneTodo(w, r, strings.TrimSuffix(seg[1], ".json"))
 	case len(seg) == 3 && seg[0] == "recordings" && seg[2] == "comments.json":
 		f.commentsFor(w, r, seg[1])
 	default:
@@ -105,11 +106,23 @@ func (f *fakeServer) todos(w http.ResponseWriter, r *http.Request, list string) 
 	f.write(w, t)
 }
 
-func (f *fakeServer) oneTodo(w http.ResponseWriter, id string) {
+func (f *fakeServer) oneTodo(w http.ResponseWriter, r *http.Request, id string) {
 	t, ok := f.byID[id]
 	if !ok {
 		f.notFound(w)
 		return
+	}
+	if r.Method == http.MethodPut {
+		var in content
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		t.Steps = t.Steps[:0]
+		for i, s := range in.Steps {
+			t.Steps = append(t.Steps, step{ID: f.seq000 + i, Title: s.Title, Position: i})
+		}
+		f.seq000 += len(in.Steps)
 	}
 	f.write(w, t)
 }

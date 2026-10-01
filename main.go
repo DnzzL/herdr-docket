@@ -42,7 +42,7 @@ Usage:
   herdr-docket run <task-id>    Run one open task now, whatever its phase
   herdr-docket task list        List open work from the queue (--all for closed)
   herdr-docket task view <id>   Show one task: body, notes and criteria
-  herdr-docket task create      Add work: "<title>" [-a <agent>] [-d "<body>"]
+  herdr-docket task create      Add work: "<title>" [-a <agent>] [-d "<body>"] [-s <source>] [--ac "<criterion>"...]
   herdr-docket task assign <id> <agent>  Hand a task to another agent
   herdr-docket task note <id>   Append to a task's notes
   herdr-docket task done|fail|block <id> [--note "..."] [--pr <url>]  Close with a verdict
@@ -333,8 +333,9 @@ func taskAssign(src work.Source, id, agent string, out io.Writer) error {
 }
 
 func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writer) error {
-	const usage = `usage: herdr-docket task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>]`
+	const usage = `usage: herdr-docket task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>] [--ac "<criterion>"...]`
 	var title, body, assignee, queue string
+	var criteria []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "-a", "--assignee":
@@ -355,6 +356,12 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 				return err
 			}
 			queue = v
+		case "--ac", "--acceptance-criterion":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			criteria = append(criteria, v)
 		default:
 			if title != "" {
 				return fmt.Errorf("task create: unexpected argument %q\n%s", args[i], usage)
@@ -365,7 +372,22 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 	if title == "" {
 		return fmt.Errorf("task create: a title is required\n%s", usage)
 	}
+	for _, c := range criteria {
+		if strings.TrimSpace(c) == "" {
+			return fmt.Errorf("task create: an empty acceptance criterion stores nothing — say what a run must show")
+		}
+	}
 	id, started, err := createTask(src, queue, defaultQueue, title, body, assignee)
+	if err != nil {
+		return err
+	}
+	// The bar is written through the new id after the create: one call site
+	// for criteria, whatever column the queue chose or could not choose when
+	// it landed (ADR-0012). A queue that cannot store criteria says where the
+	// words go instead of eating them.
+	if err := putCriteria("task create", src, id, criteria); err != nil {
+		return err
+	}
 	if err != nil {
 		return err
 	}
@@ -398,7 +420,9 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 // second answer records it: true when the queue filed it into its own pickup
 // status (as the fleet wanted, ADR-0012), false when the backend filed it by
 // its own default — so the caller's output can say which happened rather
-// than implying the fleet chose.
+// than implying the fleet chose. Criteria are not this function's business:
+// the caller writes them through the returned id (ADR-0013), so every landing
+// path keeps one criteria seam instead of three.
 func createTask(src work.Source, queue, defaultQueue, title, body, assignee string) (string, bool, error) {
 	ms, ok := src.(work.MultiSource)
 	if !ok {
@@ -426,6 +450,21 @@ func createTask(src work.Source, queue, defaultQueue, title, body, assignee stri
 		queue = names[0]
 	}
 	return ms.CreateIn(queue, title, body, assignee)
+}
+
+// putCriteria writes criteria onto a freshly created task. A source with no
+// place for criteria announces the loss rather than eating the words: the
+// caller — an agent handing work on — can then put the bar in the body, which
+// every adapter carries, instead of believing boxes exist that do not.
+func putCriteria(caller string, src work.Source, id string, criteria []string) error {
+	if len(criteria) == 0 {
+		return nil
+	}
+	w, ok := src.(work.CriterionWriter)
+	if !ok {
+		return fmt.Errorf("%s: %s does not store acceptance criteria — put the bar in -d instead:\n  %s", caller, id, strings.Join(criteria, "; "))
+	}
+	return w.WriteCriteria(id, criteria)
 }
 
 // closeVerbs is the CLI's spelling of the verdict vocabulary: the verbs are
