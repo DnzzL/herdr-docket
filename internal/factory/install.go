@@ -87,8 +87,11 @@ const entries = `  # Delete "Report only." from the intake entry after you have 
     model: sonnet
     prompt: |
       herdr-docket task create "Sweep: review the oldest un-reviewed PR" -a reviewer \
-        -d "Review the oldest open pull request without a verdict, then re-task
-        yourself for the rest. Your merge policy is in your persona."
+        -d "Review the oldest open pull request whose head commit carries no
+        verdict of yours. A PR you have already judged stays covered while it
+        waits on a human, and comes back to you only when new commits land on
+        it. Then re-task yourself for the rest. Your merge policy is in your
+        persona."
 
   - name: stall-sweep
     cron: "0 13 * * *"

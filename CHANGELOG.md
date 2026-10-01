@@ -2,6 +2,14 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- **The review sweep stops re-reviewing a PR it has already judged.** Coverage
+  was "no open task mentions this PR", but a review task always closes, and a
+  PR the reviewer refuses to merge stays open by design — so every morning the
+  same PR qualified again. Coverage is now a fact about the PR: a verdict at
+  its current head commit, which a new commit invalidates and nothing else.
+
 ## v0.7.0 — 2026-09-30
 
 - **The factory loop, installed in one command.** `herdr-docket init --factory`
