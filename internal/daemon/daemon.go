@@ -141,6 +141,13 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	var wrong []work.Task
 	routable := tasks[:0:0]
 	for _, t := range tasks {
+		// Only work the fleet could pick up is work it could misroute. A
+		// closed task is nobody's to route, and saying so on one would write
+		// a comment onto somebody's finished work every tick, forever.
+		if !t.Open {
+			routable = append(routable, t)
+			continue
+		}
 		if a, ok := agents[pick.AssigneeFor(t, settings.Defaults())]; ok && elsewhere(t, a, settings) != "" {
 			wrong = append(wrong, t)
 			continue
