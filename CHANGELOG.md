@@ -4,6 +4,18 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **New work a task create files lands where the daemon can claim it.**
+  `herdr-docket task create` never named a status, so the queue filed new
+  work into whatever the project considered its default — and where that
+  word was not the word this fleet maps to `To Do`, every task the fleet
+  created (the intake meta-task, a reviewer's follow-up, a lookback fix)
+  sat open in a column no run would ever read. A Backlog.md queue now files
+  them into its own pickup status directly at creation, in the project's own
+  vocabulary; a queue with no column to start a task in (Basecamp) is
+  untouched and the CLI says where the task landed rather than implying the
+  fleet chose. No new flag: the fleet knows which word it wants, and a human
+  picking a specific column still does it where the queue lives.
+
 - **An agent is not resumed onto a checkout that is not there.** `init
   --factory` ships three agents on a placeholder workdir and prints "point its
   workdir at your repo, then resume"; nothing enforced the *then*, so the

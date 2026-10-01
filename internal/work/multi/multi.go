@@ -152,21 +152,39 @@ func (s *Source) BaseBranch(id string) (string, error) {
 // one through CreateIn. Working for one sub-source is what lets the composite
 // pass the adapter conformance suite, which speaks only Source.
 func (s *Source) Create(title, body, assignee string) (string, error) {
-	if len(s.names) != 1 {
+	switch len(s.names) {
+	case 0:
+		return "", fmt.Errorf("no queues to create work in")
+	case 1:
+		id, _, err := s.CreateIn(s.names[0], title, body, assignee)
+		return id, err
+	default:
 		return "", fmt.Errorf("this fleet has %d queues: name one with -s/--source", len(s.names))
 	}
-	return s.CreateIn(s.names[0], title, body, assignee)
 }
 
 // CreateIn creates work in the named queue and returns its prefixed id.
-func (s *Source) CreateIn(name, title, body, assignee string) (string, error) {
+// Landing is the queue's own business, and the answer says honestly which it
+// was: started is true when the queue filed the task into its pickup status
+// itself (its TodoStarter was used), and false when the backend filed it by
+// its own default — which the fleet then says when it reports the id, per
+// ADR-0012. Each queue answers in its own words; one queue's default
+// decides nothing about another queue's landing column.
+func (s *Source) CreateIn(name, title, body, assignee string) (string, bool, error) {
 	sub, ok := s.subs[name]
 	if !ok {
-		return "", fmt.Errorf("no configured source %q", name)
+		return "", false, fmt.Errorf("no configured source %q", name)
+	}
+	if st, can := sub.(work.TodoStarter); can {
+		id, err := st.CreateTodo(title, body, assignee)
+		if err != nil {
+			return "", false, err
+		}
+		return name + "/" + id, true, nil
 	}
 	id, err := sub.Create(title, body, assignee)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	return name + "/" + id, nil
+	return name + "/" + id, false, nil
 }

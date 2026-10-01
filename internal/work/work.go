@@ -149,6 +149,18 @@ type BaseBrancher interface {
 	BaseBranch(id string) (string, error)
 }
 
+// TodoStarter is the optional capability of a source that files a task it
+// creates straight into its own pickup status — the word this queue maps to
+// To Do, the one status the next tick reads as claimable (see ADR-0012 for
+// the alternatives measured against it). Create keeps its three arguments:
+// a source that cannot start a new task in a column — a Basecamp to-do has
+// no status to land in — does not implement this, and its caller falls back
+// to Create while saying so, which is why the method answers nothing about
+// where the task landed: a caller that reached this method already knows.
+type TodoStarter interface {
+	CreateTodo(title, body, assignee string) (string, error)
+}
+
 // Source is the port the fleet's queue lives behind. Picking, running and the
 // board speak only this.
 type Source interface {
@@ -195,7 +207,11 @@ type MultiSource interface {
 	// Names lists the configured queues, in a stable order.
 	Names() []string
 	// CreateIn creates work in the named queue, returning its prefixed id.
-	CreateIn(source, title, body, assignee string) (string, error)
+	// The second answer records where it landed, so a caller's output says
+	// it honestly (ADR-0012): started is true when the queue filed the task
+	// into its own pickup status, false when the backend filed it by its own
+	// default and nothing above the queue chose the column.
+	CreateIn(source, title, body, assignee string) (id string, started bool, err error)
 }
 
 // BaseBranchOf answers the ref worktree runs of this task's queue branch

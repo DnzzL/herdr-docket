@@ -159,16 +159,22 @@ func (c *cli) AppendNote(id, note string) error {
 	return err
 }
 
-// Create adds a task and returns its id. The CLI names the new task on the
-// plain output's header line; an id we cannot read is not an error — the task
-// exists either way, and the caller can list.
-func (c *cli) Create(title, description, assignee string) (string, error) {
+// Create adds a task and returns its id. status starts the new task in a
+// specific status — the word the project's own mapping calls To Do, which is
+// how the fleet files work it creates to be picked up. Empty means the
+// backend's own default, which is what a plain create has always done. The
+// CLI names the new task on the plain output's header line; an id we cannot
+// read is not an error — the task exists either way, and the caller can list.
+func (c *cli) Create(title, description, assignee, status string) (string, error) {
 	args := []string{"task", "create", title, "--plain"}
 	if description != "" {
 		args = append(args, "-d", description)
 	}
 	if assignee != "" {
 		args = append(args, "-a", assignee)
+	}
+	if status != "" {
+		args = append(args, "-s", status)
 	}
 	out, err := c.exec(args...)
 	if err != nil {

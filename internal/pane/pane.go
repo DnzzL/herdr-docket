@@ -527,9 +527,15 @@ func create(src work.Source, queue, title, assignee string) tea.Cmd {
 	return func() tea.Msg {
 		if queue != "" {
 			if multi, ok := src.(work.MultiSource); ok {
-				_, err := multi.CreateIn(queue, title, "", assignee)
+				_, _, err := multi.CreateIn(queue, title, "", assignee)
 				return ranMsg{err: err}
 			}
+		}
+		// Same landing as the CLI's create: the queue's pickup status when it
+		// can file one, its own default and said so when it cannot (ADR-0012).
+		if st, ok := src.(work.TodoStarter); ok {
+			_, err := st.CreateTodo(title, "", assignee)
+			return ranMsg{err: err}
 		}
 		_, err := src.Create(title, "", assignee)
 		return ranMsg{err: err}

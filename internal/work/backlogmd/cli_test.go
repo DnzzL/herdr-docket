@@ -86,3 +86,36 @@ func TestErrorsPropagate(t *testing.T) {
 		t.Fatal("want error")
 	}
 }
+
+// A create can name the status the new task starts in — how the fleet files
+// work into its pickup column in the one write (ADR-0012) — and stays at the
+// backend's default when no status was asked for.
+func TestCreateNamesTheStatusWhenAsked(t *testing.T) {
+	const out = `Task TASK-4 - Wind the clock`
+	t.Run("with a status", func(t *testing.T) {
+		f := &fakeRun{out: map[string]string{"task create": out}}
+		c := &cli{run: f.run, dir: "/tmp/x"}
+		id, err := c.Create("Wind the clock", "it drifts", "dev", "To Do")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id != "TASK-4" {
+			t.Fatalf("id = %q", id)
+		}
+		want := []string{"task", "create", "Wind the clock", "--plain", "-d", "it drifts", "-a", "dev", "-s", "To Do"}
+		if !reflect.DeepEqual(f.calls[0], want) {
+			t.Fatalf("called %v, want %v", f.calls[0], want)
+		}
+	})
+	t.Run("without one", func(t *testing.T) {
+		f := &fakeRun{out: map[string]string{"task create": out}}
+		c := &cli{run: f.run, dir: "/tmp/x"}
+		if _, err := c.Create("Wind the clock", "", "", ""); err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"task", "create", "Wind the clock", "--plain"}
+		if !reflect.DeepEqual(f.calls[0], want) {
+			t.Fatalf("called %v, want %v", f.calls[0], want)
+		}
+	})
+}
