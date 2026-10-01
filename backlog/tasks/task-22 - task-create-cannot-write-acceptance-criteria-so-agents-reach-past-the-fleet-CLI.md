@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-13 16:51'
+updated_date: '2026-10-01 09:32'
 labels: []
 dependencies: []
 ordinal: 22000
@@ -31,3 +32,9 @@ Not urgent. Raised while writing the personas for v0.3.0; parked deliberately un
 - [ ] #2 No shipped persona reaches past the fleet CLI to write a task any more
 - [ ] #3 An adapter that cannot store criteria fails or degrades in a stated way, never silently drops them
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+<!-- SECTION:NOTES:END -->

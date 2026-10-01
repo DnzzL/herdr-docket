@@ -2,9 +2,9 @@
 id: TASK-26
 title: Every HasCode branch was dead for months and the suite was green throughout
 status: To Do
-assignee:
-  - fleet-dev
+assignee: []
 created_date: '2026-09-13 20:54'
+updated_date: '2026-10-01 09:38'
 labels: []
 dependencies: []
 priority: high
@@ -45,3 +45,9 @@ Not coverage. The suite already covered this line. What is missing is one test t
 - [ ] #3 Every HasCode code the fleet branches on is exercised against a real error of that shape, or is documented as unreachable and why
 - [ ] #4 The closing note names the other seams where a fake constructs what production parses, as findings rather than fixes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: assignee "fleet-dev" is not a fleet agent — fix the assignee or add agents/fleet-dev/AGENT.md.
+<!-- SECTION:NOTES:END -->

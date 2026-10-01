@@ -1,10 +1,10 @@
 ---
 id: TASK-36
-title: >-
-  docs/factory.md wires the loop end to end
-status: To Do
+title: docs/factory.md wires the loop end to end
+status: Done
 assignee: []
 created_date: '2026-09-21 19:12'
+updated_date: '2026-10-01 09:37'
 labels: []
 dependencies:
   - TASK-31
@@ -30,3 +30,11 @@ The personas are in docs/examples.md and stay there — this document links to t
 - [ ] #3 Every persona the doc describes lives in docs/examples.md and the doc links rather than repeats
 - [ ] #4 The README links the doc from its How-much-autonomy section, as the worked version of the levers it already lists
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+Delivered by d735a53. docs/factory.md carries the loop diagram, the stage/persona/schedule table, the wiring, the dials and a 'What it refuses' section naming ADR 0008. Personas live in docs/examples.md and are linked rather than repeated — a drift test pins the shipped bytes to the manual, so the two cannot diverge. README links it from the autonomy section.
+<!-- SECTION:NOTES:END -->

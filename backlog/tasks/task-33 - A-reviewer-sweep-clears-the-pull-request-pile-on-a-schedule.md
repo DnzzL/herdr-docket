@@ -1,10 +1,10 @@
 ---
 id: TASK-33
-title: >-
-  A reviewer sweep clears the pull request pile on a schedule
-status: To Do
+title: A reviewer sweep clears the pull request pile on a schedule
+status: Done
 assignee: []
 created_date: '2026-09-21 19:12'
+updated_date: '2026-10-01 09:37'
 labels: []
 dependencies: []
 ordinal: 33000
@@ -24,6 +24,14 @@ The reviewer's verdict stays evidence-first (file, line, or test run), and block
 - [ ] #2 One automations.yaml entry drives the sweep on a stated cron, and a demo sweep reviews a real pile to verdicts and follow-up tasks without a human starting it
 - [ ] #3 The entry states who merges: the reviewer agent, per its persona's own policy — safe category and verdict conditions met means it merges and closes done naming the merge; anything else hands to a human column. Policies are text, not fleet code: the fleet never merges and never automerges as a system behavior, and the doc says where the policy lives
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+Delivered by d735a53 and demonstrated live. AC#1: examples.md shows the sweep shape with the self-re-tasking loop. AC#2: real sweeps ran on a real pile — TASK-110/121/122/124 produced verdicts on PRs #35, #38, #39, #40, #41, with evidence posted as PR comments. AC#3: the merge decision is the reviewer persona's own policy; it merged PR #39 unattended and refused #35/#38/#40 as outside its bar.
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

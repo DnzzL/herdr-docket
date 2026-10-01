@@ -1,10 +1,10 @@
 ---
 id: TASK-38
-title: >-
-  The host names the branch a run works on
+title: The host names the branch a run works on
 status: To Do
 assignee: []
 created_date: '2026-09-21 19:40'
+updated_date: '2026-10-01 09:32'
 labels: []
 dependencies: []
 ordinal: 38000
@@ -27,3 +27,9 @@ Deliberately out of scope, because each is its own ticket: what the history *doe
 - [ ] #3 The host tests pin both cases, deriving the branch in the fake the way production does — the fake computes the branch from the same spec fields Provision reads, rather than constructing an arbitrary one
 - [ ] #4 herdr-docket history prints it where human output already shows the run, and the change is a CHANGELOG line
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+<!-- SECTION:NOTES:END -->

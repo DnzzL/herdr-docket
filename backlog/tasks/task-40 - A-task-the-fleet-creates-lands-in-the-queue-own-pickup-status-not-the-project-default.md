@@ -1,18 +1,21 @@
 ---
 id: TASK-40
 title: >-
-  A task the fleet creates lands in the queue's own pickup status, not the project's default
+  A task the fleet creates lands in the queue's own pickup status, not the
+  project's default
 status: To Do
 assignee: []
 created_date: '2026-09-25 09:10'
+updated_date: '2026-10-01 09:32'
 labels: []
 dependencies: []
-ordinal: 40000
 priority: high
+ordinal: 40000
 ---
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 <!-- SECTION:DESCRIPTION:BEGIN -->
 `herdr-docket task create` never names a status, so the backend files the task
 in the project's `default_status`. The fleet, meanwhile, picks up exactly one
@@ -41,6 +44,7 @@ which must be settled before any flag exists:
   wrong column.
 - **Fold with TASK-22** — one `Create` carrying status *and* criteria, one
   decision instead of two, if the audit that task waits for has come back.
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -49,3 +53,9 @@ which must be settled before any flag exists:
 - [ ] #3 A fleet with several sources gets the behaviour per source, each in its own words — one queue's default must not decide another queue's landing column
 - [ ] #4 The shape chosen — widened Create, optional capability, SetPhase-after-create, or folded into TASK-22 — is recorded (ADR or a TASK-22 comment) with the rejected alternatives, before the first adapter changes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+<!-- SECTION:NOTES:END -->

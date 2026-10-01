@@ -1,9 +1,10 @@
 ---
 id: TASK-23
 title: A run that reports done and commits nothing is not a run the fleet can trust
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-13 18:13'
+updated_date: '2026-10-01 09:40'
 labels: []
 dependencies: []
 priority: high
@@ -49,3 +50,13 @@ Do not build a general "did the agent do a good job" checker. This is one narrow
 - [ ] #3 A PM or reviewer run that legitimately produces no commit is untouched, and a test pins that
 - [ ] #4 herdr-docket history shows whether a run produced commits, so the answer does not require leaving the fleet's own tools
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+The guard shipped before this run: v0.7.0 already contains it (runner.go guardDelivery + host.Inspect behind the host port), so this run verified the four criteria against the shipped code rather than rebuilt it, and wrote down the structural decisions the task left open as ADR 0009 (PR #2). Criterion by criterion: #1 met — guardDelivery keeps the worktree, re-closes a done verdict as blocked, notes the task, and history records uncommitted=true; pinned by TestADoneRunHoldingUncommittedWorkIsKeptAndSaid and seen live on dishnow/TASK-120 and TASK-17 in history. #2 met — TestARootRunIsNeverGuardedBecauseItHasNoWorktreeToLose, TestARootRunClaimsNoBranchAndIsNeverInspected, TestInspectRefusesASessionWithoutABranch. #3 met — the guard reads the workspace mode, not the persona; TestACleanWorktreeRunWithNoCommitsTearsDownAsUsual pins a no-commit worktree run ending done untouched. #4 met — history records branch, commits (+0 shown, not omitted) and pull request per run, visible in herdr-docket history and pinned by TestClosingRecordStatesWhatTheRunProduced. CI (build) green on the PR. The second signal from the description is recorded (commit count in history) but never overrides a verdict, as argued in the ADR.
+
+The guard this task describes shipped in v0.7.0, on main, before this run: runner.go's guardDelivery keeps a disposable worktree holding uncommitted changes, re-closes a done verdict as blocked, says so on the task, and the run history records uncommitted=true — with git's reads behind the host port (host.Inspect), not in the runner. All four criteria verified met: #1 pinned by TestADoneRunHoldingUncommittedWorkIsKeptAndSaid and confirmed live in history (dishnow/TASK-120 and TASK-17 caught with !uncommitted); #2 pinned by TestARootRunIsNeverGuardedBecauseItHasNoWorktreeToLose / TestARootRunClaimsNoBranchAndIsNeverInspected / TestInspectRefusesASessionWithoutABranch; #3 pinned by TestACleanWorktreeRunWithNoCommitsTearsDownAsUsual (guard keys on workspace mode, not persona); #4 pinned by TestClosingRecordStatesWhatTheRunProduced — history shows branch, commits and PR per run. The only thing missing was the record of the structural decisions the task opened, written as ADR 0009 in PR #2, which is this run's delivery. Whole-tree go build/vet/test/gofmt clean; CI green on the PR. Not verified by me: nothing claimed untested — every criterion has a pinning test I ran.
+<!-- SECTION:NOTES:END -->

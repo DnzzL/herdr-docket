@@ -1,10 +1,10 @@
 ---
 id: TASK-34
-title: >-
-  A stall sweep nudges runs that ended with work outstanding
-status: To Do
+title: A stall sweep nudges runs that ended with work outstanding
+status: Done
 assignee: []
 created_date: '2026-09-21 19:12'
+updated_date: '2026-10-01 09:37'
 labels: []
 dependencies: []
 ordinal: 34000
@@ -24,3 +24,11 @@ The sweep is one persona plus one automations entry. It nudges with the fleet's 
 - [ ] #2 One automations.yaml entry drives it, and a demo sweep finds a deliberately parked remainder and nudges it without touching verdicts or human columns
 - [ ] #3 The persona states the hard edge: it never reopens a closed task, never respecces, and anything ambiguous goes to a human note
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+Delivered by d735a53 and demonstrated live. AC#1/#3: the persona names three stall kinds and the hard edge — never reopens, never respecs, ambiguity goes to a human. AC#2: TASK-112 swept a real board, found TASK-65 parked on a retired assignee and TASK-110 parked in the human column, and nudged both with notes naming who they wait on. It explicitly refused to name an assignee because that is a decision — the edge holding under load.
+<!-- SECTION:NOTES:END -->

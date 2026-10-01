@@ -1,15 +1,15 @@
 ---
 id: TASK-35
-title: >-
-  Lookback files holistic follow-ups for recurring failure
+title: Lookback files holistic follow-ups for recurring failure
 status: To Do
 assignee: []
 created_date: '2026-09-21 19:12'
+updated_date: '2026-10-01 09:38'
 labels: []
 dependencies:
   - TASK-24
-ordinal: 35000
 priority: high
+ordinal: 35000
 ---
 
 ## Description
@@ -29,6 +29,14 @@ The persona does not read history as prose: it reads the state file directly (`h
 - [ ] #3 The believed-fixed junction is honest about its evidence: where the delivery record says the fix never shipped, the follow-up says that rather than implying the fix failed — and merge state is read from the forge (`gh pr view`), never inferred from a PR url or a verdict alone
 - [ ] #4 One automations.yaml entry drives it weekly, and the entry states the plain scope refusal: the sweep files tasks and comments, never reopens or closes them
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+Reconciliation 2026-10-01 — NOT closed. AC#1, #3 and #4 are met by d735a53 (the lookback persona states its window, its recurrence patterns and the believed-fixed junction; the weekly entry drives it and states the files-only refusal). AC#2 is NOT: it asks for a demo lookback over a real history that finds a recurrence and files a follow-up to pm. lookback has run ZERO times — history.jsonl holds no run for it at all, and its budget reads 0/1. Met the first Monday it runs and files.
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

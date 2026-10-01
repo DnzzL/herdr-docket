@@ -1,18 +1,22 @@
 ---
 id: TASK-42
 title: >-
-  The prompt names the fleet CLI itself, and the unknown-assignee comment stops planting names
+  The prompt names the fleet CLI itself, and the unknown-assignee comment stops
+  planting names
 status: To Do
-assignee: []
+assignee:
+  - plugin-dev
 created_date: '2026-09-25 13:35'
+updated_date: '2026-10-01 09:38'
 labels: []
 dependencies: []
-ordinal: 42000
 priority: high
+ordinal: 42000
 ---
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Both halves were found by the factory's first live review leg (2026-09-25)
 and both are mitigated in FLEET.md for now — this task makes them structural.
@@ -36,6 +40,7 @@ not). The comment can carry the fix with it: the agents map is already in
 scope at the refusal, so name the roster and make the instruction
 "reassign to one of these" — the create-an-agent option is a human's
 decision and can read as one.
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -43,3 +48,9 @@ decision and can read as one.
 - [ ] #2 The unknown-assignee comment lists the valid agent names and tells the reader to reassign to one of them; it no longer reads as an invitation to create the missing agent, and a daemon test pins the wording's shape (roster present, reassign framed as the action)
 - [ ] #3 Nothing else about the refusal changes: still written once per task and unknown name, still only for names no agent answers to
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+<!-- SECTION:NOTES:END -->

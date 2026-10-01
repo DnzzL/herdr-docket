@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-09-13 18:14'
-updated_date: '2026-09-16 15:50'
+updated_date: '2026-10-01 09:32'
 labels: []
 dependencies: []
 priority: high
@@ -35,6 +35,12 @@ Where the answer is that Herdr should expose something, say so and stop: a wrapp
 - [ ] #3 The daemon log is readable from the CLI.
 - [ ] #4 A run that ends failed can reach a human who was not watching, or the task states why that belongs to Herdr.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+<!-- SECTION:NOTES:END -->
 
 ## Comments
 

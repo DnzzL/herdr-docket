@@ -1,10 +1,10 @@
 ---
 id: TASK-31
-title: >-
-  Intake turns feedback sources into fleet tasks
+title: Intake turns feedback sources into fleet tasks
 status: To Do
 assignee: []
 created_date: '2026-09-21 19:12'
+updated_date: '2026-10-01 09:38'
 labels: []
 dependencies: []
 ordinal: 31000
@@ -26,3 +26,11 @@ A human confirms the schedule and the persona text on a first run before leaving
 - [ ] #2 One automations.yaml entry drives it on a stated cron, and a demo run files verifiable work as tasks and routes the rest to a human without creating a task the fleet cannot verify
 - [ ] #3 The persona explains the dry way in: a first run that reports what it would file instead of filing, so a human can tune the gate before trusting the schedule
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+Reconciliation 2026-10-01 — NOT closed. AC#1 and AC#3 are met by d735a53 (the intake persona with its verification-path rule and the report-only way in). AC#2 is NOT: it asks for a demo run that FILES verifiable work. The 2026-09-25 12:17 run polled both sources and applied the gate item by item — the report is on dishnow/TASK-106 and it is good — but it ran under 'Report only.' and filed nothing. The dial has since been removed from the entry and intake has not run again. Met when one intake run files a task.
+<!-- SECTION:NOTES:END -->

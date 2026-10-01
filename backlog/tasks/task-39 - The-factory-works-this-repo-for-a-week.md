@@ -1,10 +1,10 @@
 ---
 id: TASK-39
-title: >-
-  The factory works this repo for a week
+title: The factory works this repo for a week
 status: To Do
 assignee: []
 created_date: '2026-09-21 19:40'
+updated_date: '2026-10-01 09:32'
 labels: []
 dependencies:
   - TASK-24
@@ -33,3 +33,9 @@ Not in scope: a second source, a second repo, harder merge categories, any dashb
 - [ ] #3 At least one lookback follow-up files from a real recurrence pattern in that week, and it closes with its own evidence
 - [ ] #4 A write-down names what the week proved wrong or left stranded — a failed persona claim, a policy loosened or tightened, a gap the queue could not say
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+<!-- SECTION:NOTES:END -->
