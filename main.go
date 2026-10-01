@@ -538,6 +538,14 @@ func agentCmd(args []string) error {
 			return fmt.Errorf("usage: herdr-docket agent %s <name>", args[0])
 		}
 		paused := args[0] == "pause"
+		// Pausing an agent is always safe; resuming one points it at work, so
+		// the checkout it names has to be there. Printed advice is not a
+		// guarantee until something checks it.
+		if !paused {
+			if err := fleet.Resumable(settings.Dir, args[1]); err != nil {
+				return err
+			}
+		}
 		if err := fleet.SetDisabled(settings.Dir, args[1], paused); err != nil {
 			return err
 		}

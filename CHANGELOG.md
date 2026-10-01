@@ -4,6 +4,14 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **An agent is not resumed onto a checkout that is not there.** `init
+  --factory` ships three agents on a placeholder workdir and prints "point its
+  workdir at your repo, then resume"; nothing enforced the *then*, so the
+  agent went active, the daemon routed work to it, and the run died at
+  provision with the board saying only that it failed. `agent resume` now
+  refuses and names the path to edit. Pausing is untouched: stopping an agent
+  is always safe.
+
 - **A run branches from the queue's default branch, not your working copy.** A
   worktree run used to fork whatever the project's main checkout had checked
   out at the moment it started, so a human mid-branch silently became the

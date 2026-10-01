@@ -221,3 +221,24 @@ func expandHome(path string) string {
 	}
 	return path
 }
+
+// Resumable reports whether an agent can be put back in front of work: it
+// loads, and the checkout it names is there. A missing workdir is the one
+// failure that looks like nothing — the agent goes active, the daemon routes
+// a task to it, and the run dies at provision with the board saying only that
+// it failed.
+//
+// It exists because `init --factory` ships three agents on a placeholder
+// workdir and prints "point its workdir at your repo, then resume". Nothing
+// enforced the "then", and the gesture is where a human is still looking.
+func Resumable(dir, name string) error {
+	agents, _ := LoadAgents(dir)
+	a, ok := agents[name]
+	if !ok {
+		return fmt.Errorf("agent %q is not in this fleet — `herdr-docket agent list` is the roster", name)
+	}
+	if _, err := os.Stat(a.Workdir); err != nil {
+		return fmt.Errorf("agent %q has workdir %s, which does not exist — point it at a checkout before resuming it", name, a.Workdir)
+	}
+	return nil
+}
