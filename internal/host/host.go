@@ -26,9 +26,14 @@ import (
 // happens, which agent does it, and what it is told. The fleet package builds
 // one per task; this package never reads task files or AGENT.md itself.
 type Spec struct {
-	Name      string // used for workspace labels and branch names
-	RunTag    string // per-attempt suffix, see Tag: keeps retries from colliding
-	Repo      string // absolute path the workspace opens on
+	Name   string // used for workspace labels and branch names
+	RunTag string // per-attempt suffix, see Tag: keeps retries from colliding
+	Repo   string // absolute path the workspace opens on
+	// Base names the git ref a worktree run branches from. Empty inherits
+	// whatever the repo's own checkout has checked out — which is exactly the
+	// accident the queue's default-branch answer exists to replace, so a
+	// caller that knows which branch its work starts from names it.
+	Base      string
 	Workspace WorkspaceMode
 	Agent     string // agent kind as understood by `herdr agent start --kind`
 	Model     string
@@ -61,6 +66,10 @@ type Session struct {
 	// end every other run in it, and the human's own work beside them, so
 	// what a run owns travels with the session and onto its history record.
 	TabID string
+	// BaseCommit is the commit the run branched from, read at provision time —
+	// before the agent can move anything — so a run that inherited a human's
+	// unmerged work is visible in the record, not only on the forge.
+	BaseCommit string
 }
 
 // Delivery is what a run's worktree produced, read from git rather than from
@@ -144,11 +153,26 @@ func defaultKnobs() knobs {
 func (h *live) Provision(a Spec) (Session, error) {
 	label := "fleet: " + a.Name
 	var workspaceID, paneID, branch, tabID string
+	var baseCommit string
 	var err error
 	switch a.Workspace {
 	case WorkspaceWorktree:
 		branch = fmt.Sprintf("fleet/%s-%s", slug(a.Name), time.Now().Format("20060102-1504"))
-		workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, label)
+		// The cut commit is read before the workspace is even created — before
+		// anything can move — from the ref the branch will be cut from (the
+		// named base, or the checkout's HEAD when none was). A repo that
+		// cannot name its own HEAD cannot be branched from honestly, so that
+		// fails the provision rather than starting a run no one can later
+		// account for.
+		ref := a.Base
+		if ref == "" {
+			ref = "HEAD"
+		}
+		baseCommit, err = h.ops.CommitAt(a.Repo, ref)
+		if err != nil {
+			return Session{}, err
+		}
+		workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, a.Base, label)
 	case WorkspaceRoot:
 		// A root run works the project's own checkout, which is usually
 		// already open in a workspace. Borrow it as a tab rather than stacking
@@ -165,7 +189,7 @@ func (h *live) Provision(a Spec) (Session, error) {
 	default:
 		err = fmt.Errorf("unknown workspace mode %q", a.Workspace)
 	}
-	return Session{WorkspaceID: workspaceID, PaneID: paneID, Branch: branch, Repo: a.Repo, TabID: tabID}, err
+	return Session{WorkspaceID: workspaceID, PaneID: paneID, Branch: branch, Repo: a.Repo, TabID: tabID, BaseCommit: baseCommit}, err
 }
 
 // Do runs the automation's work in the session and reports whether it worked.

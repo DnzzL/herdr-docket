@@ -155,6 +155,11 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		RunTag:    host.Tag(rec.id),
 		Repo:      a.Workdir,
 		Workspace: host.WorkspaceMode(a.Workspace),
+		// TASK-45: the branch a run cuts from is the queue's fact, asked through
+		// the port's optional capability. No answer — a hosted queue, a repo with
+		// no remote — inherits the checkout's HEAD, as before; the record still
+		// names the commit either way (the host reads it at provision time).
+		Base:      work.BaseBranchOf(src, t.ID),
 		Agent:     a.Kind,
 		Model:     a.Model,
 		Prompt:    prompt.Runnable(prompt.Assemble(a, v, r.fleetDir, r.settings.WordsFor(t.ID))),
@@ -387,7 +392,7 @@ func (r recorder) close(status history.Status, s host.Session, verdict work.Verd
 func (r recorder) appendWith(status history.Status, s host.Session, verdict string, seconds int, errText string, d host.Delivery, unverified bool, pullRequest string) {
 	err := history.Append(history.Record{
 		RunID: r.id, Task: r.task, Agent: r.agent, Trigger: r.trigger, Status: status,
-		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, TabID: s.TabID, Branch: s.Branch,
+		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, TabID: s.TabID, Branch: s.Branch, BaseCommit: s.BaseCommit,
 		DurationSeconds: seconds, Verdict: verdict, Error: errText,
 		Commits: d.Commits, Uncommitted: unverified, PullRequest: pullRequest,
 	})

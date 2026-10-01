@@ -184,3 +184,17 @@ func TestLogsNamesTheLogItCouldNotFind(t *testing.T) {
 		t.Fatalf("err = %v, want the log's path named", err)
 	}
 }
+
+// TASK-45: the cut commit is on the line, so a PR that carries more than the
+// run branched from can be seen from history alone.
+func TestHistoryLineNamesTheCommitTheRunCutFrom(t *testing.T) {
+	r := history.Record{At: time.Now(), Status: history.StatusRunning, Task: "TASK-1", Branch: "fleet/a-1", BaseCommit: "c0074fe"}
+	line := formatHistory(r)
+	if !strings.Contains(line, "cut c0074fe") {
+		t.Fatalf("history line %q missing the cut commit", line)
+	}
+	r.BaseCommit = ""
+	if strings.Contains(formatHistory(r), "cut ") {
+		t.Fatal("a run with no base commit on file must not invent one")
+	}
+}

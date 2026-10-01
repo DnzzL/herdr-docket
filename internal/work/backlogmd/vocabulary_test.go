@@ -14,12 +14,12 @@ func TestAProjectsOwnWordsMapOntoTheFleetsPhases(t *testing.T) {
 		Failed: "ready-for-human",
 		// no in_progress, no blocked: notara has neither
 	}
-	s := newWith(&fakeClient{tasks: []task{
+	s := NewWith("", &fakeClient{tasks: []task{
 		{ID: "T-1", Status: "ready-for-agent"},
 		{ID: "T-2", Status: "done"},
 		{ID: "T-3", Status: "needs-triage"},
 		{ID: "T-4", Status: "wontfix"},
-	}}, v)
+	}}, v, nil)
 	items, err := s.List()
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestAProjectsOwnWordsMapOntoTheFleetsPhases(t *testing.T) {
 // fails a run over something that is display only.
 func TestAPhaseWithNoWordIsNotWritten(t *testing.T) {
 	c := &fakeClient{}
-	s := newWith(c, Vocabulary{Todo: "ready-for-agent", Done: "done", Failed: "ready-for-human"})
+	s := NewWith("", c, Vocabulary{Todo: "ready-for-agent", Done: "done", Failed: "ready-for-human"}, nil)
 	if err := s.SetPhase("T-1", "In Progress"); err != nil {
 		t.Fatalf("a phase the project has no word for is not an error: %v", err)
 	}

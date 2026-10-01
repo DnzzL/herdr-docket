@@ -3,6 +3,7 @@ package fleet
 import (
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -452,4 +453,79 @@ sources:
 	if want := []string{"dishnow", "notara"}; !reflect.DeepEqual(ms.Names(), want) {
 		t.Fatalf("names = %v, want %v", ms.Names(), want)
 	}
+}
+
+// TASK-45: worktree_base: on a source block pins the ref its runs branch
+// from, stated where the queue is stated rather than left to whatever its
+// checkout had open.
+func TestWorktreeBaseIsTheStatedRefTheQueueBranchesFrom(t *testing.T) {
+	dir := gitRepoWithDefault(t)
+	writeFleetYAML(t, "source:\n  kind: backlogmd\n  dir: "+dir+"\n  worktree_base: upstream/next\n")
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewSource(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bb, ok := src.(work.BaseBrancher)
+	if !ok {
+		t.Fatalf("%T does not name a base branch", src)
+	}
+	ref, err := bb.BaseBranch("TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref != "upstream/next" {
+		t.Fatalf("BaseBranch = %q, want the stated upstream/next", ref)
+	}
+}
+
+// No worktree_base: the queue still answers with its repo's own default —
+// derived, so that the default is the repo's answer and not the checkout's.
+func TestAQueueWithoutAStatedBaseDerivesItsDefaultBranch(t *testing.T) {
+	dir := gitRepoWithDefault(t)
+	writeFleetYAML(t, "source:\n  kind: backlogmd\n  dir: "+dir+"\n")
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewSource(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bb, ok := src.(work.BaseBrancher)
+	if !ok {
+		t.Fatalf("%T does not name a base branch", src)
+	}
+	ref, err := bb.BaseBranch("TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref != "origin/main" {
+		t.Fatalf("BaseBranch = %q, want the repo's own origin/main", ref)
+	}
+}
+
+// gitRepoWithDefault stands a repo with its remote-HEAD ref up: `git init` +
+// `remote add` alone leaves that ref unwritten, so it is set the way a clone
+// would leave it.
+func gitRepoWithDefault(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v (%s)", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "fleet@example.com")
+	run("config", "user.name", "fleet")
+	run("commit", "--allow-empty", "-qm", "first")
+	run("remote", "add", "origin", dir)
+	run("fetch", "-q", "origin")
+	run("update-ref", "refs/remotes/origin/main", "main")
+	run("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	return dir
 }

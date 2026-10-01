@@ -2,6 +2,7 @@ package host
 
 import (
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +13,8 @@ import (
 // fakeOps scripts Herdr's answers. A nil field means "this call is fine and
 // says nothing", which keeps each test to the calls it actually cares about.
 type fakeOps struct {
-	worktreeCreate  func(repo, branch, label string) (string, string, error)
+	worktreeCreate  func(repo, branch, base, label string) (string, string, error)
+	commitAt        func(repo, ref string) (string, error)
 	workspaceCreate func(cwd, label string) (string, string, error)
 	// primary is the workspace a repo is already open in; empty means none,
 	// which is the fleet's cue to open one of its own.
@@ -43,11 +45,18 @@ type fakeOps struct {
 	notifies []string
 }
 
-func (f *fakeOps) WorktreeCreate(repo, branch, label string) (string, string, error) {
+func (f *fakeOps) WorktreeCreate(repo, branch, base, label string) (string, string, error) {
 	if f.worktreeCreate == nil {
 		return "w1", "w1:p1", nil
 	}
-	return f.worktreeCreate(repo, branch, label)
+	return f.worktreeCreate(repo, branch, base, label)
+}
+
+func (f *fakeOps) CommitAt(repo, ref string) (string, error) {
+	if f.commitAt == nil {
+		return "0000000", nil
+	}
+	return f.commitAt(repo, ref)
 }
 
 func (f *fakeOps) WorktreePath(repo, branch string) (string, error) {
@@ -205,8 +214,16 @@ func TestCloseTreatsAGoneWorkspaceAsTornDown(t *testing.T) {
 
 func TestProvisionOpensAWorktreeOnABranchOfItsOwn(t *testing.T) {
 	var gotBranch, gotLabel string
-	ops := &fakeOps{worktreeCreate: func(repo, branch, label string) (string, string, error) {
+	ops := &fakeOps{commitAt: func(repo, ref string) (string, error) {
+		if ref != "HEAD" {
+			t.Errorf("CommitAt ref = %q, want HEAD with no base named", ref)
+		}
+		return "c0074fe", nil
+	}, worktreeCreate: func(repo, branch, base, label string) (string, string, error) {
 		gotBranch, gotLabel = branch, label
+		if base != "" {
+			t.Errorf("base = %q, want none with nothing named", base)
+		}
 		return "w7", "w7:p1", nil
 	}}
 	h := &live{ops: ops, knobs: fast()}
@@ -235,6 +252,72 @@ func TestProvisionOpensAWorktreeOnABranchOfItsOwn(t *testing.T) {
 	}
 	if s.Repo != "/x" {
 		t.Errorf("session repo = %q, want the repo it opened on", s.Repo)
+	}
+}
+
+// TASK-45: the ref named on the spec is the ref the worktree is cut from, and
+// the session records the commit that produced — so a run branched from a
+// human's mid-branch work is visible in the history, not only on the forge.
+func TestProvisionBranchesFromTheNamedBaseAndRecordsItsCommit(t *testing.T) {
+	var gotBase string
+	var gotRef string
+	ops := &fakeOps{commitAt: func(repo, ref string) (string, error) {
+		gotRef = ref
+		return "9a1b2c3", nil
+	}, worktreeCreate: func(repo, branch, base, label string) (string, string, error) {
+		gotBase = base
+		return "w8", "w8:p1", nil
+	}}
+	h := &live{ops: ops, knobs: fast()}
+
+	s, err := h.Provision(Spec{
+		Name: "n", Repo: "/x", Workspace: WorkspaceWorktree, Base: "origin/main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotBase != "origin/main" {
+		t.Errorf("worktree base = %q, want origin/main", gotBase)
+	}
+	if gotRef != "origin/main" {
+		t.Errorf("cut commit read from ref %q, want origin/main", gotRef)
+	}
+	if s.BaseCommit != "9a1b2c3" {
+		t.Errorf("session BaseCommit = %q, want the commit the run branched from", s.BaseCommit)
+	}
+}
+
+// Inheriting says so with the record too: a run cut from the checkout's HEAD
+// records what it inherited, so nobody has to wonder after the fact.
+func TestProvisionRecordsTheInheritedCutCommit(t *testing.T) {
+	var gotRef string
+	ops := &fakeOps{commitAt: func(repo, ref string) (string, error) {
+		gotRef = ref
+		return "1111111", nil
+	}}
+	h := &live{ops: ops, knobs: fast()}
+
+	s, err := h.Provision(Spec{Name: "n", Repo: "/x", Workspace: WorkspaceWorktree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotRef != "HEAD" {
+		t.Errorf("cut commit read from ref %q, want HEAD", gotRef)
+	}
+	if s.BaseCommit != "1111111" {
+		t.Errorf("session BaseCommit = %q, want the inherited commit", s.BaseCommit)
+	}
+}
+
+// A repo that cannot even name its HEAD cannot be worktree'd honestly: failing
+// the provision beats starting a run whose base no one can name.
+func TestProvisionRefusesToStartAWorktreeItCannotNameTheBaseOf(t *testing.T) {
+	ops := &fakeOps{commitAt: func(repo, ref string) (string, error) {
+		return "", errors.New("not a git repository")
+	}}
+	h := &live{ops: ops, knobs: fast()}
+	if _, err := h.Provision(Spec{Name: "n", Repo: "/x", Workspace: WorkspaceWorktree}); err == nil {
+		t.Fatal("want an error when the cut commit cannot be read")
 	}
 }
 
@@ -447,4 +530,35 @@ func TestAWorktreeRunIsNotBorrowed(t *testing.T) {
 func (f *fakeOps) Notify(title, body string) error {
 	f.notifies = append(f.notifies, title+"\x1f"+body)
 	return nil
+}
+
+// The production git read behind CommitAt: a real repo answers with the
+// commit its ref names, and a ref that does not exist is a refusal — not a
+// zero commit. (TASK-45: a provision records the run's cut commit with this.)
+func TestCommitAtReadsARealRepo(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v (%s)", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "fleet@example.com")
+	run("config", "user.name", "fleet")
+	run("commit", "--allow-empty", "-qm", "first")
+	want := run("rev-parse", "HEAD")
+
+	var ops herdrOps
+	got, err := ops.CommitAt(dir, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("CommitAt = %q, want %q", got, want)
+	}
+	if _, err := ops.CommitAt(dir, "refs/heads/nope"); err == nil {
+		t.Fatal("a ref that does not exist must be a refusal")
+	}
 }

@@ -15,7 +15,7 @@ import (
 // that starting an agent can answer "the pane is not a shell yet", only that
 // the work either happened or didn't. The tests script it.
 type ops interface {
-	WorktreeCreate(repo, branch, label string) (workspaceID, paneID string, err error)
+	WorktreeCreate(repo, branch, base, label string) (workspaceID, paneID string, err error)
 	WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error)
 	WorkspaceClose(workspaceID string) error
 
@@ -42,6 +42,11 @@ type ops interface {
 	// CommitsAhead counts how many commits branch has beyond repo's own
 	// checkout (HEAD).
 	CommitsAhead(repo, branch string) (int, error)
+
+	// CommitAt resolves repo's ref to the commit it names, read-only. It is
+	// how a provision records what it branched from, and it answers only
+	// after the fact — it never writes or moves a ref.
+	CommitAt(repo, ref string) (string, error)
 
 	// HasCode reports whether err is a Herdr API error with the given code.
 	// It travels with the ops so a fake can answer for its own errors.
@@ -127,4 +132,16 @@ func (herdrOps) CommitsAhead(repo, branch string) (int, error) {
 		return 0, fmt.Errorf("git rev-list reported %q commits for %q: %w", strings.TrimSpace(out), branch, err)
 	}
 	return n, nil
+}
+
+func (herdrOps) CommitAt(repo, ref string) (string, error) {
+	out, err := gitOutput(repo, "rev-parse", ref+"^{commit}")
+	if err != nil {
+		return "", err
+	}
+	commit := strings.TrimSpace(out)
+	if commit == "" {
+		return "", fmt.Errorf("git rev-parse named no commit for %q in %s", ref, repo)
+	}
+	return commit, nil
 }
