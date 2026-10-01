@@ -25,6 +25,12 @@ type Settings struct {
 	// Each name becomes the prefix on its tasks' ids. Setting both Source and
 	// Sources is an error: one fleet works one arrangement of queues.
 	Sources map[string]SourceConfig `yaml:"sources"`
+	// DefaultSource is the queue a new task lands in when nobody names one.
+	// A fleet grows a second queue long after its prompts and personas were
+	// written, and every one of them calls `task create` without -s; without
+	// this they would all start refusing on the day the second queue appears.
+	// Empty is only workable with a single queue.
+	DefaultSource string `yaml:"default_source"`
 }
 
 // LoadSettings reads fleet.yaml, fills defaults, expands ~. A missing file is
@@ -51,6 +57,11 @@ func LoadSettings() (Settings, error) {
 		}
 	} else if !os.IsNotExist(err) {
 		return Settings{}, err
+	}
+	if s.DefaultSource != "" {
+		if _, ok := s.Sources[s.DefaultSource]; !ok {
+			return Settings{}, fmt.Errorf("fleet.yaml default_source %q names no declared queue", s.DefaultSource)
+		}
 	}
 	if s.Dir == "" {
 		home, _ := os.UserHomeDir()

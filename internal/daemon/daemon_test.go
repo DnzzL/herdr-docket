@@ -218,3 +218,35 @@ func TestAnAgentPastItsBudgetStartsNoRun(t *testing.T) {
 		}
 	}
 }
+
+// An agent works one checkout. Sending it a task from another project would
+// run the work in the wrong repository and succeed at it — no error, no
+// failed run, just a diff in the wrong place. So it never reaches the router:
+// the task is left alone and told, once, what disagrees with what.
+func TestWorkIsNeverRoutedToAnAgentOfAnotherProject(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(
+		work.Task{ID: "dishnow/TASK-1", Title: "product work", Open: true, Assignee: "plugin-dev"},
+	)
+	withFleet(t, map[string]fleet.Agent{
+		"plugin-dev": {Name: "plugin-dev", Workdir: "/w/docket", Workspace: "root", TimeoutMinutes: 1},
+	}, src)
+	loadSettings = func() (fleet.Settings, error) {
+		return fleet.Settings{Dir: "/fleet", Sources: map[string]fleet.SourceConfig{
+			"dishnow": {Dir: "/w/dishnow"},
+			"docket":  {Dir: "/w/docket"},
+		}}, nil
+	}
+
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+
+	if src.closed("dishnow/TASK-1") {
+		t.Error("a misrouted task must not be run, and must not be closed")
+	}
+	notes := strings.Join(src.notesFor(), " ")
+	for _, want := range []string{"dishnow", "docket", "plugin-dev"} {
+		if !strings.Contains(notes, want) {
+			t.Errorf("the note must name what disagrees (%q missing): %q", want, notes)
+		}
+	}
+}

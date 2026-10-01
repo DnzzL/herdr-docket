@@ -2,6 +2,25 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- **A task lands in the queue of the project you are standing in.** A fleet
+  that grows a second queue used to break every prompt and persona written
+  before it: they all call `task create` without naming one, and the CLI
+  refused rather than guess. It no longer has to — an agent runs inside the
+  checkout of the project it was given, or a worktree of it, so the working
+  directory already names the queue. `-s` still wins, and `default_source` in
+  `fleet.yaml` covers the one caller standing nowhere: a scheduled automation
+  filing work for somebody else. A `default_source` naming no declared queue
+  is refused when the config loads, not at 3am.
+- **Work is never routed to an agent of another project.** An agent works one
+  checkout; a task belongs to the queue it came from. When those disagreed the
+  run went ahead and did the work in the wrong repository — succeeding, so
+  nothing downstream could see it. The daemon now leaves that task alone and
+  says once what disagrees with what, the way it already does for an assignee
+  nobody answers to. The binding is derived from the agent's workdir, so it
+  cannot drift from the truth the run would use.
+
 ## v0.7.0 — 2026-09-30
 
 - **The factory loop, installed in one command.** `herdr-docket init --factory`

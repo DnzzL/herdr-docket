@@ -224,11 +224,29 @@ func list() error {
 // the agent-facing verbs. It is the only queue surface an agent is given, and
 // it is backend-blind: the adapter decides what answers.
 func taskCmd(args []string) error {
-	_, src, err := settingsAndSource()
+	settings, src, err := settingsAndSource()
 	if err != nil {
 		return err
 	}
-	return runTaskCmd(src, args, os.Stdout)
+	cwd, _ := os.Getwd()
+	return runTaskCmd(src, queueFor(cwd, settings), args, os.Stdout)
+}
+
+// queueFor is the queue a `task create` lands in when the command line did not
+// name one: the project the command is standing in, and the fleet's declared
+// default only when that answers nothing.
+//
+// Standing in it is the better answer because it is the true one and nobody
+// has to maintain it. An agent runs inside the checkout — or a worktree of it
+// — of the project it was given, so its follow-ups belong to that project
+// without a word in its persona; a human typing in a repo means that repo.
+// default_source is left for the one caller with no project to stand in: a
+// scheduled automation whose whole job is to file work for somebody else.
+func queueFor(cwd string, s fleet.Settings) string {
+	if p := fleet.ProjectAt(cwd, s.Sources); p != "" {
+		return p
+	}
+	return s.DefaultSource
 }
 
 // runTaskCmd is the task verbs with the source injected, so the CLI's shape is
@@ -236,7 +254,7 @@ func taskCmd(args []string) error {
 // list and view to read, create to hand on follow-up work, assign to pass one
 // on, note to say where things stand, and done/fail/block to close with a
 // verdict.
-func runTaskCmd(src work.Source, args []string, out io.Writer) error {
+func runTaskCmd(src work.Source, defaultQueue string, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|done|fail|block")
 	}
@@ -256,7 +274,7 @@ func runTaskCmd(src work.Source, args []string, out io.Writer) error {
 		}
 		return taskView(src, args[1], out)
 	case "create":
-		return taskCreate(src, args[1:], out)
+		return taskCreate(src, defaultQueue, args[1:], out)
 	case "assign":
 		if len(args) != 3 {
 			return fmt.Errorf("usage: herdr-docket task assign <id> <agent>")
@@ -292,7 +310,7 @@ func taskAssign(src work.Source, id, agent string, out io.Writer) error {
 	return nil
 }
 
-func taskCreate(src work.Source, args []string, out io.Writer) error {
+func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writer) error {
 	const usage = `usage: herdr-docket task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>]`
 	var title, body, assignee, queue string
 	for i := 0; i < len(args); i++ {
@@ -325,7 +343,7 @@ func taskCreate(src work.Source, args []string, out io.Writer) error {
 	if title == "" {
 		return fmt.Errorf("task create: a title is required\n%s", usage)
 	}
-	id, err := createTask(src, queue, title, body, assignee)
+	id, err := createTask(src, queue, defaultQueue, title, body, assignee)
 	if err != nil {
 		return err
 	}
@@ -337,11 +355,11 @@ func taskCreate(src work.Source, args []string, out io.Writer) error {
 	return nil
 }
 
-// createTask chooses the queue a new task lands in. A fleet with several
-// queues routes by -s/--source: required when there is more than one, implied
-// when there is a single named one, and refused when the queue is not a
-// composite at all (a lone source has nothing to choose).
-func createTask(src work.Source, queue, title, body, assignee string) (string, error) {
+// createTask chooses the queue a new task lands in, in one order: what -s
+// named, then the fleet's default_source, then the only queue there is. A
+// fleet with several queues and no default is the one case left that refuses,
+// because filing work into a queue nobody chose is worse than stopping.
+func createTask(src work.Source, queue, defaultQueue, title, body, assignee string) (string, error) {
 	ms, ok := src.(work.MultiSource)
 	if !ok {
 		if queue != "" {
@@ -350,9 +368,12 @@ func createTask(src work.Source, queue, title, body, assignee string) (string, e
 		return src.Create(title, body, assignee)
 	}
 	if queue == "" {
+		queue = defaultQueue
+	}
+	if queue == "" {
 		names := ms.Names()
 		if len(names) != 1 {
-			return "", fmt.Errorf("task create: this fleet has %d queues (%s) — choose one with -s/--source", len(names), strings.Join(names, ", "))
+			return "", fmt.Errorf("task create: this fleet has %d queues (%s) — name one with -s/--source, or set default_source in fleet.yaml", len(names), strings.Join(names, ", "))
 		}
 		queue = names[0]
 	}

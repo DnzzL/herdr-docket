@@ -1,8 +1,12 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+
 	"bytes"
 	"errors"
+	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"reflect"
 	"strings"
 	"testing"
@@ -45,8 +49,15 @@ func (f *fakeSource) Close(id string, v work.Verdict) error {
 
 func runTask(t *testing.T, src work.Source, args ...string) (string, error) {
 	t.Helper()
+	return runTaskIn(t, src, "", args...)
+}
+
+// runTaskIn is runTask with the fleet's default_source set, so the queue a
+// create lands in can be tested without naming one on the command line.
+func runTaskIn(t *testing.T, src work.Source, defaultQueue string, args ...string) (string, error) {
+	t.Helper()
 	var out bytes.Buffer
-	err := runTaskCmd(src, args, &out)
+	err := runTaskCmd(src, defaultQueue, args, &out)
 	return out.String(), err
 }
 
@@ -319,5 +330,69 @@ func TestTaskCloseWithoutARecordedRunSaysThePRCouldNotBeStamped(t *testing.T) {
 	}
 	if !strings.Contains(out, "pull request") {
 		t.Fatalf("output %q must say the PR could not be recorded", out)
+	}
+}
+
+// A fleet grows a second queue years after its prompts were written, and every
+// one of them calls `task create` without -s. default_source is what keeps the
+// day the second queue appears from being the day every automation starts
+// refusing — and an explicit -s still wins over it.
+func TestCreateFallsBackToTheFleetsDefaultSource(t *testing.T) {
+	t.Run("the default is used when nothing names a queue", func(t *testing.T) {
+		src := &multiSource{names: []string{"alpha", "beta"}}
+		if _, err := runTaskIn(t, src, "beta", "create", "T", "-a", "dev"); err != nil {
+			t.Fatal(err)
+		}
+		if src.createdIn[0] != "beta" {
+			t.Errorf("created in %q, want the default_source", src.createdIn[0])
+		}
+	})
+
+	t.Run("-s still wins", func(t *testing.T) {
+		src := &multiSource{names: []string{"alpha", "beta"}}
+		if _, err := runTaskIn(t, src, "beta", "create", "T", "-s", "alpha"); err != nil {
+			t.Fatal(err)
+		}
+		if src.createdIn[0] != "alpha" {
+			t.Errorf("created in %q, want the queue -s named", src.createdIn[0])
+		}
+	})
+
+	t.Run("several queues and no default still refuses", func(t *testing.T) {
+		src := &multiSource{names: []string{"alpha", "beta"}}
+		_, err := runTaskIn(t, src, "", "create", "T")
+		if err == nil {
+			t.Fatal("want a refusal")
+		}
+		if !strings.Contains(err.Error(), "default_source") {
+			t.Errorf("the refusal must name the way out: %v", err)
+		}
+	})
+}
+
+// Where a create lands when nothing names a queue: the project the command is
+// standing in wins, because it is true without anybody maintaining it, and the
+// fleet's declared default is the fallback for a caller standing nowhere.
+func TestQueueForPrefersTheProjectYouAreStandingIn(t *testing.T) {
+	root := t.TempDir()
+	app := filepath.Join(root, "app")
+	if err := os.MkdirAll(app, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := fleet.Settings{
+		DefaultSource: "fleet",
+		Sources: map[string]fleet.SourceConfig{
+			"app":   {Dir: app},
+			"fleet": {Dir: filepath.Join(root, "fleet")},
+		},
+	}
+	if got := queueFor(app, s); got != "app" {
+		t.Errorf("inside the app checkout the queue is %q, want app", got)
+	}
+	if got := queueFor(root, s); got != "fleet" {
+		t.Errorf("standing nowhere the queue is %q, want the default_source", got)
+	}
+	if got := queueFor("", fleet.Settings{Sources: s.Sources}); got != "" {
+		t.Errorf("no project and no default is %q, want empty so the caller refuses", got)
 	}
 }

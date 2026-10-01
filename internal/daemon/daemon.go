@@ -19,6 +19,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/pick"
 	"github.com/DnzzL/herdr-docket/internal/runner"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // tickInterval is how often the queue is polled. Short enough that a task
@@ -131,6 +132,37 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		agents[name] = a
 	}
 
+	// Work whose assignee belongs to another project never reaches the router.
+	// An agent works one checkout and a task belongs to the queue it came
+	// from; when those disagree the run would do the work in the wrong
+	// repository and succeed at it, which is the one routing mistake nothing
+	// downstream can see. Refused before the run, said once, like an assignee
+	// nobody answers to.
+	var wrong []work.Task
+	routable := tasks[:0:0]
+	for _, t := range tasks {
+		if a, ok := agents[pick.AssigneeFor(t, settings.Defaults())]; ok && elsewhere(t, a, settings) != "" {
+			wrong = append(wrong, t)
+			continue
+		}
+		routable = append(routable, t)
+	}
+	tasks = routable
+	for _, t := range wrong {
+		name := pick.AssigneeFor(t, settings.Defaults())
+		queue, proj := work.SourceOf(t.ID), elsewhere(t, agents[name], settings)
+		note := fmt.Sprintf("fleet: %s is %s work but %s works %s — reassign it to an agent of %s, or point %s at that checkout.", t.ID, queue, name, proj, queue, name)
+		key := t.ID + "/" + name + "/elsewhere"
+		if reported[key] {
+			continue
+		}
+		reported[key] = true
+		log.Printf("%s: %s", t.ID, note)
+		if err := src.Comment(t.ID, note); err != nil {
+			log.Printf("%s: append note: %v", t.ID, err)
+		}
+	}
+
 	res := pick.Next(tasks, agents, settings.Defaults())
 	for _, t := range res.Unknown {
 		name := pick.AssigneeFor(t, settings.Defaults())
@@ -209,4 +241,20 @@ func binaryStamp() string {
 		return ""
 	}
 	return fmt.Sprintf("%d-%d", st.ModTime().UnixNano(), st.Size())
+}
+
+// elsewhere names the project an agent works when that is not the project the
+// task came from, and "" when they agree or when the fleet has no named
+// queues to disagree about. Derived from the agent's workdir rather than
+// declared, so it cannot drift from the truth the run will actually use.
+func elsewhere(t work.Task, a fleet.Agent, s fleet.Settings) string {
+	queue := work.SourceOf(t.ID)
+	if queue == "" || len(s.Sources) == 0 {
+		return ""
+	}
+	proj := fleet.ProjectAt(a.Workdir, s.Sources)
+	if proj == "" || proj == queue {
+		return ""
+	}
+	return proj
 }
