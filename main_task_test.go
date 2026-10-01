@@ -620,3 +620,24 @@ func TestTaskCreateRefusesAnEmptyCriterion(t *testing.T) {
 		t.Fatal("an empty criterion must be refused, not stored")
 	}
 }
+
+// Degradation is stated, never silent: a queue with no place for the bar
+// refuses and names where the words go instead, so the caller's next create
+// puts them in -d — and no criterion quietly becomes prose nobody reads.
+func TestTaskCreateStatesWhatADegradingQueueCannotStore(t *testing.T) {
+	_, err := runTask(t, &bareSource{}, "create", "T", "-d", "body", "--ac", "the bar")
+	if err == nil {
+		t.Fatal("a queue without CriterionWriter must not pretend the word was stored")
+	}
+	if !strings.Contains(err.Error(), "does not store acceptance criteria") ||
+		!strings.Contains(err.Error(), "the bar") {
+		t.Fatalf("refusal must name the loss and carry the words back:\n%v", err)
+	}
+}
+
+// bareSource is a queue with no criteria place — the Basecamp shape.
+type bareSource struct{ work.Source }
+
+func (f bareSource) Create(title, body, assignee string) (string, error) {
+	return "T-1", nil
+}

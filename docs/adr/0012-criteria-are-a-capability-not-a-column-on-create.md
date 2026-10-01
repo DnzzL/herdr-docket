@@ -34,16 +34,17 @@ and if it has no capability, say so in its name rather than answering for it.
 
 **Capacity decides, per adapter, and each says it out loud.**
 
-- **backlogmd** — `task edit --acceptance-criteria`, one flag per criterion,
-  replacing the (freshly created, empty) list. Criteria write and read back
-  through one field.
+- **backlogmd** — `task edit --ac`, one flag per criterion, appended onto the
+  freshly created task's (empty) list. Criteria write and read back through
+  one field.
 - **github** — the issue body's markdown task list is already what the adapter
   reads criteria out of, so writing appends `- [ ]` lines to that body. An
   existing bar is added to, not replaced.
 - **basecamp** — a step exists only on the to-do's own POST; there is no
-  endpoint and no field. The adapter still satisfies the capability, honestly:
-  it refuses with a message naming where the bar goes instead — the
-  description — and drops nothing silently.
+  endpoint and no field. Basecamp therefore does not take the capability: the
+  composite and CLI answer for it instead, refusing with a message that names
+  where the bar goes — the description — and carrying the words back, so
+  nothing drops silently.
 
 **The CLI is where knowledge lives.** `task create` parses repeatable `--ac`
 flags, refuses an empty one (an empty criterion stores nothing), creates the
@@ -59,8 +60,9 @@ those that cannot is exactly the silent drop this refuses to allow.
 
 ## Known gaps
 
-- Basecamp's WriteCriteria writes steps; a run reads them back as criteria,
-  but the bar arrives *after* the to-do exists — the create itself carries no
-  steps, by design.
-- A criterion a backend cannot number (Basecamp's positions) is numbered by
-  position; a human reordering steps reorders criteria too.
+- A criterion a backend cannot number is numbered by position; a human
+  reordering steps reorders criteria too.
+- backlogmd's `--ac` appends on a shared `task edit`; the write is correct
+  only because Create precedes it on the same task. A later need to replace
+  criteria on an existing task wants the edit verb's replace-all form, which
+  the CLI offers one-task-at-a-time.
