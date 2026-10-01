@@ -251,3 +251,29 @@ func TestWorkIsNeverRoutedToAnAgentOfAnotherProject(t *testing.T) {
 		}
 	}
 }
+
+// Routing is only a question for work the fleet could pick up. A closed task
+// is nobody's to route, so a mismatch on one is not a problem to report — and
+// reporting it writes a comment onto somebody's finished work, every tick,
+// for as long as the fleet runs.
+func TestAClosedTaskIsNeverCalledMisrouted(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(
+		work.Task{ID: "dishnow/TASK-1", Title: "finished long ago", Open: false, Assignee: "stall"},
+	)
+	withFleet(t, map[string]fleet.Agent{
+		"stall": {Name: "stall", Workdir: "/w/fleet", Workspace: "root", TimeoutMinutes: 1},
+	}, src)
+	loadSettings = func() (fleet.Settings, error) {
+		return fleet.Settings{Dir: "/fleet", Sources: map[string]fleet.SourceConfig{
+			"dishnow": {Dir: "/w/dishnow"},
+			"fleet":   {Dir: "/w/fleet"},
+		}}, nil
+	}
+
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+
+	if n := len(src.notesFor()); n != 0 {
+		t.Errorf("a closed task must be left alone, got %d notes: %v", n, src.notesFor())
+	}
+}

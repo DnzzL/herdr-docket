@@ -29,12 +29,14 @@ func TestAssembleCarriesEveryFactTheAgentNeeds(t *testing.T) {
 		"TASK-7", "Draft launch post", "Write the Show HN post.",
 		"[ ] #1 under 200 words", "[x] #2 links the repo",
 		"previous attempt stalled",
-		"herdr-docket task note TASK-7",
-		"herdr-docket task done TASK-7",
+		// The verbs, not the invocation: how the CLI is spelled depends on
+		// whether a pane's PATH resolves it, and cli_test.go owns that.
+		"task note TASK-7",
+		"task done TASK-7",
 		"--pr",
-		"herdr-docket task fail TASK-7",
-		"herdr-docket task block TASK-7",
-		"herdr-docket task create",
+		"task fail TASK-7",
+		"task block TASK-7",
+		"task create",
 		"-a marketing",
 		"one coherent slice",
 	} {
