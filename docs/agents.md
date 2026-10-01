@@ -40,9 +40,13 @@ Every field:
 | `disabled` | `true` keeps the persona and takes the agent out of scheduling. |
 
 `workspace: worktree` gives every run a disposable branch (`fleet/task-12-…`) —
-a run that went sideways is a diff you throw away. `root` is for agents whose
-job *is* the working copy: backlog grooming, docs, anything that must see
-uncommitted state.
+a run that went sideways is a diff you throw away. Each branch is cut from the
+queue repo's own default branch (or the source block's `worktree_base:`
+ref — see docs/queues.md), never from whatever the main checkout had open, and
+the run record names the commit it cut from (`cut <sha>` in `herdr-docket
+history`), so a pull request carrying anything past that is visible without
+opening the forge. `root` is for agents whose job *is* the working copy:
+backlog grooming, docs, anything that must see uncommitted state.
 
 The choice matters most for personas that must *write* to a project's own
 `backlog/`: a checkbox ticked inside a disposable worktree is gone with the

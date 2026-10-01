@@ -616,6 +616,11 @@ func formatHistory(r history.Record) string {
 	// than the rest because it is the one fact the fleet checked itself.
 	if r.Branch != "" {
 		line += fmt.Sprintf("  %s  +%d", r.Branch, r.Commits)
+		// The cut commit makes the run's PR diffable from the record alone: a
+		// human's commit riding along shows as base..branch without the forge.
+		if r.BaseCommit != "" {
+			line += fmt.Sprintf("  cut %s", r.BaseCommit)
+		}
 	}
 	if r.Uncommitted {
 		line += "  !uncommitted"

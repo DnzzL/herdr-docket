@@ -3,6 +3,7 @@ package backlogmd
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 	"reflect"
 	"testing"
 
@@ -17,6 +18,9 @@ type fakeClient struct {
 	tasks []task
 	view  view
 	err   error
+	// branch is what DefaultBranch answers; empty means the queue has no
+	// repo to read one from.
+	branch string
 
 	created  []string // title, body, assignee
 	stages   []string // statuses set, in order
@@ -47,6 +51,16 @@ func (f *fakeClient) AppendNote(id, note string) error {
 	return f.err
 }
 
+// DefaultBranch is what the real CLI would read from the repo. Empty dir
+// means no repo behind the queue (every test thus far), and err lets a test
+// stand in for a repo with no remote to ask.
+func (f *fakeClient) DefaultBranch(dir string) (string, error) {
+	if f.branch == "" {
+		return "", fmt.Errorf("%s has no remote default branch to name", dir)
+	}
+	return f.branch, nil
+}
+
 // The status word decides both things: whether the task is open, and which
 // phase the board stands it under. The phases are written out as the fleet's
 // words rather than read back off the task, so a change on either side of the
@@ -59,7 +73,7 @@ func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 		{ID: "T-4", Title: "broken", Status: "Failed"},
 		{ID: "T-5", Title: "finished", Status: "Done"},
 	}
-	items, err := newWith(&fakeClient{tasks: tasks}, Vocabulary{}).List()
+	items, err := NewWith("", &fakeClient{tasks: tasks}, Vocabulary{}, nil).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,9 +125,9 @@ func TestAnAssigneeIsReadWithoutBacklogmdsAtSign(t *testing.T) {
 		{"@thomas", "thomas"},
 		{"@", "@"},
 	} {
-		items, err := newWith(&fakeClient{tasks: []task{{
+		items, err := NewWith("", &fakeClient{tasks: []task{{
 			ID: "T-1", Title: "t", Status: "To Do", Assignees: []string{tc.stored},
-		}}}, Vocabulary{}).List()
+		}}}, Vocabulary{}, nil).List()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -127,9 +141,9 @@ func TestAnAssigneeIsReadWithoutBacklogmdsAtSign(t *testing.T) {
 // view is the one a person presses r on, so a sigil surviving here would route
 // the run to nobody while the row above it looked routed.
 func TestGetReadsAnAssigneeWithoutTheAtSignToo(t *testing.T) {
-	s := newWith(&fakeClient{view: view{
+	s := NewWith("", &fakeClient{view: view{
 		task: task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"@dev"}},
-	}}, Vocabulary{})
+	}}, Vocabulary{}, nil)
 	it, err := s.Get("TASK-2")
 	if err != nil {
 		t.Fatal(err)
@@ -140,10 +154,10 @@ func TestGetReadsAnAssigneeWithoutTheAtSignToo(t *testing.T) {
 }
 
 func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
-	items, err := newWith(&fakeClient{tasks: []task{{
+	items, err := NewWith("", &fakeClient{tasks: []task{{
 		ID: "TASK-2", Title: "B", Status: "To Do", Priority: "high",
 		Assignees: []string{"dev", "pm"}, Ordinal: 2000, CreatedAt: "2026-08-30T10:00:00Z",
-	}}}, Vocabulary{}).List()
+	}}}, Vocabulary{}, nil).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,14 +173,14 @@ func TestListCarriesTheRoutingKeyAndOrdering(t *testing.T) {
 }
 
 func TestListPropagatesTheBackendError(t *testing.T) {
-	if _, err := newWith(&fakeClient{err: errors.New("backlog exploded")}, Vocabulary{}).List(); err == nil {
+	if _, err := NewWith("", &fakeClient{err: errors.New("backlog exploded")}, Vocabulary{}, nil).List(); err == nil {
 		t.Fatal("a backend failure must not look like an empty queue")
 	}
 }
 
 // Get is the full task: the list view plus what the prompt needs.
 func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
-	s := newWith(&fakeClient{view: view{
+	s := NewWith("", &fakeClient{view: view{
 		task:        task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"dev"}},
 		Description: "do it",
 		AcceptanceCriteria: []criterion{
@@ -174,7 +188,7 @@ func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 			{Index: 2, Text: "tested", Checked: true},
 		},
 		ImplementationNotes: "so far",
-	}}, Vocabulary{})
+	}}, Vocabulary{}, nil)
 	it, err := s.Get("TASK-2")
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +209,7 @@ func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 
 func TestCreatePassesTheRoutingKeyToTheBackend(t *testing.T) {
 	f := &fakeClient{}
-	id, err := newWith(f, Vocabulary{}).Create("Fix the thing", "because it is broken", "dev")
+	id, err := NewWith("", f, Vocabulary{}, nil).Create("Fix the thing", "because it is broken", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +233,7 @@ func TestCloseMapsEachVerdictToItsStatus(t *testing.T) {
 		{work.Blocked, statusBlocked},
 	} {
 		f := &fakeClient{}
-		if err := newWith(f, Vocabulary{}).Close("T-1", tc.verdict); err != nil {
+		if err := NewWith("", f, Vocabulary{}, nil).Close("T-1", tc.verdict); err != nil {
 			t.Fatal(err)
 		}
 		if want := []string{tc.status}; !reflect.DeepEqual(f.stages, want) {
@@ -230,7 +244,7 @@ func TestCloseMapsEachVerdictToItsStatus(t *testing.T) {
 
 func TestCloseRejectsAnUnknownVerdict(t *testing.T) {
 	f := &fakeClient{}
-	if err := newWith(f, Vocabulary{}).Close("T-1", work.Verdict("maybe")); err == nil {
+	if err := NewWith("", f, Vocabulary{}, nil).Close("T-1", work.Verdict("maybe")); err == nil {
 		t.Fatal("an unknown verdict must be refused, never silently closed")
 	}
 	if len(f.stages) != 0 {
@@ -240,7 +254,7 @@ func TestCloseRejectsAnUnknownVerdict(t *testing.T) {
 
 func TestCommentAppendsWithoutReplacing(t *testing.T) {
 	f := &fakeClient{}
-	if err := newWith(f, Vocabulary{}).Comment("T-1", "why it failed"); err != nil {
+	if err := NewWith("", f, Vocabulary{}, nil).Comment("T-1", "why it failed"); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"why it failed"}; !reflect.DeepEqual(f.comments, want) {
@@ -252,7 +266,7 @@ func TestCommentAppendsWithoutReplacing(t *testing.T) {
 // canned response. Every backend the fleet speaks to runs the same suite, so
 // a new adapter is judged by behaviour rather than by its author's taste.
 func TestSourceMeetsTheContract(t *testing.T) {
-	worktest.Run(t, func(t *testing.T) work.Source { return newWith(&memClient{}, Vocabulary{}) })
+	worktest.Run(t, func(t *testing.T) work.Source { return NewWith("", &memClient{}, Vocabulary{}, nil) })
 }
 
 // memClient is a Backlog.md project in miniature: enough state for the
@@ -351,6 +365,12 @@ func (m *memClient) AppendNote(id, note string) error {
 	return nil
 }
 
+// DefaultBranch stands in for a repo with no remote: the contract suite's
+// queue has no default branch to name, which is the no-answer path.
+func (m *memClient) DefaultBranch(string) (string, error) {
+	return "", fmt.Errorf("no repo behind this queue")
+}
+
 // The port owns the verdict vocabulary; this adapter owns the translation into
 // Backlog.md's status words. Adding a verdict to the port without a status to
 // record it would otherwise close the task into an empty status.
@@ -373,7 +393,7 @@ func TestEveryKnownVerdictHasAStatus(t *testing.T) {
 // so a second name would silently never be routed to.
 func TestAssignReplacesTheAgent(t *testing.T) {
 	m := &memClient{}
-	s := newWith(m, Vocabulary{})
+	s := NewWith("", m, Vocabulary{}, nil)
 	id, err := s.Create("Spec the thing", "", "pm")
 	if err != nil {
 		t.Fatal(err)
@@ -390,5 +410,100 @@ func TestAssignReplacesTheAgent(t *testing.T) {
 	}
 	if got := m.tasks[id].task.Assignees; len(got) != 1 {
 		t.Fatalf("assignees = %v, want exactly one", got)
+	}
+}
+
+// gitInit makes a throwaway repo for the reads DefaultBranch does itself:
+// the real adapter has no exec seam for git (it calls git directly), so the
+// test stands one repo up and asserts on its actual refs. `remote add` alone
+// does not create the remote's HEAD ref — git does that on a real clone — so
+// the last line is what a clone produces and the test produces by hand.
+func gitInit(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v (%s)", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "fleet@example.com")
+	run("config", "user.name", "fleet")
+	run("commit", "--allow-empty", "-qm", "first")
+	run("remote", "add", "origin", dir)
+	run("fetch", "-q", "origin")
+	run("update-ref", "refs/remotes/origin/main", "main")
+	run("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	return dir
+}
+
+// TASK-45: the queue's default branch, derived from its own repo — with the
+// checkout left on an unrelated branch, the very shape TASK-23's contamination
+// took: the human checked out a feature branch, the run still must cut from
+// origin/main.
+func TestBaseBranchIsDerivedFromTheQueueRepo(t *testing.T) {
+	dir := gitInit(t)
+	run := exec.Command("git", "-C", dir, "checkout", "-qb", "human/feature")
+	if out, err := run.CombinedOutput(); err != nil {
+		t.Fatalf("git checkout -b human/feature: %v (%s)", err, out)
+	}
+	s := NewWith(dir, newCLI(""), Vocabulary{}, nil)
+	ref, err := s.BaseBranch("TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref != "origin/main" {
+		t.Fatalf("BaseBranch = %q, want origin/main", ref)
+	}
+}
+
+// The override (fleet.yaml's worktree_base:) wins over the derived answer:
+// a queue deliberately worked against a named ref gets that ref, verbatim.
+func TestBaseBranchOverrideWinsOverDerived(t *testing.T) {
+	s := NewWith(gitInit(t), &fakeClient{}, Vocabulary{}, map[string]string{"": "upstream/next"})
+	ref, err := s.BaseBranch("TASK-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref != "upstream/next" {
+		t.Fatalf("BaseBranch = %q, want the configured upstream/next", ref)
+	}
+}
+
+// A repo with no remote has no default branch to name: the runner inherits
+// the checkout's HEAD, exactly the behaviour that preceded this capability.
+func TestBaseBranchSaysWhenTheRepoHasNoAnswer(t *testing.T) {
+	dir := t.TempDir()
+	cmd := exec.Command("git", "-C", dir, "init", "-q")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v (%s)", err, out)
+	}
+	s := NewWith(dir, newCLI(""), Vocabulary{}, nil)
+	if _, err := s.BaseBranch("TASK-1"); err == nil {
+		t.Fatal("want an error for a repo with no remote HEAD")
+	}
+}
+
+// A queue with no repo at all (the fleet dir is not one, say) says the same:
+// no answer, not a guess.
+func TestBaseBranchRefusesAQueueWithNoRepo(t *testing.T) {
+	s := NewWith("", newCLI(""), Vocabulary{}, nil)
+	if _, err := s.BaseBranch("TASK-1"); err == nil {
+		t.Fatal("want an error when there is no repo behind the queue")
+	}
+}
+
+// The real CLI reads refs, not the client seam: pin the whole path through
+// the exec-backed default branch read.
+func TestCliDefaultBranchReadsTheRemoteHead(t *testing.T) {
+	dir := gitInit(t)
+	ref, err := newCLI(dir).DefaultBranch(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref != "origin/main" {
+		t.Fatalf("DefaultBranch = %q, want origin/main", ref)
 	}
 }

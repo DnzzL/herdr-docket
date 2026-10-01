@@ -4,6 +4,17 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A run branches from the queue's default branch, not your working copy.** A
+  worktree run used to fork whatever the project's main checkout had checked
+  out at the moment it started, so a human mid-branch silently became the
+  base an agent built on — observed as a pull request carrying two commits by
+  two authors. A run now cuts from the queue repo's own default branch
+  (`origin/HEAD`); a source block can pin another ref with `worktree_base:`.
+  The run record names the exact commit the branch is cut from (`cut <sha>`
+  in `herdr-docket history`), so a PR carrying anything past that is visible
+  from the history alone. Root-mode runs are untouched — borrowing the
+  checkout they stand in is their design.
+
 - **A failed run shows a desktop notification.** Runs the daemon starts while
   you are elsewhere — the morning sweep working its way down the queue — used
   to fail silently: the task read failed on the board, and the record in

@@ -131,6 +131,22 @@ func (s *Source) Assign(id, agent string) error {
 	return a.Assign(rest, agent)
 }
 
+// BaseBranch forwards to the queue the id names. A hosted queue without a
+// handler behind it reports no answer rather than borrowing another queue's —
+// the composite exists so one fleet works several projects, and each project's
+// base branch is its own fact.
+func (s *Source) BaseBranch(id string) (string, error) {
+	name, rest, err := s.split(id)
+	if err != nil {
+		return "", err
+	}
+	b, ok := s.subs[name].(work.BaseBrancher)
+	if !ok {
+		return "", fmt.Errorf("%s: source %q has no repo to name a base branch for", id, name)
+	}
+	return b.BaseBranch(rest)
+}
+
 // Create targets the sole sub-source. With several queues there is no way to
 // guess which one a bare Create meant, so it is an error — the CLI's -s names
 // one through CreateIn. Working for one sub-source is what lets the composite

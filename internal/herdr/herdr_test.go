@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -123,5 +124,65 @@ func TestANonEnvelopeErrorStillReads(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no space left") {
 		t.Errorf("the message must survive, got %v", err)
+	}
+}
+
+// TASK-45: a worktree run is cut from the ref the queue named, not from
+// whatever the checkout had checked out. The flag travels on the exact call,
+// so the test captures the argv rather than trusting the return path.
+func TestWorktreeCreatePassesTheBaseRefToHerdr(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	path := filepath.Join(t.TempDir(), "herdr")
+	script := `#!/bin/sh
+printf '%s\n' "$@" > ` + argsFile + `
+printf '%s' '{"workspace":{"workspace_id":"w1"},"root_pane":{"pane_id":"w1:p1"}}'
+exit 0
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", path)
+
+	var c Client
+	if _, _, err := c.WorktreeCreate("/x", "fleet/task-45-20261001", "origin/main", "fleet: t"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	want := []string{"worktree", "create", "--cwd", "/x", "--branch", "fleet/task-45-20261001", "--base", "origin/main", "--label", "fleet: t", "--no-focus"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("argv = %q, want %q", got, want)
+	}
+}
+
+// No base named: the run inherits the checkout's HEAD, which is what
+// preceded this parameter — and no --base is sent at all, so a herdr that
+// never learns the flag behaves exactly as it always did.
+func TestWorktreeCreateOmitsTheBaseFlagWhenNoBaseIsNamed(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	path := filepath.Join(t.TempDir(), "herdr")
+	script := `#!/bin/sh
+printf '%s\n' "$@" > ` + argsFile + `
+printf '%s' '{"workspace":{"workspace_id":"w1"},"root_pane":{"pane_id":"w1:p1"}}'
+exit 0
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", path)
+
+	var c Client
+	if _, _, err := c.WorktreeCreate("/x", "fleet/task-45-20261001", "", "fleet: t"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "--base") {
+		t.Fatalf("argv = %q, want no --base at all", string(raw))
 	}
 }

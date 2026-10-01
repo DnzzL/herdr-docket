@@ -37,6 +37,21 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 		}
 	})
 
+	// TASK-45: a queue that can name the git ref its worktree runs branch from
+	// is a capability, not an arrangement. The suite only pins that the
+	// capability stays optional — the adapter's own tests answer for what one
+	// that has it says.
+	t.Run("a queue may say nothing about the branch its work branches from", func(t *testing.T) {
+		if b, ok := newSource(t).(work.BaseBrancher); ok {
+			// Answering may fail (a backend with no repo behind it has no
+			// branch to name) but must not panic, and the runner treats ""
+			// and an error the same way: inherit, as before.
+			if _, err := b.BaseBranch("nonexistent"); err == nil {
+				t.Log("BaseBrancher answered for an unknown id; the runner ignores an empty answer either way")
+			}
+		}
+	})
+
 	t.Run("created work comes back from get", func(t *testing.T) {
 		src := newSource(t)
 		id, err := src.Create("Wire the gauge", "the numbers are not moving", "dev")

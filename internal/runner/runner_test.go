@@ -40,7 +40,7 @@ func (f *fakeHost) Notify(title, body string) error {
 
 func (f *fakeHost) Provision(a host.Spec) (host.Session, error) {
 	f.spec = a
-	s := host.Session{WorkspaceID: "ws", PaneID: "p", Repo: a.Repo}
+	s := host.Session{WorkspaceID: "ws", PaneID: "p", Repo: a.Repo, BaseCommit: "c0074fe"}
 	if a.Workspace == host.WorkspaceWorktree {
 		s.Branch = "fleet/a-1"
 	}
@@ -67,6 +67,9 @@ type fakeBoard struct {
 	getErr    error
 	phaseErr  error
 	phaseSeen []work.Phase
+	// base/baseErr stand in for the queue's default-branch answer (TASK-45).
+	base    string
+	baseErr error
 }
 
 func newBoard(id string) *fakeBoard {
@@ -76,6 +79,15 @@ func newBoard(id string) *fakeBoard {
 }
 
 func (b *fakeBoard) List() ([]work.Task, error) { return nil, nil }
+
+// BaseBranch stands in for a queue that names the ref its worktree runs
+// branch from; empty means no answer, which is what a hosted queue says.
+func (b *fakeBoard) BaseBranch(string) (string, error) {
+	if b.baseErr != nil {
+		return "", b.baseErr
+	}
+	return b.base, nil
+}
 
 func (b *fakeBoard) Get(id string) (work.Task, error) {
 	if b.getErr != nil {
@@ -591,5 +603,47 @@ func TestAReportedBlockIsNotCalledSilence(t *testing.T) {
 	runs, _ := history.Runs("TASK-1", 1)
 	if len(runs) == 1 && strings.Contains(runs[0].Error, "without reporting") {
 		t.Errorf("the record repeats the accusation: %q", runs[0].Error)
+	}
+}
+
+// TASK-45: the queue's default-branch answer reaches the host spec, and the
+// record carries the commit the run actually branched from — so a PR built on
+// a human's mid-branch work is visible in the history, not only on the forge.
+func TestAWorktreeRunBranchesFromTheQueueDefaultAndRecordsIt(t *testing.T) {
+	b := newBoard("TASK-1")
+	b.base = "origin/main"
+	h := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}
+	if err := runWorktree(t, h, b); err != nil {
+		t.Fatal(err)
+	}
+	if h.spec.Base != "origin/main" {
+		t.Fatalf("spec base = %q, want the queue's origin/main", h.spec.Base)
+	}
+	runs, err := history.Runs("TASK-1", 1)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("history = %+v, %v", runs, err)
+	}
+	if runs[0].BaseCommit != "c0074fe" {
+		t.Fatalf("record BaseCommit = %q, want c0074fe", runs[0].BaseCommit)
+	}
+}
+
+// A queue with no answer inherits as before — but the record still names the
+// commit the run cut from, so the inheritance is a fact on file either way.
+func TestAQueueWithoutAnAnswerInheritsButStillRecordsTheCutCommit(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}
+	if err := runWorktree(t, h, b); err != nil {
+		t.Fatal(err)
+	}
+	if h.spec.Base != "" {
+		t.Fatalf("spec base = %q, want none", h.spec.Base)
+	}
+	runs, err := history.Runs("TASK-1", 1)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("history = %+v, %v", runs, err)
+	}
+	if runs[0].BaseCommit != "c0074fe" {
+		t.Fatalf("record BaseCommit = %q, want c0074fe", runs[0].BaseCommit)
 	}
 }

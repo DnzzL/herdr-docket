@@ -9,6 +9,38 @@ import (
 	"strings"
 )
 
+// defaultBranchRef is the symbolic ref git keeps the remote's default branch
+// behind. `git clone` writes it at clone time; `git remote set-head origin
+// --auto` refreshes it, and a repo cloned before its default branch was
+// renamed can carry a stale one until that is run. It is still the one
+// answer git maintains in the repo itself, and the alternative — asking the
+// remote over the network — is a round trip a scheduler has no business
+// making. Reading a ref is cheaper than a fork of nothing.
+const defaultBranchRef = "refs/remotes/origin/HEAD"
+
+// DefaultBranch answers which ref this project's worktree runs branch from:
+// the remote's default branch, read from dir, once per answer. A repo with no
+// remote (or a detached clone) says so rather than answering with a branch
+// that exists only locally — a worktree built on it forks a name the human
+// may never have heard of, and the checkout's own HEAD is the honest fallback
+// the caller applies.
+func (c *cli) DefaultBranch(dir string) (string, error) {
+	if dir == "" {
+		return "", fmt.Errorf("no repo behind this queue")
+	}
+	out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--short", defaultBranchRef).Output()
+	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok && strings.Contains(string(ee.Stderr), "not a symbolic ref") {
+			return "", fmt.Errorf("%s has no remote default branch to name", dir)
+		}
+		return "", fmt.Errorf("git -C %s symbolic-ref: %w", dir, err)
+	}
+	if ref := strings.TrimSpace(string(out)); ref != "" {
+		return ref, nil
+	}
+	return "", fmt.Errorf("%s has no remote default branch to name", dir)
+}
+
 // The Backlog.md lifecycle the fleet uses, in board order. `fleet init` writes
 // this list into the project config — the CLI rejects any status outside it —
 // so every status the adapter reads or writes has to be in here.

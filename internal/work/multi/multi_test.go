@@ -292,3 +292,38 @@ func (f *fakeAssigner) Assign(id, agent string) error {
 	f.got = id + "=" + agent
 	return nil
 }
+
+// TASK-45: BaseBranch routes on the prefix the same way Assign does, and a
+// queue without a repo to name a base for says so rather than borrowing
+// another queue's.
+func TestBaseBranchRoutesOnThePrefix(t *testing.T) {
+	brancher := &fakeBrancher{Source: newMem(), base: "origin/main"}
+	s := New(map[string]work.Source{
+		"myapp": brancher,
+		"plain": newMem(),
+	})
+	ref, err := s.BaseBranch("myapp/TASK-1")
+	if err != nil {
+		t.Fatalf("BaseBranch: %v", err)
+	}
+	if ref != "origin/main" {
+		t.Fatalf("BaseBranch = %q, want origin/main", ref)
+	}
+	if brancher.got != "TASK-1" {
+		t.Fatalf("sub-source saw %q, want the bare id", brancher.got)
+	}
+	if _, err := s.BaseBranch("plain/TASK-1"); err == nil || !strings.Contains(err.Error(), "plain") {
+		t.Fatalf("want an error naming the source that cannot answer, got %v", err)
+	}
+}
+
+type fakeBrancher struct {
+	work.Source
+	got  string
+	base string
+}
+
+func (f *fakeBrancher) BaseBranch(id string) (string, error) {
+	f.got = id
+	return f.base, nil
+}

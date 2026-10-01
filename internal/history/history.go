@@ -79,7 +79,12 @@ type Record struct {
 	// repo's own checkout, and Uncommitted says the worktree was about to be
 	// torn down holding changes nobody committed: the one delivery fact the
 	// fleet checks itself rather than trusting the agent's verdict.
-	Branch      string `json:"branch,omitempty"`
+	Branch string `json:"branch,omitempty"`
+	// BaseCommit is the commit the run branched from, read at provision time —
+	// the base ref's own commit, whatever a human had checked out in the
+	// main repo. A PR that carries anything past this commit shows exactly
+	// where the surplus came from.
+	BaseCommit  string `json:"base_commit,omitempty"`
 	Commits     int    `json:"commits,omitempty"`
 	Uncommitted bool   `json:"uncommitted,omitempty"`
 	// PullRequest is where the run's work went out as, reported by the

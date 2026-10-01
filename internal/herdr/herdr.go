@@ -130,11 +130,18 @@ func (r createResult) ids(what string) (string, string, error) {
 }
 
 // WorktreeCreate provisions a fresh git worktree workspace off repo and
-// returns its workspace and root pane IDs.
-func (Client) WorktreeCreate(repo, branch, label string) (workspaceID, paneID string, err error) {
+// returns its workspace and root pane IDs. Base names the ref the worktree
+// branches from; empty inherits whatever the checkout has checked out, and
+// then no --base is sent so nothing new is asked of herdr.
+func (Client) WorktreeCreate(repo, branch, base, label string) (workspaceID, paneID string, err error) {
+	args := []string{"worktree", "create",
+		"--cwd", repo, "--branch", branch}
+	if base != "" {
+		args = append(args, "--base", base)
+	}
+	args = append(args, "--label", label, "--no-focus")
 	var res createResult
-	err = run(&res, "worktree", "create",
-		"--cwd", repo, "--branch", branch, "--label", label, "--no-focus")
+	err = run(&res, args...)
 	if err != nil {
 		return "", "", err
 	}

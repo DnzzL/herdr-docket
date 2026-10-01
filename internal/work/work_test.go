@@ -1,6 +1,7 @@
 package work
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -82,3 +83,41 @@ func TestLocalOfStripsTheQueueAndLeavesABareIdAlone(t *testing.T) {
 		}
 	}
 }
+
+// TASK-45: a runner asks the port which ref to branch from, through the
+// capability — not a type switch sprinkled through it.
+func TestBaseBranchOfAnswersThroughTheCapability(t *testing.T) {
+	src := fakeBrancher{base: "origin/main", err: nil}
+	if got := BaseBranchOf(src, "TASK-1"); got != "origin/main" {
+		t.Fatalf("BaseBranchOf = %q, want origin/main", got)
+	}
+}
+
+// An Adapterless queue has no ref to name, and an error is the same as none:
+// the caller falls back to inheriting, so both surface as "".
+func TestBaseBranchOfTreatsNoCapabilityAndNoAnswerTheSame(t *testing.T) {
+	if got := BaseBranchOf(fakeBrancher{err: errNoBranch}, "TASK-1"); got != "" {
+		t.Fatalf("BaseBranchOf with error = %q, want \"\"", got)
+	}
+	if got := BaseBranchOf(fakePlain{}, "TASK-1"); got != "" {
+		t.Fatalf("BaseBranchOf without the capability = %q, want \"\"", got)
+	}
+}
+
+type fakeBrancher struct {
+	fakePlain
+	base string
+	err  error
+}
+
+func (f fakeBrancher) BaseBranch(string) (string, error) { return f.base, f.err }
+
+type fakePlain struct{}
+
+func (fakePlain) List() ([]Task, error)                         { return nil, nil }
+func (fakePlain) Get(string) (Task, error)                      { return Task{}, nil }
+func (fakePlain) Create(string, string, string) (string, error) { return "", nil }
+func (fakePlain) Comment(string, string) error                  { return nil }
+func (fakePlain) Close(string, Verdict) error                   { return nil }
+
+var errNoBranch = fmt.Errorf("no repo behind this queue")

@@ -35,6 +35,11 @@ type SourceConfig struct {
 	// Statuses is the project's own status words. Empty means the project
 	// speaks the fleet's, which is true of one the fleet laid down itself.
 	Statuses backlogmd.Vocabulary `yaml:"statuses"`
+	// WorktreeBase names the git ref a run of this queue branches from
+	// (TASK-45). Empty derives the repo's own default branch — origin/HEAD —
+	// so that what a human left checked out in the main checkout is never
+	// the base an agent builds on merely by being there.
+	WorktreeBase string `yaml:"worktree_base"`
 	// Basecamp is the block that kind reads. Each adapter owns the shape of
 	// its own configuration; this package only hands it over.
 	Basecamp basecamp.Config `yaml:"basecamp"`
@@ -106,7 +111,7 @@ func newQueue(c SourceConfig, dir string) (work.Source, error) {
 		if err := c.Statuses.Validate(); err != nil {
 			return nil, err
 		}
-		return backlogmd.New(c.dirFrom(dir), c.Statuses), nil
+		return backlogmd.NewWithBase(c.dirFrom(dir), c.WorktreeBase, c.Statuses), nil
 	case kindBasecamp:
 		return basecamp.New(c.Basecamp)
 	case kindGithub:

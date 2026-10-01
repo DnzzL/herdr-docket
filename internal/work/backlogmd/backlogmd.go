@@ -21,6 +21,10 @@ type client interface {
 	SetStatus(id, status string) error
 	SetAssignee(id, agent string) error
 	AppendNote(id, note string) error
+	// DefaultBranch is the queue's own answer for which ref its worktree runs
+	// branch from. Empty means the repo has none to name — the caller inherits
+	// the checkout's HEAD, which is what preceded this field.
+	DefaultBranch(dir string) (string, error)
 }
 
 // Source is a work.Source backed by a Backlog.md project. The vocabulary is
@@ -29,14 +33,31 @@ type client interface {
 type Source struct {
 	client client
 	vocab  Vocabulary
+	// repo is where the project's git repo lives, read when BaseBranch
+	// answers: the queue's own dir (the fleet dir, or the source's dir:).
+	repo      string
+	overrides map[string]string
 }
 
 // New returns a Source on the Backlog.md project at dir, speaking vocab. The
 // zero Vocabulary is the fleet's own words.
-func New(dir string, vocab Vocabulary) *Source { return newWith(newCLI(dir), vocab) }
+func New(dir string, vocab Vocabulary) *Source { return NewWith(dir, newCLI(dir), vocab, nil) }
 
-func newWith(c client, vocab Vocabulary) *Source {
-	return &Source{client: c, vocab: vocab.OrDefault()}
+// NewWith is New for tests and for the one caller that wants to pin what the
+// queue's worktree runs branch from (fleet.yaml's worktree_base:). Configuration
+// wins over derived, which wins over nothing — the same ladder statuses: runs on.
+func NewWith(dir string, c client, vocab Vocabulary, overrides map[string]string) *Source {
+	return &Source{client: c, vocab: vocab.OrDefault(), repo: dir, overrides: overrides}
+}
+
+// NewWithBase is New for a source block that names its own base branch
+// (worktree_base:). An empty base is New: no pin, the derived answer runs.
+func NewWithBase(dir, base string, vocab Vocabulary) *Source {
+	var overrides map[string]string
+	if base != "" {
+		overrides = map[string]string{"": base} // key unused: one adapter, one repo
+	}
+	return NewWith(dir, newCLI(dir), vocab, overrides)
 }
 
 // List returns every task in the project, closed ones included — the board
@@ -133,6 +154,22 @@ func (v Vocabulary) verdictOf(status string) work.Verdict {
 // rather than adding to it: one task, one agent, which is what the routing
 // rule assumes.
 func (s *Source) Assign(id, agent string) error { return s.client.SetAssignee(id, agent) }
+
+// BaseBranch names the ref a worktree run of this queue branches from: a
+// worktree_base: pin from fleet.yaml if one is stated, else the project repo's
+// own default branch, derived from its dir — the remote's default branch,
+// which is what a clone checks out and what `git push` aims at. A repo that
+// cannot answer (no remote, a detached clone) reports that rather than
+// guessing: the runner then inherits the checkout's HEAD, which is what
+// preceded this capability.
+func (s *Source) BaseBranch(string) (string, error) {
+	for _, ref := range s.overrides { // one-source queues have at most one entry
+		if ref != "" {
+			return ref, nil
+		}
+	}
+	return s.client.DefaultBranch(s.repo)
+}
 
 // SetPhase shows the task as being worked on. This is the only phase the
 // fleet ever writes, and it is display only — the run lock is what keeps two

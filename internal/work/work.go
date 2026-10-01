@@ -131,6 +131,24 @@ type Assigner interface {
 	Assign(id, agent string) error
 }
 
+// BaseBrancher is the optional capability of a source that knows which git
+// ref a worktree run of it branches from. Backlog.md, whose queue
+// is the project's own repo, answers with the project's default branch read
+// from its dir; a hosted queue has no repo behind it and says so.
+//
+// Where a run's work starts is a fact about the queue, not about whatever the
+// project's main checkout happens to have checked out: a human mid-branch
+// must not become the base an agent builds on. An answer that cannot be
+// given — no remote, a detached HEAD — is reported as one, and the caller
+// treats it as no base, exactly the behaviour that preceded this capability.
+//
+// The task id is taken rather than nothing so a composite can forward to the
+// queue the id names, the same way Assign does; an adapter answers for its
+// own.
+type BaseBrancher interface {
+	BaseBranch(id string) (string, error)
+}
+
 // Source is the port the fleet's queue lives behind. Picking, running and the
 // board speak only this.
 type Source interface {
@@ -178,6 +196,23 @@ type MultiSource interface {
 	Names() []string
 	// CreateIn creates work in the named queue, returning its prefixed id.
 	CreateIn(source, title, body, assignee string) (string, error)
+}
+
+// BaseBranchOf answers the ref worktree runs of this task's queue branch
+// from. A queue with no repo behind it (or no default branch to name) says
+// no, and the caller falls back to inheriting the checkout's HEAD — the
+// behaviour that preceded this helper; the record still carries the commit
+// the run actually cut from, so a conflation is visible either way.
+func BaseBranchOf(src Source, taskID string) string {
+	b, ok := src.(BaseBrancher)
+	if !ok {
+		return ""
+	}
+	name, err := b.BaseBranch(taskID)
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 // closedOrder is the order the board shows endings in: the ones that still
