@@ -26,6 +26,16 @@ type fakeHost struct {
 	// after lets the fake board change the task mid-run, the way a real agent
 	// reports back through the fleet CLI.
 	after func()
+	// notifies records what the runner asked the host to raise. See notify.
+	notifies []notify
+}
+
+// notify is one desktop notification the fleet asked for.
+type notify struct{ title, body string }
+
+func (f *fakeHost) Notify(title, body string) error {
+	f.notifies = append(f.notifies, notify{title, body})
+	return nil
 }
 
 func (f *fakeHost) Provision(a host.Spec) (host.Session, error) {
@@ -197,6 +207,52 @@ func TestHostFailureMarksTheTaskFailedWithTheReason(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(b.notes, " "), "agent never started") {
 		t.Fatalf("notes = %v", b.notes)
+	}
+}
+
+func TestAFailedRunReachesAHumanNotWatching(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{doErr: errors.New("agent never started")}
+	_ = run(t, h, b)
+	if len(h.notifies) != 1 {
+		t.Fatalf("a failed run must ask for exactly one notification, saw %v", h.notifies)
+	}
+	n := h.notifies[0]
+	if !strings.Contains(n.title, "TASK-1") || !strings.Contains(n.body, "agent never started") {
+		t.Fatalf("notification = %q / %q, want the task and the reason", n.title, n.body)
+	}
+}
+
+func TestADoneRunSendsNoNotification(t *testing.T) {
+	// Done is the fleet working as designed: a notification for it would be
+	// the one that makes the human mute the rest.
+	b := newBoard("TASK-1")
+	h := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}
+	if err := run(t, h, b); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notifies) != 0 {
+		t.Fatalf("a done run must not notify, saw %v", h.notifies)
+	}
+}
+
+func TestACancelledRunSendsNoNotification(t *testing.T) {
+	// Cancelled is a human deciding, not a run breaking: the person who
+	// cancelled is the one watching.
+	b := newBoard("TASK-1")
+	h := &fakeHost{doErr: host.ErrCancelled}
+	_ = run(t, h, b)
+	if len(h.notifies) != 0 {
+		t.Fatalf("a cancelled run must not notify, saw %v", h.notifies)
+	}
+}
+
+func TestAProvisioningFailureNotifiesToo(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{provisionErr: errors.New("repo gone")}
+	_ = run(t, h, b)
+	if len(h.notifies) != 1 || !strings.Contains(h.notifies[0].body, "repo gone") {
+		t.Fatalf("notification = %v, want the provisioning failure", h.notifies)
 	}
 }
 

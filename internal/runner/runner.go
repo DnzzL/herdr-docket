@@ -144,6 +144,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 	v, err := src.Get(t.ID)
 	if err != nil {
 		rec.record(history.StatusFailed, host.Session{}, err.Error())
+		r.notifyFailed(t, err.Error())
 		return err
 	}
 	r.claim(src, t.ID)
@@ -156,7 +157,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		Workspace: host.WorkspaceMode(a.Workspace),
 		Agent:     a.Kind,
 		Model:     a.Model,
-		Prompt:    prompt.Assemble(a, v, r.fleetDir, r.settings.WordsFor(t.ID)),
+		Prompt:    prompt.Runnable(prompt.Assemble(a, v, r.fleetDir, r.settings.WordsFor(t.ID))),
 		MCPConfig: a.MCPConfig,
 		AgentArgs: a.AgentArgs,
 	}
@@ -166,6 +167,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		// No run happened past provisioning, so there is no delivery to
 		// report beside the failure.
 		rec.close(history.StatusFailed, session, v, host.Delivery{}, false, err.Error())
+		r.notifyFailed(t, err.Error())
 		return err
 	}
 	rec.record(history.StatusRunning, session, "")
@@ -194,6 +196,7 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		rec.close(history.StatusCancelled, session, final, d, uncommitted, err.Error())
 	case err != nil:
 		rec.close(history.StatusFailed, session, final, d, uncommitted, err.Error())
+		r.notifyFailed(t, err.Error())
 	case final == work.Failed:
 		// A task that ended Failed is a failed run either way, but why it
 		// failed is the difference between a broken agent and a working one.
@@ -206,10 +209,17 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 			err = fmt.Errorf("%s: the agent settled without reporting a verdict", t.ID)
 		}
 		rec.close(history.StatusFailed, session, final, d, uncommitted, err.Error())
+		r.notifyFailed(t, err.Error())
 	default:
 		rec.close(history.StatusDone, session, final, d, uncommitted, "")
 	}
 	return err
+}
+
+func (r *Runner) notifyFailed(t work.Task, reason string) {
+	if err := r.host.Notify("fleet: run failed — "+t.ID, reason); err != nil {
+		log.Printf("%s: notify: %v", t.ID, err)
+	}
 }
 
 // claim shows the task as being worked on, where the backend can say so. The

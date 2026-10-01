@@ -35,11 +35,12 @@ type fakeOps struct {
 
 	closes int
 
-	starts  int
-	submits int
-	pending int
-	waits   int
-	reads   int
+	starts   int
+	submits  int
+	pending  int
+	waits    int
+	reads    int
+	notifies []string
 }
 
 func (f *fakeOps) WorktreeCreate(repo, branch, label string) (string, string, error) {
@@ -441,4 +442,9 @@ func TestAWorktreeRunIsNotBorrowed(t *testing.T) {
 	if ops.tabs != 0 || s.TabID != "" || s.Branch == "" {
 		t.Errorf("a worktree run keeps its own workspace: tabs=%d session=%+v", ops.tabs, s)
 	}
+}
+
+func (f *fakeOps) Notify(title, body string) error {
+	f.notifies = append(f.notifies, title+"\x1f"+body)
+	return nil
 }

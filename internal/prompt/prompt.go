@@ -7,6 +7,7 @@ package prompt
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -26,6 +27,15 @@ import (
 // exactly what it was before the file existed.
 func Assemble(a fleet.Agent, v work.Task, fleetDir string, words fleet.Words) string {
 	return assemble(a, v, readBrief(fleetDir), fleetDir, words)
+}
+
+// Runnable rewrites a prompt's command lines to an invocation this machine can
+// actually run, and is applied by whoever hands the prompt to an agent rather
+// than by Assemble — asking where the binary lives is a question about the
+// world, and Assemble answers only questions about the fleet.
+func Runnable(s string) string {
+	exe, _ := os.Executable()
+	return runnable(s, cliFor(exe))
 }
 
 // readBrief is FLEET.md's body, or "" when there is none worth reading. A
@@ -174,4 +184,36 @@ func wordList(w fleet.Words) string {
 		}
 	}
 	return b.String()
+}
+
+// cliFor is the invocation the prompt should tell an agent to use: the bare
+// name when a pane's PATH already resolves it, and otherwise the absolute
+// path of the binary writing the prompt.
+//
+// This exists because the plugin is not on a pane's PATH. Every run was told
+// to close itself with `herdr-docket task done`, every run that reached the
+// end found no such command, and the fleet recorded the silence that followed
+// as the agent's failure. The binary knows where it lives; saying so is the
+// difference between a protocol and a suggestion.
+func cliFor(exe string) string {
+	if _, err := exec.LookPath("herdr-docket"); err == nil {
+		return "herdr-docket"
+	}
+	if exe == "" {
+		return "herdr-docket"
+	}
+	if abs, err := filepath.Abs(exe); err == nil {
+		return abs
+	}
+	return "herdr-docket"
+}
+
+// runnable rewrites the prompt's command lines to an invocation that works,
+// and leaves its prose alone: an agent copies the indented lines, and a
+// sentence naming an absolute path reads worse without helping anybody.
+func runnable(s, cli string) string {
+	if cli == "herdr-docket" {
+		return s
+	}
+	return strings.ReplaceAll(s, "\n  herdr-docket ", "\n  "+cli+" ")
 }
