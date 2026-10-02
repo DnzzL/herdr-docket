@@ -421,7 +421,7 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 // status (as the fleet wanted, ADR-0012), false when the backend filed it by
 // its own default — so the caller's output can say which happened rather
 // than implying the fleet chose. Criteria are not this function's business:
-// the caller writes them through the returned id (ADR-0013), so every landing
+// the caller writes them through the returned id (ADR-0014), so every landing
 // path keeps one criteria seam instead of three.
 func createTask(src work.Source, queue, defaultQueue, title, body, assignee string) (string, bool, error) {
 	ms, ok := src.(work.MultiSource)

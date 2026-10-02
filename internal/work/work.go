@@ -134,11 +134,14 @@ type Assigner interface {
 	Assign(id, agent string) error
 }
 
-// CriterionWriter is the optional capability of a source that can start a task
-// with acceptance criteria already on it — the bar the next run of a follow-up
-// has to meet. Backlog.md has an --ac on its create; GitHub writes them into
-// the body's checklist; a Basecamp to-do has steps that only exist on it, so
-// it says so rather than taking the words.
+// CriterionWriter is the optional capability of a source that can put
+// acceptance criteria on an existing task — the bar a run hands on writes
+// through the id Create returned (ADR-0014), beside the landing that ADR-0012
+// gave Create and CreateTodo: the landing decides whether the next tick can
+// claim the task, the criteria decide what the run has to show. Backlog.md
+// appends through its task edit's --ac, one flag per criterion; GitHub writes
+// them into the body's checklist; a Basecamp to-do has no step endpoint
+// after the create, so it says so rather than taking the words.
 //
 // Optional, like Phaser and unlike Assigner: criteria with no place to live
 // are lost wherever a source cannot speak them at all, so a refusal is a

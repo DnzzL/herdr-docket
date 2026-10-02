@@ -1,4 +1,4 @@
-# Criteria are a capability, not a column on Create
+# 0014 — Criteria are a capability, not a column on Create
 
 The failure this answers (TASK-22): `herdr-docket task create` could not carry
 acceptance criteria, so an agent handing work on had two ways to say what
@@ -15,9 +15,22 @@ a GitHub issue body would grow a second meaning buried in a signature, and an
 adapter that cannot comply would have to invent a silent drop — the one
 outcome the fleet must never get with acceptance criteria. The port already
 had the right shape for "not every queue can do this": optional capabilities
-beside `Source` (ADR 0006's `Phaser` and `Assigner`, ADR 0011's `BaseBrancher`).
+beside `Source` (ADR 0006's `Phaser` and `Assigner`, ADR 0011's
+`BaseBrancher`).
 
-**The fourth capability follows them.**
+**Landing came first.** Between this task's opening and its landing,
+ADR-0012 put a fifth capability beside those four: `TodoStarter`, the
+pickup-status write on create. Their fields stay apart on purpose —
+`CreateTodo` files the task where the daemon can claim it; criteria are the
+bar a run hands on after the create returns an id. One CLI `task create`
+does both in order: create (through `CreateTodo` when the queue can file
+its own pickup status, plain `Create` when it cannot), then write the bar
+through the returned id. The seam stays one: `putCriteria` on the CLI side
+and `CriterionWriter` on the port are the only criteria write points, so a
+landing that says "did not choose the column" and a bar that says "put the
+words in the description" are two admissions, never a blur.
+
+**The fifth capability follows them.**
 
 ```go
 // CriterionWriter is the optional capability of a queue that can store
