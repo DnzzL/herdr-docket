@@ -22,8 +22,9 @@ type fakeHost struct {
 	doErr        error
 	closes       int
 	spec         host.Spec
-	// delivery is what Inspect reports for a worktree run; inspects counts
-	// the questions asked, because root-mode runs must ask none.
+	// session is what Provision answered, kept so a test can assert the run's
+	// record names the branch the provision actually created.
+	session    host.Session
 	delivery   host.Delivery
 	inspectErr error
 	inspects   int
@@ -46,8 +47,16 @@ func (f *fakeHost) Provision(a host.Spec) (host.Session, error) {
 	f.spec = a
 	s := host.Session{WorkspaceID: "ws", PaneID: "p", Repo: a.Repo, BaseCommit: "c0074fe"}
 	if a.Workspace == host.WorkspaceWorktree {
-		s.Branch = "fleet/a-1"
+		// The branch is derived the way production derives it — slug of the
+		// spec's name plus the cut timestamp — not constructed as an
+		// arbitrary string. A fake that hand-builds a value the real code
+		// derives is the boundary the suite agreed to pretend about
+		// (TASK-26): a session naming "fleet/a-1" would pass every record
+		// assertion below whether or not Provision names branches from the
+		// spec fields the runner actually hands it (TASK-38).
+		s.Branch = fmt.Sprintf("fleet/%s-%s", host.Slug(a.Name), time.Now().Format("20060102-1504"))
 	}
+	f.session = s
 	return s, f.provisionErr
 }
 func (f *fakeHost) Inspect(host.Session) (host.Delivery, error) {
@@ -466,14 +475,20 @@ func TestAHandoffDoesNotExcuseAFailedRun(t *testing.T) {
 // task. A worktree run with no commits shows +0 rather than staying silent.
 func TestClosingRecordStatesWhatTheRunProduced(t *testing.T) {
 	b := newBoard("TASK-1")
-	h := &fakeHost{
-		delivery: host.Delivery{Commits: 2},
-		after: func() {
-			b.Close("TASK-1", work.Done)
-			if err := history.SetPullRequest("TASK-1", "https://example.com/pr/9"); err != nil {
-				t.Errorf("set PR: %v", err)
-			}
-		},
+	h := &fakeHost{delivery: host.Delivery{Commits: 2}}
+	h.after = func() {
+		// The record written the moment the run is running already names
+		// the branch Provision created — the fact travels from provision
+		// time, it is not glued back on when the run closes.
+		if r, err := history.LastRun("TASK-1"); err != nil {
+			t.Errorf("read the running record: %v", err)
+		} else if r.Status != history.StatusRunning || r.Branch != h.session.Branch {
+			t.Errorf("running record = %+v, want status running naming branch %q", r, h.session.Branch)
+		}
+		b.Close("TASK-1", work.Done)
+		if err := history.SetPullRequest("TASK-1", "https://example.com/pr/9"); err != nil {
+			t.Errorf("set PR: %v", err)
+		}
 	}
 	if err := runWorktree(t, h, b); err != nil {
 		t.Fatal(err)
@@ -482,8 +497,13 @@ func TestClosingRecordStatesWhatTheRunProduced(t *testing.T) {
 	if err != nil || r == nil {
 		t.Fatal(err)
 	}
-	if r.Branch != "fleet/a-1" {
-		t.Errorf("branch = %q, want the branch the session was provisioned on", r.Branch)
+	if r.Branch == "" || r.Branch != h.session.Branch {
+		t.Errorf("branch = %q, want the branch Provision named (%q)", r.Branch, h.session.Branch)
+	}
+	// The fake derived it from the spec, as production does: the name of the
+	// task is in it, not an invented constant.
+	if want := "fleet/" + host.Slug("TASK-1 T") + "-"; !strings.HasPrefix(h.session.Branch, want) {
+		t.Errorf("branch = %q, want it derived from the spec name as %q+tag", h.session.Branch, want)
 	}
 	if r.Commits != 2 {
 		t.Errorf("commits = %d, want the count Inspect reported", r.Commits)
@@ -500,7 +520,18 @@ func TestClosingRecordStatesWhatTheRunProduced(t *testing.T) {
 // implies no delivery it cannot vouch for.
 func TestARootRunClaimsNoBranchAndIsNeverInspected(t *testing.T) {
 	b := newBoard("TASK-1")
-	h := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}
+	h := &fakeHost{}
+	h.after = func() {
+		// No branch is claimed at any point of the run — the record written
+		// while it is running, and the closing one, both stay silent about a
+		// branch a root-mode workspace never had.
+		if r, err := history.LastRun("TASK-1"); err != nil {
+			t.Errorf("read the running record: %v", err)
+		} else if r.Status != history.StatusRunning || r.Branch != "" || r.Commits != 0 || r.Uncommitted {
+			t.Errorf("running record = %+v, want a running record claiming no delivery", r)
+		}
+		b.Close("TASK-1", work.Done)
+	}
 	if err := run(t, h, b); err != nil {
 		t.Fatal(err)
 	}
@@ -567,8 +598,8 @@ func TestACleanWorktreeRunWithNoCommitsTearsDownAsUsual(t *testing.T) {
 	if err != nil || r == nil {
 		t.Fatal(err)
 	}
-	if r.Branch == "" || r.Commits != 0 || r.Uncommitted {
-		t.Errorf("record = %+v, want the branch named, +0 and no uncommitted flag", r)
+	if r.Branch != h.session.Branch || r.Commits != 0 || r.Uncommitted {
+		t.Errorf("record = %+v, want the branch named (%q), +0 and no uncommitted flag", r, h.session.Branch)
 	}
 	if b.verdict("TASK-1") != work.Done {
 		t.Errorf("verdict = %q, want done — nothing was at risk", b.verdict("TASK-1"))
@@ -602,7 +633,7 @@ func TestARootRunIsNeverGuardedBecauseItHasNoWorktreeToLose(t *testing.T) {
 func TestAWorktreeWhoseDeliveryCannotBeReadIsKeptAndSaid(t *testing.T) {
 	b := newBoard("TASK-1")
 	h := &fakeHost{
-		inspectErr: errors.New("no worktree holds fleet/a-1"),
+		inspectErr: errors.New("no worktree holds the branch Provision named"),
 		after:      func() { b.Close("TASK-1", work.Done) },
 	}
 	if err := runWorktree(t, h, b); err != nil {

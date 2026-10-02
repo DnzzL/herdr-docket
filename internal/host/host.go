@@ -255,8 +255,15 @@ func (h *live) workFor(a Spec) work {
 	return agentWork{ops: h.ops, knobs: h.knobs, a: a}
 }
 
-// slug makes a name safe for a git branch: spaces and the characters
+// Slug makes a name safe for a git branch: spaces and the characters
 // git check-ref-format rejects would otherwise fail worktree creation.
+// Exported as the branch-derivation rule Provision applies to Spec.Name, so
+// a fake host computing the branch in a test produces the same shape the
+// provisioned session carries — never a string invented for the test.
+func Slug(name string) string { return slug(name) }
+
+// slug is Slug's implementation, kept private for the package's own callers
+// (the branch in Provision, agentName's name and tag).
 func slug(name string) string {
 	var b strings.Builder
 	lastDash := true // also trims leading dashes
