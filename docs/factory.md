@@ -25,7 +25,7 @@ service, an account, or a second daemon.
 | Turn feedback into verified tasks | [Example 5, `intake`](examples.md#5-an-intake-that-turns-feedback-into-fleet-work) | every few hours |
 | Carry the task to a green PR | [Example 2, `dev`](examples.md#2-a-dev-that-works-ready-for-agent-tickets) | the queue, as ever |
 | Verdict — and merge what the policy allows | [Example 4, `reviewer`](examples.md#4-a-reviewer-that-gates-the-devs-prs) | daily sweep |
-| Nudge work that ended short | [Example 6, `stall`](examples.md#6-a-stall-sweep-that-nudges-work-that-ended-short) | twice a day |
+| Nudge work that ended short | [Example 6, `stall`](examples.md#6-a-stall-sweep-that-nudges-work-that-ended-short) | daily |
 | Find what keeps coming back | [Example 7, `lookback`](examples.md#7-a-lookback-that-finds-what-keeps-coming-back) | weekly |
 
 The schedule never does the work. An automation's whole job is to put one task
@@ -175,3 +175,68 @@ reviewer runs.
   task, and blocked to a human — the guard in `cleanup` is the one piece of
   the loop that is code rather than prose, and it exists because everything
   else here believes an agent's sentence.
+
+## The first week — 2026-09-25 to 2026-10-02
+
+The loop's first full week ran on the DnzzL fleet over DishNow-v2 and
+herdr-docket themselves. What follows is the record, kept here because the
+next person tuning their dials deserves the evidence, not the pitch.
+
+**The clock held.** Eight days of cron, no human ever starting a run:
+intake 8:15 and 16:15, the review sweep 9:30 every day (the worked example
+says weekdays; daily is what stuck), the stall sweep 13:00 daily, lookback
+Mondays 10:00, pm-triage weekday mornings. Ninety-one automations runs in
+the window, zero failures. Every persona filed through the queue CLI and
+every run the daemon picked worked the task like any other.
+
+**Every merge that happened had a reviewer verdict behind it.** Seven
+DishNow pull requests merged in the window. Four were merged by the
+reviewer persona itself inside its merge gate (#36, #39, #41, #42); three
+(#35, #38, #40) were approved by the reviewer and merged by the human,
+which is what the policy prescribes when the diff is beyond the gate — a
+data migration, an API-boundary change, a 32-file refactor. What the week
+did not settle is the press: the human still pressed merge more often than
+the persona did, because the gate is deliberately narrow on week one. That
+is a dial, and it turned itself nowhere.
+
+**The reporting half of the loop broke, and was fixed inside the week.**
+Twenty-six runs in a fortnight did the work — some pushed green pull
+requests — then settled without reporting a verdict, so the queue recorded
+failure for delivered work. The lookback filed the pattern as
+[docket/TASK-49](../backlog/tasks/) from the history counts, the fix shipped
+as v0.8.0's prompt change (the commands in a prompt must resolve, so they
+are printed absolute), and zero recurrences in the day after. The Monday
+lookback closes it with its own counts.
+
+**What the week left stranded** (the queue carries each; the doc records
+the shape):
+
+- **The pick routes a Blocked task.** `pick.Next` filters on open, and
+  Blocked is open — so a reviewer run started on a task parked on a human
+  question, left no terminal record, and sat orphaned on the workspace list
+  (fleet/TASK-1). Filed as a defect, not a dial: waiting on a human is not
+  work an agent can spend a run on.
+- **A verdict can be reached and still recorded failed** (the docket/TASK-46
+  review run posted its review and filed its follow-up, then reported
+  failed). The same TASK-49 pattern, on the done/failed side rather than the
+  silence side.
+- **A rebase rewrites someone's work, and the fleet does not.** DishNow
+  PR #43's second commit carries no author identity; rebasing it is a human
+  decision the reviewer correctly refused to make alone.
+- **A cross-branch duplicate task id makes queue polls warn.** Each worktree
+  branch carries the queue files it was cut from, so `backlog task list`
+  sees two task-45s until the branches merge. Diagnostic only — it never
+  blocked a poll on main — but every sweep that reads a queue mid-week has
+  to read past that warning.
+
+### Known gaps
+
+- The Monday lookback is the loop's memory and its one scheduled run of the
+  week ran 38 seconds and filed nothing; the pattern follow-up that exists
+  (docket/TASK-49) came from a demo lookback run instead. Why the scheduled
+  one under-performed is unanswered.
+- One day of post-fix evidence is not a pattern's death: docket/TASK-49
+  stays open until the lookback closes it with counts.
+- The merge press is still mostly human. Nothing in the loop forces it to
+  move; the dial is the persona's merge policy, loosened one sentence at a
+  time.
