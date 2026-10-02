@@ -4,6 +4,17 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **New work a task create files lands where the daemon can claim it.**
+  `herdr-docket task create` never named a status, so the queue filed new
+  work into whatever the project considered its default — and where that
+  word was not the word this fleet maps to `To Do`, every task the fleet
+  created (the intake meta-task, a reviewer's follow-up, a lookback fix)
+  sat open in a column no run would ever read. A Backlog.md queue now files
+  them into its own pickup status directly at creation, in the project's own
+  vocabulary; a queue with no column to start a task in (Basecamp) is
+  untouched and the CLI says where the task landed rather than implying the
+  fleet chose. No new flag: the fleet knows which word it wants, and a human
+  picking a specific column still does it where the queue lives.
 - **A task with a run in flight cannot be started twice.** The run lock was
   keyed per agent (or per shared checkout), so it kept two runs off one
   workspace — but a `fleet.yaml` edit re-routes the *next* pick from under a

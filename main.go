@@ -346,15 +346,27 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 	if title == "" {
 		return fmt.Errorf("task create: a title is required\n%s", usage)
 	}
-	id, err := createTask(src, queue, defaultQueue, title, body, assignee)
+	id, started, err := createTask(src, queue, defaultQueue, title, body, assignee)
 	if err != nil {
 		return err
 	}
-	if id == "" {
-		fmt.Fprintln(out, "created")
+	// Say where the task landed honestly: the fleet's word when the fleet
+	// chose it, the queue's own default and an admission it did not choose
+	// otherwise (ADR-0012) — the column a daemon will never read is exactly
+	// what a friend would want to know about.
+	if started {
+		if id == "" {
+			fmt.Fprintln(out, "created (in To Do)")
+			return nil
+		}
+		fmt.Fprintf(out, "created %s (in To Do)\n", id)
 		return nil
 	}
-	fmt.Fprintf(out, "created %s\n", id)
+	if id == "" {
+		fmt.Fprintln(out, "created — the queue filed it by its own default, not anything the fleet chose")
+		return nil
+	}
+	fmt.Fprintf(out, "created %s (filed in the queue's own default — the fleet did not choose the column)\n", id)
 	return nil
 }
 
@@ -362,13 +374,27 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 // named, then the fleet's default_source, then the only queue there is. A
 // fleet with several queues and no default is the one case left that refuses,
 // because filing work into a queue nobody chose is worse than stopping.
-func createTask(src work.Source, queue, defaultQueue, title, body, assignee string) (string, error) {
+//
+// Where the task lands in that queue is the queue's own business and the
+// second answer records it: true when the queue filed it into its own pickup
+// status (as the fleet wanted, ADR-0012), false when the backend filed it by
+// its own default — so the caller's output can say which happened rather
+// than implying the fleet chose.
+func createTask(src work.Source, queue, defaultQueue, title, body, assignee string) (string, bool, error) {
 	ms, ok := src.(work.MultiSource)
 	if !ok {
 		if queue != "" {
-			return "", fmt.Errorf("task create: -s/--source is only for a fleet with several queues")
+			return "", false, fmt.Errorf("task create: -s/--source is only for a fleet with several queues")
 		}
-		return src.Create(title, body, assignee)
+		if st, can := src.(work.TodoStarter); can {
+			id, err := st.CreateTodo(title, body, assignee)
+			if err != nil {
+				return "", false, err
+			}
+			return id, true, nil
+		}
+		id, err := src.Create(title, body, assignee)
+		return id, false, err
 	}
 	if queue == "" {
 		queue = defaultQueue
@@ -376,7 +402,7 @@ func createTask(src work.Source, queue, defaultQueue, title, body, assignee stri
 	if queue == "" {
 		names := ms.Names()
 		if len(names) != 1 {
-			return "", fmt.Errorf("task create: this fleet has %d queues (%s) — name one with -s/--source, or set default_source in fleet.yaml", len(names), strings.Join(names, ", "))
+			return "", false, fmt.Errorf("task create: this fleet has %d queues (%s) — name one with -s/--source, or set default_source in fleet.yaml", len(names), strings.Join(names, ", "))
 		}
 		queue = names[0]
 	}

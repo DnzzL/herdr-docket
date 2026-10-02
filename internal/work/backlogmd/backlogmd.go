@@ -17,7 +17,7 @@ import (
 type client interface {
 	List() ([]task, error)
 	View(id string) (view, error)
-	Create(title, body, assignee string) (string, error)
+	Create(title, body, assignee, status string) (string, error)
 	SetStatus(id, status string) error
 	SetAssignee(id, agent string) error
 	AppendNote(id, note string) error
@@ -90,9 +90,20 @@ func (s *Source) Get(id string) (work.Task, error) {
 	return it, nil
 }
 
-// Create adds a task to the project and returns its new id.
+// Create adds a task to the project and returns its new id, filed wherever
+// the project's own default puts it — the behaviour that preceded the pickup
+// capability below. Callers that want the fleet-opted landing use CreateTodo.
 func (s *Source) Create(title, body, assignee string) (string, error) {
-	return s.client.Create(title, body, assignee)
+	return s.client.Create(title, body, assignee, "")
+}
+
+// CreateTodo files a new task into the project's own pickup status — the
+// word this project's mapping calls To Do — in one backend write, so the
+// next tick can claim it (ADR-0012). A project with no word mapped is not
+// refused: a vocabulary that names no todo is refused at configuration, and
+// the empty word would arrive here only through one that slipped past.
+func (s *Source) CreateTodo(title, body, assignee string) (string, error) {
+	return s.client.Create(title, body, assignee, s.vocab.Todo)
 }
 
 // Comment appends to the task's notes. Backlog.md has no separate comment

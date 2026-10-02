@@ -22,7 +22,7 @@ type fakeClient struct {
 	// repo to read one from.
 	branch string
 
-	created  []string // title, body, assignee
+	created  []string // title, body, assignee, status
 	stages   []string // statuses set, in order
 	assigned []string // "<id>=<agent>", in order
 	comments []string
@@ -31,8 +31,8 @@ type fakeClient struct {
 func (f *fakeClient) List() ([]task, error)        { return f.tasks, f.err }
 func (f *fakeClient) View(id string) (view, error) { return f.view, f.err }
 
-func (f *fakeClient) Create(title, body, assignee string) (string, error) {
-	f.created = []string{title, body, assignee}
+func (f *fakeClient) Create(title, body, assignee, status string) (string, error) {
+	f.created = []string{title, body, assignee, status}
 	return "TASK-9", f.err
 }
 
@@ -213,12 +213,53 @@ func TestCreatePassesTheRoutingKeyToTheBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"Fix the thing", "because it is broken", "dev"}; !reflect.DeepEqual(f.created, want) {
+	if want := []string{"Fix the thing", "because it is broken", "dev", ""}; !reflect.DeepEqual(f.created, want) {
 		t.Fatalf("created %v, want %v", f.created, want)
 	}
 	if id != "TASK-9" {
 		t.Fatalf("Create must return the new id, got %q", id)
 	}
+}
+
+// A create from the fleet's mouth files into the project's own pickup status —
+// the word its mapping calls To Do, in the project's own vocabulary — so the
+// next tick can claim it (AC#1). One backend write: the status rides the same
+// create, and no task ever exists in a column it does not belong in.
+func TestCreateTodoFilesIntoTheProjectOwnPickupStatus(t *testing.T) {
+	t.Run("the fleet's own words", func(t *testing.T) {
+		f := &fakeClient{}
+		id, err := NewWith("", f, Vocabulary{}, nil).CreateTodo("Spec it", "why", "pm")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"Spec it", "why", "pm", statusToDo}; !reflect.DeepEqual(f.created, want) {
+			t.Fatalf("created %v, want %v", f.created, want)
+		}
+		if id != "TASK-9" {
+			t.Fatalf("CreateTodo must return the new id, got %q", id)
+		}
+	})
+
+	t.Run("a project's own words", func(t *testing.T) {
+		f := &fakeClient{}
+		v := Vocabulary{Todo: "Ready", InProgress: "WIP", Done: "Closed", Failed: "Broke", Blocked: "Held"}
+		if _, err := NewWith("", f, v, nil).CreateTodo("Spec it", "", "pm"); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.created[3]; got != "Ready" {
+			t.Fatalf("the fleet's word must not leak to the backend: asked for %q, want the project's %q", got, "Ready")
+		}
+	})
+
+	// plain Create stays at the backend's default — the capability is the
+	// only verb that chooses a column.
+	t.Run("plain create does not choose a column", func(t *testing.T) {
+		f := &fakeClient{}
+		NewWith("", f, DefaultVocabulary(), nil).Create("T", "", "")
+		if got := f.created[3]; got != "" {
+			t.Fatalf("plain Create named a status %q, want the backend's default", got)
+		}
+	})
 }
 
 // Every verdict closes: a blocked or failed task that stayed open would be
@@ -249,6 +290,25 @@ func TestCloseRejectsAnUnknownVerdict(t *testing.T) {
 	}
 	if len(f.stages) != 0 {
 		t.Fatalf("a refused verdict must not touch the backend, got %v", f.stages)
+	}
+}
+
+// ...and the landing survives a readback: work created for the fleet comes
+// back open and standing under the fleet's own word for it, which is the
+// only thing the next tick reads before claiming.
+func TestCreateTodoWorkComesBackClaimable(t *testing.T) {
+	v := Vocabulary{Todo: "Ready", InProgress: "WIP", Done: "Closed", Failed: "Broke", Blocked: "Held"}
+	s := NewWith("", &memClient{}, v, nil)
+	id, err := s.CreateTodo("Route me", "why", "reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	it, err := s.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !it.Open || it.Phase != string(work.PhaseTodo) {
+		t.Fatalf("the task the fleet filed is not claimable: open=%v phase=%q", it.Open, it.Phase)
 	}
 }
 
@@ -321,9 +381,12 @@ func (m *memClient) View(id string) (view, error) {
 	}, nil
 }
 
-func (m *memClient) Create(title, body, assignee string) (string, error) {
+func (m *memClient) Create(title, body, assignee, status string) (string, error) {
 	m.seq++
-	t := &memTask{task: task{ID: fmt.Sprintf("TASK-%d", m.seq), Title: title, Status: statusToDo}}
+	if status == "" {
+		status = statusToDo
+	}
+	t := &memTask{task: task{ID: fmt.Sprintf("TASK-%d", m.seq), Title: title, Status: status}}
 	if assignee != "" {
 		t.task.Assignees = []string{assignee}
 	}

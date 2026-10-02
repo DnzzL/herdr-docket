@@ -661,9 +661,9 @@ type multiQueueSource struct {
 
 func (m *multiQueueSource) Names() []string { return m.names }
 
-func (m *multiQueueSource) CreateIn(name, title, body, assignee string) (string, error) {
+func (m *multiQueueSource) CreateIn(name, title, body, assignee string) (string, bool, error) {
 	m.created = []string{name, title, assignee}
-	return name + "/TASK-9", nil
+	return name + "/TASK-9", false, nil
 }
 
 // A header is one style, not two nested: a string that already carries escape

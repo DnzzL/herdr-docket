@@ -99,6 +99,18 @@ func (p *phaserSource) SetPhase(id string, phase work.Phase) error {
 	return nil
 }
 
+// starterSource is the Backlog.md-shaped one, able to file new work into its
+// own pickup status, beside the Basecamp-shaped one that cannot.
+type starterSource struct {
+	*memSource
+	todo []string // "title|body|assignee" per CreateTodo call
+}
+
+func (s *starterSource) CreateTodo(title, body, assignee string) (string, error) {
+	s.todo = append(s.todo, title+"|"+body+"|"+assignee)
+	return s.memSource.Create(title, body, assignee)
+}
+
 // A composite over one queue is still a Source: the contract every adapter is
 // held to runs against it exactly as it would against the backend beneath.
 func TestCompositeSatisfiesTheSourceContract(t *testing.T) {
@@ -134,6 +146,56 @@ func TestListPrefixesIDsFromEverySource(t *testing.T) {
 	if len(names) != 2 || names[0] != "alpha" || names[1] != "beta" {
 		t.Fatalf("Names = %v, want the sorted [alpha beta]", names)
 	}
+}
+
+// CreateIn files the named queue's own pickup column (ADR-0012): a sub with
+// the capability gets used and says so; one without files as it always did
+// and honestly says it did not choose. Each queue answers in its own words —
+// one queue's starter must not decide another queue's landing.
+func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
+	t.Run("a queue with the capability, used", func(t *testing.T) {
+		ready := &starterSource{memSource: newMem()}
+		plain := newMem()
+		src := New(map[string]work.Source{"ready": ready, "plain": plain})
+		id, started, err := src.CreateIn("ready", "Wind it", "why", "dev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id != "ready/T1" || !started {
+			t.Fatalf("got %q started=%v, want ready/T1 started=true", id, started)
+		}
+		if len(ready.todo) != 1 {
+			t.Fatalf("the capable sub was not asked to start it: %v", ready.todo)
+		}
+	})
+	t.Run("a queue without it, said so", func(t *testing.T) {
+		ready := &starterSource{memSource: newMem()}
+		plain := newMem()
+		src := New(map[string]work.Source{"ready": ready, "plain": plain})
+		_, started1, err := src.CreateIn("plain", "Wind it", "", "dev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, started, err := src.CreateIn("plain", "Wind it", "why", "dev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if started || started1 {
+			t.Fatal("the plain sub cannot start work in a column and must say so")
+		}
+		if id != "plain/T2" {
+			t.Fatalf("got %q, want plain/T2", id)
+		}
+		if len(plain.order) == 0 {
+			t.Fatal("plain create must still create")
+		}
+	})
+	t.Run("an unknown queue is refused", func(t *testing.T) {
+		src := New(map[string]work.Source{"alpha": newMem()})
+		if _, _, err := src.CreateIn("ghost", "T", "", ""); err == nil {
+			t.Fatal("an unknown source must error, never create somewhere")
+		}
+	})
 }
 
 // A prefixed id routes every write to the queue it named — Get, Comment and
@@ -218,7 +280,7 @@ func TestCreateNeedsATargetWhenSeveralQueuesExist(t *testing.T) {
 	if _, err := src.Create("T", "b", "dev"); err == nil {
 		t.Fatal("a bare Create with several queues must refuse rather than guess")
 	}
-	id, err := src.CreateIn("beta", "T", "b", "dev")
+	id, _, err := src.CreateIn("beta", "T", "b", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +290,7 @@ func TestCreateNeedsATargetWhenSeveralQueuesExist(t *testing.T) {
 	if len(a.order) != 0 {
 		t.Errorf("CreateIn(beta) wrote to alpha: %v", a.order)
 	}
-	if _, err := src.CreateIn("ghost", "T", "b", "dev"); err == nil {
+	if _, _, err := src.CreateIn("ghost", "T", "b", "dev"); err == nil {
 		t.Fatal("CreateIn on an unknown source must error")
 	}
 }

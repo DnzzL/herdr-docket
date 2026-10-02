@@ -135,8 +135,66 @@ func TestTaskCreateNeedsATitle(t *testing.T) {
 	}
 }
 
+// The CLI output says where the task landed, every time the fleet did not
+// choose the column, and never implies a choice the queue made on its own
+// (ADR-0012). A task stranded in a column the daemon never reads is exactly
+// what a friend in the output would name.
+func TestTaskCreateReportsWhereTheTaskLanded(t *testing.T) {
+	t.Run("a queue that files into its pickup status, in the fleet's words", func(t *testing.T) {
+		src := &multiSource{names: []string{"alpha"}, started: true}
+		got, err := runTask(t, src, "create", "T", "-a", "dev", "-s", "alpha")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "created alpha/TASK-9 (in To Do)"; !strings.Contains(got, want) {
+			t.Fatalf("output %q, want %q", got, want)
+		}
+	})
+	t.Run("a queue without one, in its own words", func(t *testing.T) {
+		src := &multiSource{names: []string{"beta"}, started: false}
+		got, err := runTask(t, src, "create", "T", "-a", "dev", "-s", "beta")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(got, "did not choose") {
+			t.Fatalf("output must say the fleet did not choose the column:\n%s", got)
+		}
+	})
+	t.Run("one queue that can pick it up, uses its pickup status", func(t *testing.T) {
+		src := &todoStarterSource{}
+		got, err := runTask(t, src, "create", "T", "-a", "dev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !src.started {
+			t.Fatal("a create through the fleet CLI must reach the pickup capability, not plain Create")
+		}
+		if !strings.Contains(got, "in To Do") {
+			t.Fatalf("output must name the landing:\n%s", got)
+		}
+	})
+	t.Run("one queue that cannot, said so", func(t *testing.T) {
+		got, err := runTask(t, &fakeSource{}, "create", "T", "-a", "dev")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(got, "did not choose") {
+			t.Fatalf("output must say the fleet did not choose the column:\n%s", got)
+		}
+	})
+}
+
 // multiSource is a composite queue for the CLI tests: it records which source
-// a create targeted, so -s/--source can be checked without a backend.
+// a create targeted, and whether the queue claimed to have filed the task
+// into its own pickup column, so -s/--source and the landing report are
+// checked without a backend.
+type multiSource struct {
+	names     []string
+	started   bool
+	createdIn []string
+	err       error
+}
+
 func (m *multiSource) List() ([]work.Task, error)       { return nil, m.err }
 func (m *multiSource) Get(id string) (work.Task, error) { return work.Task{}, m.err }
 func (m *multiSource) Comment(id, text string) error    { return m.err }
@@ -144,18 +202,25 @@ func (m *multiSource) Close(id string, v work.Verdict) error {
 	return m.err
 }
 func (m *multiSource) Create(title, body, assignee string) (string, error) {
-	return m.CreateIn("", title, body, assignee)
+	_, _, err := m.CreateIn("", title, body, assignee)
+	return "", err
 }
 func (m *multiSource) Names() []string { return m.names }
-func (m *multiSource) CreateIn(source, title, body, assignee string) (string, error) {
+func (m *multiSource) CreateIn(source, title, body, assignee string) (string, bool, error) {
 	m.createdIn = []string{source, title, body, assignee}
-	return source + "/TASK-9", m.err
+	return source + "/TASK-9", m.started, m.err
 }
 
-type multiSource struct {
-	names     []string
-	createdIn []string
-	err       error
+// todoStarterSource is a single queue that can file new work into its own
+// pickup status, for the tests that check the CLI says which landing it got.
+type todoStarterSource struct {
+	fakeSource
+	started bool
+}
+
+func (f *todoStarterSource) CreateTodo(title, body, assignee string) (string, error) {
+	f.started = true
+	return "TASK-9", nil
 }
 
 // With several queues a create has to name one; with one it is implied; and a
