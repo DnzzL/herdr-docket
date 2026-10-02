@@ -2,7 +2,29 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
-## Unreleased
+## v0.8.0 — 2026-10-02
+
+- **The prompt names a CLI the agent can actually run.** The plugin is not on
+  a pane's PATH, and every run was told to close itself with
+  `herdr-docket task done`. The work got done; the closing command did not
+  exist; the fleet recorded the silence that followed as the agent's failure.
+  Seventeen runs in a fortnight, including one that had already pushed a green
+  pull request. The binary writing the prompt knows where it lives, so the
+  commands it prints are absolute when the bare name does not resolve — and
+  the prose still reads `herdr-docket`, because an agent copies the indented
+  lines and a sentence full of path is a sentence nobody gains from.
+
+- **A task with a run in flight cannot be started twice.** The run lock was
+  keyed per agent (or per shared checkout), so it kept two runs off one
+  workspace — but a `fleet.yaml` edit re-routes the *next* pick from under a
+  live run, and two different agents hold two different keys: an unassigned
+  task mid-run under one default agent was picked up by another within one
+  tick of the default changing. Every run now also holds a flock keyed by the
+  task id (`run-taskid-<id>.lock` in the state dir), across processes — the
+  daemon and a manual `herdr-docket run_TASK-x` cannot double a task while
+  either one is live. A run whose process died releases the task as before:
+  flock dies with the process, so the In-Progress self-heal still picks work
+  up the next tick.
 
 - **New work a task create files lands where the daemon can claim it.**
   `herdr-docket task create` never named a status, so the queue filed new
@@ -15,24 +37,6 @@ What changed for someone using the plugin. Dates are release dates.
   untouched and the CLI says where the task landed rather than implying the
   fleet chose. No new flag: the fleet knows which word it wants, and a human
   picking a specific column still does it where the queue lives.
-- **A task with a run in flight cannot be started twice.** The run lock was
-  keyed per agent (or per shared checkout), so it kept two runs off one
-  workspace — but a `fleet.yaml` edit re-routes the *next* pick from under a
-  live run, and two different agents hold two different keys: an unassigned
-  task mid-run under one default agent was picked up by another within one
-  tick of the default changing. Every run now also holds a flock keyed by the
-  task id (`run-taskid-<id>.lock` in the state dir), across processes — the
-  daemon and a manual `herdr-docket run_TASK-x` cannot double a task while
-  either one is live. A run whose process died releases the task as before:
-  flock dies with the process, so the In-Progress self-heal still picks work
-  up the next tick.
-- **An agent is not resumed onto a checkout that is not there.** `init
-  --factory` ships three agents on a placeholder workdir and prints "point its
-  workdir at your repo, then resume"; nothing enforced the *then*, so the
-  agent went active, the daemon routed work to it, and the run died at
-  provision with the board saying only that it failed. `agent resume` now
-  refuses and names the path to edit. Pausing is untouched: stopping an agent
-  is always safe.
 
 - **A run branches from the queue's default branch, not your working copy.** A
   worktree run used to fork whatever the project's main checkout had checked
@@ -44,6 +48,59 @@ What changed for someone using the plugin. Dates are release dates.
   in `herdr-docket history`), so a PR carrying anything past that is visible
   from the history alone. Root-mode runs are untouched — borrowing the
   checkout they stand in is their design.
+
+- **A task lands in the queue of the project you are standing in.** A fleet
+  that grows a second queue used to break every prompt and persona written
+  before it: they all call `task create` without naming one, and the CLI
+  refused rather than guess. It no longer has to — an agent runs inside the
+  checkout of the project it was given, or a worktree of it, so the working
+  directory already names the queue. `-s` still wins, and `default_source` in
+  `fleet.yaml` covers the one caller standing nowhere: a scheduled automation
+  filing work for somebody else. A `default_source` naming no declared queue
+  is refused when the config loads, not at 3am.
+
+- **Work is never routed to an agent of another project.** An agent works one
+  checkout; a task belongs to the queue it came from. When those disagreed the
+  run went ahead and did the work in the wrong repository — succeeding, so
+  nothing downstream could see it. The daemon now leaves that task alone and
+  says once what disagrees with what, the way it already does for an assignee
+  nobody answers to. The binding is derived from the agent's workdir, so it
+  cannot drift from the truth the run would use.
+
+- **A root-mode run opens a tab in the project's workspace instead of a
+  workspace beside it.** A fleet of three projects was putting one sidebar
+  entry per run in front of you — 29 of them, of which three meant anything.
+  Worktree runs were already grouped: herdr derives that from the repository,
+  not from anything the fleet says. Root runs had no such tie and could not
+  get one, so they borrow the workspace the project is already open in. The
+  parent is found, never configured — a workspace id written into a config
+  file is a reference that rots the first time somebody closes it. A project
+  nobody has open still gets a workspace of its own: the fleet never creates
+  the primary it would then be borrowing. Stopping or cleaning up a borrowed
+  run closes its tab and leaves the workspace, the runs beside it, and your
+  own work in it alone.
+
+- **The review sweep stops re-reviewing a PR it has already judged.** Coverage
+  was "no open task mentions this PR", but a review task always closes, and a
+  PR the reviewer refuses to merge stays open by design — so every morning the
+  same PR qualified again. Coverage is now a fact about the PR: a verdict at
+  its current head commit, which a new commit invalidates and nothing else.
+
+- **A task routed to an agent nobody answers to is told who does answer.** The
+  daemon's refusal used to quote the ghost and offer `add agents/<name>/AGENT.md`
+  — an instruction-shaped option one model took during the 2026-09-25 review
+  leg, writing a retired name back onto a task mid-run. The comment now lists
+  the fleet's agents and says reassign the task to one of them; creating an
+  agent is a human's decision and stays out of the note. Refusal still written
+  once per task and unknown name, and only for names no agent answers to.
+
+- **An agent is not resumed onto a checkout that is not there.** `init
+  --factory` ships three agents on a placeholder workdir and prints "point its
+  workdir at your repo, then resume"; nothing enforced the *then*, so the
+  agent went active, the daemon routed work to it, and the run died at
+  provision with the board saying only that it failed. `agent resume` now
+  refuses and names the path to edit. Pausing is untouched: stopping an agent
+  is always safe.
 
 - **A failed run shows a desktop notification.** Runs the daemon starts while
   you are elsewhere — the morning sweep working its way down the queue — used
@@ -59,58 +116,6 @@ What changed for someone using the plugin. Dates are release dates.
   been redirected into the plugin's state dir, but the path was remembered by
   whoever set it up. The tail (`-n LINES`, 100 by default) is now one command
   away — a report of what the daemon has said so far, not a second log.
-- **A task routed to an agent nobody answers to is told who does answer.** The
-  daemon's refusal used to quote the ghost and offer `add agents/<name>/AGENT.md`
-  — an instruction-shaped option one model took during the 2026-09-25 review
-  leg, writing a retired name back onto a task mid-run. The comment now lists
-  the fleet's agents and says reassign the task to one of them; creating an
-  agent is a human's decision and stays out of the note. Refusal still written
-  once per task and unknown name, and only for names no agent answers to.
-
-- **The prompt names a CLI the agent can actually run.** The plugin is not on
-  a pane's PATH, and every run was told to close itself with
-  `herdr-docket task done`. The work got done; the closing command did not
-  exist; the fleet recorded the silence that followed as the agent's failure.
-  Seventeen runs in a fortnight, including one that had already pushed a green
-  pull request. The binary writing the prompt knows where it lives, so the
-  commands it prints are absolute when the bare name does not resolve — and
-  the prose still reads `herdr-docket`, because an agent copies the indented
-  lines and a sentence full of path is a sentence nobody gains from.
-
-- **A root-mode run opens a tab in the project's workspace instead of a
-  workspace beside it.** A fleet of three projects was putting one sidebar
-  entry per run in front of you — 29 of them, of which three meant anything.
-  Worktree runs were already grouped: herdr derives that from the repository,
-  not from anything the fleet says. Root runs had no such tie and could not
-  get one, so they borrow the workspace the project is already open in. The
-  parent is found, never configured — a workspace id written into a config
-  file is a reference that rots the first time somebody closes it. A project
-  nobody has open still gets a workspace of its own: the fleet never creates
-  the primary it would then be borrowing. Stopping or cleaning up a borrowed
-  run closes its tab and leaves the workspace, the runs beside it, and your
-  own work in it alone.
-
-- **A task lands in the queue of the project you are standing in.** A fleet
-  that grows a second queue used to break every prompt and persona written
-  before it: they all call `task create` without naming one, and the CLI
-  refused rather than guess. It no longer has to — an agent runs inside the
-  checkout of the project it was given, or a worktree of it, so the working
-  directory already names the queue. `-s` still wins, and `default_source` in
-  `fleet.yaml` covers the one caller standing nowhere: a scheduled automation
-  filing work for somebody else. A `default_source` naming no declared queue
-  is refused when the config loads, not at 3am.
-- **Work is never routed to an agent of another project.** An agent works one
-  checkout; a task belongs to the queue it came from. When those disagreed the
-  run went ahead and did the work in the wrong repository — succeeding, so
-  nothing downstream could see it. The daemon now leaves that task alone and
-  says once what disagrees with what, the way it already does for an assignee
-  nobody answers to. The binding is derived from the agent's workdir, so it
-  cannot drift from the truth the run would use.
-- **The review sweep stops re-reviewing a PR it has already judged.** Coverage
-  was "no open task mentions this PR", but a review task always closes, and a
-  PR the reviewer refuses to merge stays open by design — so every morning the
-  same PR qualified again. Coverage is now a fact about the PR: a verdict at
-  its current head commit, which a new commit invalidates and nothing else.
 
 ## v0.7.0 — 2026-09-30
 
