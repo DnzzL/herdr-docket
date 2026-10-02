@@ -3,10 +3,10 @@ id: TASK-41
 title: >-
   The run lock protects the checkout, not the task: two agents can be routed
   onto one task at once
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-25 12:05'
-updated_date: '2026-10-01 09:32'
+updated_date: '2026-10-01 16:08'
 labels: []
 dependencies: []
 priority: high
@@ -15,6 +15,10 @@ ordinal: 41000
 
 ## Description
 
+<!-- SECTION:DESCRIPTION:BEGIN -->
+<!-- SECTION:DESCRIPTION:BEGIN -->
+<!-- SECTION:DESCRIPTION:BEGIN -->
+<!-- SECTION:DESCRIPTION:BEGIN -->
 <!-- SECTION:DESCRIPTION:BEGIN -->
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Observed on a live fleet: a task unassigned and mid-run under `default_agent:
@@ -58,6 +62,10 @@ The config-edit-mid-run case is the rare one; the durable claim worth fixing
 is the comment's: today two runs of one task are impossible only when the
 routing doesn't change under them.
 <!-- SECTION:DESCRIPTION:END -->
+<!-- SECTION:DESCRIPTION:END -->
+<!-- SECTION:DESCRIPTION:END -->
+<!-- SECTION:DESCRIPTION:END -->
+<!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
@@ -71,4 +79,12 @@ routing doesn't change under them.
 
 <!-- SECTION:NOTES:BEGIN -->
 fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+Run opened: studying pick/lock code before touching anything. Will pin AC#1 with a test that flips default_agent between two runs of one task, then add the per-task lock.
+
+Found and fixing an acquire() bug where partial locks (like the dev/checkout lock succeeding but the pm/task lock failing) left phantom entries in r.busy — fixed via all-or-nothing release; plus a test pinning the flock cross-process via the helper test process.
+
+/* verdicts below */
+
+Verdicts: #1 MET — TestATaskWithARunInFlightCannotBeStartedByAnotherRouting (runner_test.go): first run holds the task for root default dev mid-Do; second Runner (another process's stand-in) refuses the flipped routing (pm), touching no claim, no note, no history. #3 MET at the mechanism — TestTheTaskClaimIsAnFlockASecondHolderCannotTake: the claim is a flock, denied to a second open file description on run-taskid-<id>.lock, which is what another process opens; a literal daemon-vs-CLI collision against a live daemon NOT reproduced end-to-end. #2 MET — flock dies with the process; same test re-starts the task once the holder is gone, and the pre-existing TestWorkLeftMidFlightIsStillPickedUp keeps In Progress re-pick alive; suite green repo-wide, CI on the PR passed (build). #4 MET — pick.go and runner.go comments rewritten: agent/checkout key protects the workspace, per-task flock protects the task. Found + fixed on the way: acquire() leaked already-taken keys into busy[] when one key of the pair was refused (all-or-nothing now). ADR 0012 records the lock decision; CHANGELOG entry added.
 <!-- SECTION:NOTES:END -->

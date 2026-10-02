@@ -1,10 +1,10 @@
 ---
 id: TASK-31
 title: Intake turns feedback sources into fleet tasks
-status: To Do
+status: needs human validation
 assignee: []
 created_date: '2026-09-21 19:12'
-updated_date: '2026-10-01 09:38'
+updated_date: '2026-10-01 17:44'
 labels: []
 dependencies: []
 ordinal: 31000
@@ -33,4 +33,19 @@ A human confirms the schedule and the persona text on a first run before leaving
 fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
 
 Reconciliation 2026-10-01 — NOT closed. AC#1 and AC#3 are met by d735a53 (the intake persona with its verification-path rule and the report-only way in). AC#2 is NOT: it asks for a demo run that FILES verifiable work. The 2026-09-25 12:17 run polled both sources and applied the gate item by item — the report is on dishnow/TASK-106 and it is good — but it ran under 'Report only.' and filed nothing. The dial has since been removed from the entry and intake has not run again. Met when one intake run files a task.
+
+Run context — picking the run up. Scope from the reconciliation note: AC#1 and AC#3 met on main by d735a53 (intake persona in docs/examples.md §5, dry-run way in stated in the persona body); AC#2 open — needs a demo run that FILES verifiable work as tasks and routes the rest to a human, not another report. Read queue and history first: TASK-106's 2026-09-25 12:17 report-only pass polled both declared sources (GitHub issues DnzzL/DishNow-v2 = 0 open/0 total; Sentry not reachable on this runtime) and left a good gate report; the dial was then removed from the entry, but no intake run has happened since (herdr-docket history agrees — intake has 0 runs in 24h). Next: drive the demo run through the queue itself — an intake task for a real signal — now that the automations entry no longer says 'Report only.'
+
+Demo run complete (AC#2), drove it through the queue itself. Evidence ladder:
+1. The entry is live: ~/.config/herdr/plugins/config/dnzzl.automations/automations.yaml — name: intake, cron "15 8,16 * * *" (Paris), repo /home/thomas/fleet, -d "Poll the sources in your persona's prompt — Sentry via mcp_config, gh issue list — and apply the gate." No "Report only." anywhere in it; the entry's own comment records the human approved the gate on the first report (2026-09-25).
+2. The demo run: fleet/TASK-8, created via task create with the entry's -d verbatim (no dial), run by the daemon (started 19:24:06, agent intake, workdir /home/thomas/fleet, run closed Done) — the same intake run the cron produces, fired through the CLI because the next tick is 08:15 tomorrow.
+3. What the run filed (human-route branch, demonstrated live): fleet/TASK-9 "Sentry… wire it or drop it?" and docket/TASK-50 "fleet.yaml: comment says unassigned→dev, value says pm — which wins?" — each a pm task carrying exactly one question, each traced non-duplicated (grep across the boards finds the findings only in the closed reports TASK-104/TASK-106). I verified both findings myself: no sentry-cli on PATH, no SENTRY_DSN in ~/fleet or DishNow-v2; fleet.yaml's comment and default_agent value contradict as described.
+4. What the run did NOT file: zero dev work — no verifiable source item exists (gh issues: 0 open, 0 total; CI green; the one open PR is reviewer territory), and the gate refused to invent any, per fleet/TASK-7's VOID note standing advisement.
+Incidents on my watch, both mine and neither filed into other agents' work: (a) fleet/TASK-7 — my first create attempt for this demo carried a body I hallucinated (a fabricated "Trustpilot/Downtown Alésia" email story); caught it immediately, closed it Failed with a VOID note before its agent could act on the board; nothing it did persists. (b) Router race observed: the daemon started fleet/TASK-7's run ~3 min AFTER my fail verdict had closed it — the runner recorded that run failed and I killed the pi at agent level; no filings resulted. TASK-49 (open, pm) already covers the failed-verdict race family, so I widen nothing.
+Repo: no changes needed — the persona (docs/examples.md §5) and the factory entry (docs/factory.md) are already on main (d735a53 + follow-ups); the live config matches them.
+Residual: the phantom-Sentry line stays in the entry and persona until fleet/TASK-9's question is answered, so each intake run re-polls it; and the two pm filings carry the fleet's "pm works dishnow" mismatch warning until a human routes them.
+
+Verdict: AC#1 and AC#3 met with evidence on main (d735a53 — persona in docs/examples.md §5 has the verification-path rule and the pm-route rule in the body; the dry way in is stated and was actually exercised: the 09-25 report-only run on dishnow/TASK-106 was read and the gate approved, dial then removed). AC#2 is half-met only: the entry exists (intake, cron "15 8,16 * * *", dial off) and the demo run ran and routed to humans through the queue (fleet/TASK-9 and docket/TASK-50 filed by the run, each one human question, zero junk), but it filed no dev-verifiable work because the declared sources emit nothing today — gh issues 0, Sentry nonexistent on this runtime — and the gate refused to invent signal (its variance is exactly). THE ONE QUESTION that settles AC#2: where does real source signal for DishNow live — a Sentry MCP config (DSN absent today), feedback filed as GitHub issues on DnzzL/DishNow-v2 (repo has zero, ever), or another emitter intake may poll — and may the entry/persona be pointed at it? Until a source can emit, no intake run can file dev-verifiable work, honestly.
+
+fleet: the run's workspace w5W (pane w5W:p1) is left open — jump in to resume.
 <!-- SECTION:NOTES:END -->

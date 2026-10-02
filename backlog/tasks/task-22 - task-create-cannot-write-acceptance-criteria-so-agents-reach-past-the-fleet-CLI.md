@@ -3,10 +3,10 @@ id: TASK-22
 title: >-
   task create cannot write acceptance criteria, so agents reach past the fleet
   CLI
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-09-13 16:51'
-updated_date: '2026-10-01 09:32'
+updated_date: '2026-10-01 17:01'
 labels: []
 dependencies: []
 ordinal: 22000
@@ -37,4 +37,14 @@ Not urgent. Raised while writing the personas for v0.3.0; parked deliberately un
 
 <!-- SECTION:NOTES:BEGIN -->
 fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
+
+picked up: reading the port, adapters and personas before deciding the shape (widened Create vs optional criterion-writer)
+
+PR open: https://github.com/DnzzL/herdr-docket/pull/9 — CriterionWriter capability landed; closing note carries the verdicts
+
+All three: PASS.
+1) task create carries --ac (repeatable, empty refused); end-to-end verified against a real Backlog.md queue — create, criteria attached, read back #1/#2 in order.
+2) No persona reaches past the CLI: shipped agents/ grep clean; prompt follow-up template and skills/fleet-tasks/SKILL.md now teach --ac, so the bypass has no reason to exist.
+3) Stated degradation: backlogmd and github store criteria (github appends checklist lines to the body); basecamp cannot carry steps on an existing to-do, so it takes no CriterionWriter and the command refuses naming 'put the bar in -d instead' — never silent. Contract suite holds it: worktest writes-then-reads through the port, skips only for a non-capable adapter.
+Design: ADR 0012 — CriterionWriter capability beside Phaser/Assigner/BaseBrancher; widening Create rejected.
 <!-- SECTION:NOTES:END -->
