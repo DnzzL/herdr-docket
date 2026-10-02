@@ -11,6 +11,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -171,9 +173,19 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	}
 
 	res := pick.Next(tasks, agents, settings.Defaults())
+	// The roster is in scope at the refusal, so the note can carry the fix:
+	// name the agents that do answer and say reassign. Quoting `add agents/
+	// <name>/AGENT.md` was an instruction a model took during the 2026-09-25
+	// review leg, writing a retired name back onto a task mid-run; creating an
+	// agent is a human's decision and is not asked of the reader here.
+	roster := make([]string, 0, len(agents))
+	for n := range agents {
+		roster = append(roster, n)
+	}
+	sort.Strings(roster)
 	for _, t := range res.Unknown {
 		name := pick.AssigneeFor(t, settings.Defaults())
-		note := fmt.Sprintf("fleet: assignee %q is not a fleet agent — fix the assignee or add agents/%s/AGENT.md.", name, name)
+		note := fmt.Sprintf("fleet: assignee %q is not a fleet agent — reassign the task to one of: %s.", name, strings.Join(roster, ", "))
 		if t.Assignee == "" {
 			note = fmt.Sprintf("fleet: default_agent %q (fleet.yaml) is not a fleet agent.", name)
 		}

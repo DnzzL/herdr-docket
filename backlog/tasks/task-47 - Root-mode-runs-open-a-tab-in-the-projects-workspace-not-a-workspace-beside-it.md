@@ -3,10 +3,11 @@ id: TASK-47
 title: >-
   Root-mode runs open a tab in the project's workspace, not a workspace beside
   it
-status: To Do
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-01 11:14'
+updated_date: '2026-10-01 14:10'
 labels: []
 dependencies: []
 ordinal: 47000
@@ -34,3 +35,9 @@ Acceptance criteria:
 #4 Worktree runs are untouched: they are already grouped by repo_key.
 #5 The board's x does the right thing from the history record alone.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Delivered by d429e8c (this session). I filed this ticket with the research and then implemented it in the same sitting, so it never reached plugin-dev. AC#1: a root run borrows the project's primary workspace as a tab, cwd unchanged. AC#2: no primary, no borrowing — the fleet never creates one. AC#3: TestClosingABorrowedWorkspaceClosesOnlyTheTab pins the hazard; my first patch had exactly that bug (closed workspace AND tab) and the test is why it did not ship. AC#4: worktree runs untouched. AC#5: closeTarget reads the decision from the history record alone. Verified the herdr call shapes against a live probe tab before relying on them.
+<!-- SECTION:NOTES:END -->

@@ -15,7 +15,17 @@ What changed for someone using the plugin. Dates are release dates.
   untouched and the CLI says where the task landed rather than implying the
   fleet chose. No new flag: the fleet knows which word it wants, and a human
   picking a specific column still does it where the queue lives.
-
+- **A task with a run in flight cannot be started twice.** The run lock was
+  keyed per agent (or per shared checkout), so it kept two runs off one
+  workspace — but a `fleet.yaml` edit re-routes the *next* pick from under a
+  live run, and two different agents hold two different keys: an unassigned
+  task mid-run under one default agent was picked up by another within one
+  tick of the default changing. Every run now also holds a flock keyed by the
+  task id (`run-taskid-<id>.lock` in the state dir), across processes — the
+  daemon and a manual `herdr-docket run_TASK-x` cannot double a task while
+  either one is live. A run whose process died releases the task as before:
+  flock dies with the process, so the In-Progress self-heal still picks work
+  up the next tick.
 - **An agent is not resumed onto a checkout that is not there.** `init
   --factory` ships three agents on a placeholder workdir and prints "point its
   workdir at your repo, then resume"; nothing enforced the *then*, so the
@@ -49,6 +59,14 @@ What changed for someone using the plugin. Dates are release dates.
   been redirected into the plugin's state dir, but the path was remembered by
   whoever set it up. The tail (`-n LINES`, 100 by default) is now one command
   away — a report of what the daemon has said so far, not a second log.
+- **A task routed to an agent nobody answers to is told who does answer.** The
+  daemon's refusal used to quote the ghost and offer `add agents/<name>/AGENT.md`
+  — an instruction-shaped option one model took during the 2026-09-25 review
+  leg, writing a retired name back onto a task mid-run. The comment now lists
+  the fleet's agents and says reassign the task to one of them; creating an
+  agent is a human's decision and stays out of the note. Refusal still written
+  once per task and unknown name, and only for names no agent answers to.
+
 - **The prompt names a CLI the agent can actually run.** The plugin is not on
   a pane's PATH, and every run was told to close itself with
   `herdr-docket task done`. The work got done; the closing command did not

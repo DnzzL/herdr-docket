@@ -252,6 +252,47 @@ func TestWorkIsNeverRoutedToAnAgentOfAnotherProject(t *testing.T) {
 	}
 }
 
+// The refusal for an unknown assignee can carry the fix with it: the roster
+// is in scope at the point of refusal, so the note names the agents that do
+// answer and says reassign. It used to offer `add agents/<name>/AGENT.md` —
+// an instruction-shaped option a model took during the 2026-09-25 review leg,
+// writing a retired name back onto a task mid-run.
+func TestAnUnknownAssigneeIsToldWhoDoesAnswer(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(work.Task{ID: "TASK-1", Title: "T", Open: true, Assignee: "dishnow-dev"})
+	withFleet(t, map[string]fleet.Agent{
+		"dev":      {Name: "dev", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1},
+		"reviewer": {Name: "reviewer", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1},
+	}, src, src)
+	reported := map[string]bool{}
+	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"})
+
+	evaluate(runs, reported)
+	evaluate(runs, reported)
+
+	if src.closed("TASK-1") {
+		t.Fatal("an unknown assignee must not run the task")
+	}
+	notes := src.notesFor()
+	if len(notes) != 1 {
+		t.Fatalf("want one refusal written once, got %d: %v", len(notes), notes)
+	}
+	note := notes[0]
+	for _, name := range []string{"dev", "reviewer"} {
+		if !strings.Contains(note, name) {
+			t.Errorf("the note must list the roster (%q missing): %q", name, note)
+		}
+	}
+	if !strings.Contains(note, "reassign") {
+		t.Errorf("the note must frame reassignment as the action: %q", note)
+	}
+	for _, plant := range []string{"add agents/", "AGENT.md"} {
+		if strings.Contains(note, plant) {
+			t.Errorf("the note must not plant an agent-creation instruction (%q): %q", plant, note)
+		}
+	}
+}
+
 // Routing is only a question for work the fleet could pick up. A closed task
 // is nobody's to route, so a mismatch on one is not a problem to report — and
 // reporting it writes a comment onto somebody's finished work, every tick,

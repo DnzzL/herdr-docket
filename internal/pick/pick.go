@@ -27,7 +27,11 @@ type Result struct {
 // Open, not "To Do": a task left In Progress by a process that died still
 // owes work, and picking it up again is what makes a crashed run self-heal.
 // A task whose agent is mid-run is not re-picked — its agent is simply not
-// free — and the run lock is what actually keeps two runs off the same task.
+// free. And one task is kept to one run by the runner's per-task flock
+// (`run-taskid-<id>.lock`), not by routing: the agent/checkout lock keys the
+// agent or the checkout, so it protects the workspace, while the default
+// routing is re-read every tick and a `fleet.yaml` edit can present an open
+// task to a second agent while the first is mid-run.
 func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defaults) Result {
 	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
