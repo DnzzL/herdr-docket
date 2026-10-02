@@ -215,8 +215,10 @@ func TestAwaitReturnsWhenTheAgentSettles(t *testing.T) {
 }
 
 func TestAwaitGivesUpAsSoonAsTheWorkspaceIsClosed(t *testing.T) {
-	// The failure this exists for: a run cancelled seconds in used to hold its
+	// The failure this returns on: a run cancelled seconds in used to hold its
 	// in-flight slot for the whole timeout. One slice is all it should cost now.
+	// The code is herdr 0.9.x's agent_not_found (CodeAgentGone) — the value the
+	// contract suite holds the real binary to.
 	ops := &fakeOps{agentWait: func(string, time.Duration) error {
 		return apiErr("agent wait", herdr.CodeAgentGone)
 	}}

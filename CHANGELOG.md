@@ -44,6 +44,16 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## v0.8.0 — 2026-10-02
 
+- **A run whose workspace was closed mid-flight reports cancelled again.** The
+  vanished-agent recovery branched on `agent_not_running` — a code herdr 0.9.x
+  never sends to `agent get` / `wait` / `prompt`. Every vanished shape it does
+  send is `agent_not_found` (workspace closed under the agent, agent exited on
+  its own, target never registered — four shapes probed against 0.9.0 and
+  0.9.1), so the recovery matched nothing and a called-off run sat pinned on a
+  dead pane until its timeout instead of ending within one wait slice as a
+  blocked, human-decides task. The constant now reads what herdr sends, and
+  the contract suite holds the real binary to that pin.
+
 - **The prompt names a CLI the agent can actually run.** The plugin is not on
   a pane's PATH, and every run was told to close itself with
   `herdr-docket task done`. The work got done; the closing command did not
