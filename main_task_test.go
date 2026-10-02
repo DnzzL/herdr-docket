@@ -214,6 +214,51 @@ func TestTaskCreateReportsWhereTheTaskLanded(t *testing.T) {
 	})
 }
 
+// The two capabilities on one create, in order: the queue files the task
+// where the daemon can claim it, and the bar is written through the id it
+// returned. Either alone was green on its own side of the merge; this is the
+// reconciliation this task exists for.
+type bothCapabilitiesSource struct {
+	fakeSource
+	started      bool
+	criteriaFor  []string
+	criteriaSeen []string
+	order        []string
+}
+
+func (f *bothCapabilitiesSource) CreateTodo(title, body, assignee string) (string, error) {
+	f.started = true
+	f.order = append(f.order, "create")
+	return f.fakeSource.Create(title, body, assignee)
+}
+
+func (f *bothCapabilitiesSource) WriteCriteria(id string, criteria []string) error {
+	f.criteriaFor = []string{id}
+	f.criteriaSeen = criteria
+	f.order = append(f.order, "criteria")
+	return nil
+}
+
+func TestTaskCreateFilesThePickupStatusThenCarriesTheBar(t *testing.T) {
+	src := &bothCapabilitiesSource{}
+	got, err := runTask(t, src, "create", "Follow up", "-d", "why", "--ac", "compiles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !src.started {
+		t.Fatal("the create must reach the pickup capability (ADR-0012)")
+	}
+	if !reflect.DeepEqual(src.criteriaSeen, []string{"compiles"}) {
+		t.Fatalf("criteria = %v, want the one the run handed on", src.criteriaSeen)
+	}
+	if !reflect.DeepEqual(src.order, []string{"create", "criteria"}) {
+		t.Fatalf("writes happened %v, want create before criteria", src.order)
+	}
+	if !strings.Contains(got, "in To Do") {
+		t.Fatalf("the landing report must survive a criteria write:\n%s", got)
+	}
+}
+
 // multiSource is a composite queue for the CLI tests: it records which source
 // a create targeted, and whether the queue claimed to have filed the task
 // into its own pickup column, so -s/--source and the landing report are
