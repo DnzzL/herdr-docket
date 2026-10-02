@@ -260,6 +260,47 @@ func TestAnUnknownAssigneeIsToldWhoDoesAnswer(t *testing.T) {
 // is nobody's to route, so a mismatch on one is not a problem to report — and
 // reporting it writes a comment onto somebody's finished work, every tick,
 // for as long as the fleet runs.
+//
+// TASK-53, one step wider than pick: the pick runs inside the daemon's tick,
+// after the misroute scan, so a task parked on a human must be left out of
+// everything a tick does with a queue — no run, no refusal comment, no
+// close. Tested here rather than in pick because the comment-writing lives
+// in this package.
+func TestABlockedTaskIsNeverRunAndNeverTalkedTo(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(work.Task{
+		ID: "fleet/TASK-1", Title: "T", Open: true, Blocked: true,
+		Assignee: "dev", Phase: "Blocked",
+	})
+	withFleet(t, map[string]fleet.Agent{
+		"dev": {Name: "dev", Workdir: "/dishnow", Workspace: "root", TimeoutMinutes: 1},
+	}, src, src)
+	loadSettings = func() (fleet.Settings, error) {
+		// Sources make the misroute shape real: the agent works another
+		// checkout, so the old code wrote "reassign it to an agent of fleet"
+		// onto exactly this parked task — a human column the fleet must not
+		// talk to any more than it runs.
+		return fleet.Settings{Dir: "/fleet", Sources: map[string]fleet.SourceConfig{
+			"dishnow": {Dir: "/dishnow"},
+			"fleet":   {Dir: "/w/fleet"},
+		}}, nil
+	}
+
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+
+	if src.closed("fleet/TASK-1") {
+		t.Fatal("parked work must not be run nor closed by a refusal")
+	}
+	if notes := src.notesFor(); len(notes) != 0 {
+		t.Fatalf("a blocked task waits on its human, not on a comment from the fleet: %v", notes)
+	}
+}
+
+// Routing is only a question for work the fleet could pick up. A closed task
+// is nobody's to route, so a mismatch on one is not a problem to report — and
+// reporting it writes a comment onto somebody's finished work, every tick,
+// for as long as the fleet runs.
 func TestAClosedTaskIsNeverCalledMisrouted(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	src := newMemSource(
