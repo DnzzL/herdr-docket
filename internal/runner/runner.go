@@ -28,8 +28,11 @@ import (
 // can fly in parallel; agents in root mode share their working copy, so runs
 // keyed to the same root workdir are serialized. The claim holds across
 // processes — the daemon, `herdr-docket run` and the board each have their own
-// Runner, and an OS file lock per key in the state dir keeps a manual run
-// from racing the daemon into the same agent or the same checkout.
+// Runner, and an OS file lock in the state dir keeps a manual run from
+// racing the daemon into the same agent, the same checkout — or the same
+// task: the agent/checkout key protects the workspace, the per-task key
+// (`run-taskid-<id>.lock`) protects the task itself, because a `fleet.yaml`
+// edit re-routes work under a live run.
 type Runner struct {
 	host host.Host
 	// settings is held for what a prompt needs to know about the queue a task
@@ -49,9 +52,11 @@ func New(h host.Host, settings fleet.Settings) *Runner {
 	return &Runner{host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{}}
 }
 
-// LockKey names what a run of this agent would mutate: the shared checkout
-// for root mode, the agent itself for worktree mode (each of its runs gets a
-// fresh checkout — the agent's serial identity is all there is to protect).
+// key keeps a run off the workspace another run may be mutating: the
+// agent itself in worktree mode (each run gets a fresh checkout — the
+// agent's serial identity is all there is to protect), the shared checkout
+// for root mode. It says nothing about which task a run claims — the
+// per-task flock in Run does that.
 func LockKey(a fleet.Agent) string {
 	if a.Workspace == "root" {
 		return "root-" + sanitize(a.Workdir)
@@ -76,30 +81,56 @@ func (r *Runner) Busy() bool {
 	return len(r.busy) > 0
 }
 
-// acquire claims the run slot for one key: the in-process entry plus a
-// non-blocking flock on <state>/run-<key>.lock. flock dies with the process,
-// so a crashed run never leaves a stale claim behind.
-func (r *Runner) acquire(key string) bool {
+// acquire claims the run's slots, one per key: the in-process entry plus a
+// non-blocking flock on <state>/run-<key>.lock for each. All or nothing, so a
+// run that cannot take every key takes none; the taken key is named back so
+// the refusal can say what was busy. flock dies with the process, so a
+// crashed run never leaves a stale claim behind.
+func (r *Runner) acquire(keys ...string) (taken string, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, taken := r.busy[key]; taken {
-		return false
+	for _, key := range keys {
+		if _, exist := r.busy[key]; exist {
+			return key, false
+		}
 	}
 	if err := os.MkdirAll(hostpath.StateDir(), 0o755); err != nil {
 		log.Printf("state dir: %v", err)
-		return false
+		return "", false
 	}
-	f, err := os.OpenFile(filepath.Join(hostpath.StateDir(), "run-"+key+".lock"), os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		log.Printf("run lock: %v", err)
-		return false
+	held := make([]*os.File, 0, len(keys))
+	for _, key := range keys {
+		f, err := os.OpenFile(filepath.Join(hostpath.StateDir(), "run-"+key+".lock"), os.O_CREATE|os.O_RDWR, 0o644)
+		if err != nil {
+			log.Printf("run lock: %v", err)
+			releaseLocked(r.busy, held) // give back what this attempt took
+			return "", false
+		}
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			f.Close()
+			releaseLocked(r.busy, held)
+			return key, false
+		}
+		held = append(held, f)
+		r.busy[key] = f
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	return "", true
+}
+
+// releaseLocked unlocks and closes files this process holds, and drops their
+// in-process entries. Only ever called with r.mu held.
+func releaseLocked(busy map[string]*os.File, files []*os.File) {
+	for _, f := range files {
+		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 		f.Close()
-		return false
 	}
-	r.busy[key] = f
-	return true
+	for key, f := range busy {
+		for _, held := range files {
+			if held == f {
+				delete(busy, key)
+			}
+		}
+	}
 }
 
 func (r *Runner) release(key string) {
@@ -128,16 +159,26 @@ func sanitize(s string) string {
 	return string(out)
 }
 
-// Run executes the task synchronously. A task offered while its agent (or,
-// in root mode, its checkout) is in flight is refused, not queued — it stays
-// open and the next tick sees it. The lock is the whole claim: a task routes
-// to exactly one agent, so holding that agent's slot is holding the task.
+// Run executes the task synchronously. Two locks are taken before anything
+// happens, and a run that cannot take both is refused, not queued — the task
+// stays open and the next tick sees it. The per-agent/checkout key keeps
+// two runs off the same workspace — one agent's serial identity, root runs'
+// shared checkouts. The per-task key (run-taskid-<id>.lock) keeps two runs off
+// the same task however the routing disagrees: agents hold different keys,
+// and a `fleet.yaml` edit re-reads the default routing every tick, so an open
+// task can present itself to a second agent while the first is mid-run.
 func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger) error {
 	key := LockKey(a)
-	if !r.acquire(key) {
+	taskKey := "taskid-" + sanitize(t.ID)
+	taken, ok := r.acquire(key, taskKey)
+	if !ok {
+		if taken == taskKey {
+			return fmt.Errorf("%s: a run is already in flight", t.ID)
+		}
 		return fmt.Errorf("%s: a run is already in flight for %s", t.ID, key)
 	}
 	defer r.release(key)
+	defer r.release(taskKey)
 
 	rec := recorder{id: history.NewID(t.ID), task: t.ID, agent: a.Name, trigger: trigger, started: time.Now()}
 	var errInspect error
