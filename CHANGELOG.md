@@ -4,6 +4,11 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **`task note` says what it wrote.** A note that landed printed nothing, so
+  an agent read its own successful writes as failures and kept rephrasing them.
+  It now prints `<id> noted` the way `done`, `fail` and `block` confirm theirs;
+  a refused note still prints only the error.
+
 - **A queue can verify and merge on its own.** Name a `verifier:` on a queue
   and a PR delivered with `task done --pr` stays open, goes to that agent,
   comes back to its author on a FAIL (twice at most), and on a PASS reaches a

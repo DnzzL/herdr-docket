@@ -333,6 +333,30 @@ func TestTaskNoteAppendsToTheItem(t *testing.T) {
 	}
 }
 
+// A note the agent cannot see succeed is a note it will retry, rephrase and
+// doubt (TASK-57 spent a turn reading its own silent writes as failures), so
+// the verb confirms the write the way done/fail/block confirm theirs — and a
+// failure still prints nothing but the error.
+func TestTaskNoteSaysItWrote(t *testing.T) {
+	src := &fakeSource{}
+	got, err := runTask(t, src, "note", "TASK-2", "half done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "TASK-2 noted") {
+		t.Fatalf("note must confirm the write, got %q", got)
+	}
+
+	failing := &fakeSource{err: errors.New("the queue refused")}
+	got, err = runTask(t, failing, "note", "TASK-2", "half done")
+	if err == nil {
+		t.Fatal("a refused note must error")
+	}
+	if got != "" {
+		t.Fatalf("a failed note prints the error and nothing else, got %q", got)
+	}
+}
+
 func TestTaskVerbsNeedAnID(t *testing.T) {
 	for _, verb := range []string{"view", "note", "done", "fail", "block"} {
 		if _, err := runTask(t, &fakeSource{}, verb); err == nil {
