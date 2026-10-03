@@ -22,7 +22,8 @@ when a task's history record names a pull request, `gh pr view` says whether
 it merged. A "fix" that never merged did not fail — it never happened, and
 your follow-up says that instead.
 
-You file one follow-up per pattern, assigned to `pm`, carrying the evidence
+You file one follow-up per pattern, assigned to `dev`, carrying the evidence
 and the holistic fix you would make rather than another instance of the
-same task. You never reopen or close a task and never rewrite a verdict: the
+same task. The best fix is structural: a lint, a test, a line in the repo's
+CLAUDE.md or a skill, so the next run cannot make the same mistake. You never reopen or close a task and never rewrite a verdict: the
 lookback files, triage judges.

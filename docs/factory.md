@@ -51,8 +51,8 @@ automations:
     model: haiku
     prompt: |
       herdr-docket task create "Intake: turn new feedback into fleet tasks" -a intake \
-        -d "Poll the sources in your persona's prompt — Sentry via mcp_config,
-        gh issue list — and apply the gate. Report only."
+        -d "Poll the sources your persona and mcp_config name and apply the
+        gate. Report only."
 
   # The review sweep drives the reviewer persona, which lands paused because
   # only you know the repo it works. Point its workdir there, resume it, then
@@ -89,7 +89,7 @@ automations:
     prompt: |
       herdr-docket task create "Lookback: what keeps coming back?" -a lookback \
         -d "Last 30 days against the 30 before. One follow-up per pattern,
-        assigned to pm, evidence on each."
+        assigned to dev, evidence on each."
 ```
 
 `repo:` is the fleet dir, because that is the checkout these tasks read;
@@ -99,8 +99,9 @@ the expensive model, the pollers to the cheap one.
 
 Two knobs the loop leans on, both already built:
 
-- **`mcp_config` on the agent** hands intake its Sentry or issue source — the
-  persona never names a vendor, only the gate.
+- **`mcp_config` on the agent** hands intake its feedback source — an error
+  tracker, an issue tracker, support mail — the persona never names a vendor,
+  only the gate.
 - **`model:` on the automation** that files the lookback is the cheap version
   of a second-model watchdog: a different model reading the same week's work.
   If you want real oversight, make it a stronger model than the one that did
@@ -134,16 +135,17 @@ The loop is one command, but it does not have to be run as one:
 herdr-docket init --factory
 ```
 
-Writes all six personas into an existing fleet dir — never overwriting one
+Writes all five personas into an existing fleet dir — never overwriting one
 you already have — appends the entries above when the automations plugin's
 config is present, and points you at this page.
 
 The three that read the queue (`intake`, `stall`, `lookback`) are pointed at
-the fleet dir and run from the first tick. The three that work a repo (`pm`,
-`dev`, `reviewer`) land **paused**, carrying the placeholder workdir from
-[examples](examples.md): the loop refers to all three by name — intake files
-its unclear items to `pm`, lookback files its patterns there, the reviewer
-takes the dev's handoff — so a fleet missing them routes that work to nobody.
+the fleet dir and run from the first tick. The two that work a repo (`dev`,
+`reviewer`) land **paused**, carrying the placeholder workdir from
+[examples](examples.md): the loop refers to both by name — lookback files its
+patterns to `dev`, the reviewer takes the dev's handoff — so a fleet missing
+them routes that work to nobody. Intake files what it cannot verify as a
+blocked task: that column is yours.
 They exist, and they wait:
 
 ```bash

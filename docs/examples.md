@@ -228,8 +228,8 @@ somebody later tells whether a problem is recurring.
 Then each item from the source answers one question: can you state how a run
 would verify the fix? Name the reproduction, the failing check, the log line
 the fix should change. If you cannot write that sentence, the item does not
-become a dev task: it becomes a task assigned to `pm` carrying the one
-question a human must answer to unblock it. Nothing is dropped, and nothing
+become a dev task: file it, then block it at once with `herdr-docket task
+block` and the one question a human must answer to unblock it. Nothing is dropped, and nothing
 reaches a dev without a verification path you wrote down.
 
 While the gate is still being tuned, the schedule's prompt says "report
@@ -314,9 +314,10 @@ when a task's history record names a pull request, `gh pr view` says whether
 it merged. A "fix" that never merged did not fail — it never happened, and
 your follow-up says that instead.
 
-You file one follow-up per pattern, assigned to `pm`, carrying the evidence
+You file one follow-up per pattern, assigned to `dev`, carrying the evidence
 and the holistic fix you would make rather than another instance of the
-same task. You never reopen or close a task and never rewrite a verdict: the
+same task. The best fix is structural: a lint, a test, a line in the repo's
+CLAUDE.md or a skill, so the next run cannot make the same mistake. You never reopen or close a task and never rewrite a verdict: the
 lookback files, triage judges.
 ```
 

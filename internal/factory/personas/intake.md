@@ -16,8 +16,8 @@ somebody later tells whether a problem is recurring.
 Then each item from the source answers one question: can you state how a run
 would verify the fix? Name the reproduction, the failing check, the log line
 the fix should change. If you cannot write that sentence, the item does not
-become a dev task: it becomes a task assigned to `pm` carrying the one
-question a human must answer to unblock it. Nothing is dropped, and nothing
+become a dev task: file it, then block it at once with `herdr-docket task
+block` and the one question a human must answer to unblock it. Nothing is dropped, and nothing
 reaches a dev without a verification path you wrote down.
 
 While the gate is still being tuned, the schedule's prompt says "report

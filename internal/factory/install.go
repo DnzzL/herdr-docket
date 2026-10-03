@@ -19,9 +19,9 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
-// The loop's six personas, in two kinds. The fleet-side three — intake, stall
+// The loop's five personas, in two kinds. The fleet-side three — intake, stall
 // and lookback — read the queue, so their workdir is the fleet itself and they
-// run the moment they land. The project-side three — pm, dev and reviewer —
+// run the moment they land. The project-side two — dev and reviewer —
 // work a repo only the owner can name, so they land paused, carrying the
 // example's placeholder workdir: every stage the loop refers to exists from
 // the first install, and none of them runs until a human has pointed it
@@ -35,9 +35,6 @@ var stallPersona string
 
 //go:embed personas/lookback.md
 var lookbackPersona string
-
-//go:embed personas/pm.md
-var pmPersona string
 
 //go:embed personas/dev.md
 var devPersona string
@@ -56,7 +53,6 @@ var personas = []struct {
 	{"intake", intakePersona, false},
 	{"stall", stallPersona, false},
 	{"lookback", lookbackPersona, false},
-	{"pm", pmPersona, true},
 	{"dev", devPersona, true},
 	{"reviewer", reviewerPersona, true},
 }
@@ -73,8 +69,8 @@ const entries = `  # Delete "Report only." from the intake entry after you have 
     model: haiku
     prompt: |
       herdr-docket task create "Intake: turn new feedback into fleet tasks" -a intake \
-        -d "Poll the sources in your persona's prompt — Sentry via mcp_config,
-        gh issue list — and apply the gate. Report only."
+        -d "Poll the sources your persona and mcp_config name and apply the
+        gate. Report only."
 
   # The review sweep drives the reviewer persona, which lands paused because
   # only you know the repo it works. Point its workdir there, resume it, then
@@ -111,7 +107,7 @@ const entries = `  # Delete "Report only." from the intake entry after you have 
     prompt: |
       herdr-docket task create "Lookback: what keeps coming back?" -a lookback \
         -d "Last 30 days against the 30 before. One follow-up per pattern,
-        assigned to pm, evidence on each."
+        assigned to dev, evidence on each."
 `
 
 // Install writes the loop into dir: the fleet-side personas, then the
@@ -190,7 +186,7 @@ func Install(dir string, out io.Writer) error {
 // before the loop is trusted, and where the rest is written down.
 func afterInstall(out io.Writer) error {
 	fmt.Fprintln(out, `factory: next — read docs/factory.md; the intake entry files nothing until you delete "Report only."`)
-	fmt.Fprintln(out, "factory: pm, dev and reviewer are paused until their workdir names your repo; the review-sweep entry is disabled until the reviewer runs")
+	fmt.Fprintln(out, "factory: dev and reviewer are paused until their workdir names your repo; the review-sweep entry is disabled until the reviewer runs")
 	return nil
 }
 
