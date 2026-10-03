@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os/exec"
 	"strings"
 )
@@ -153,13 +154,16 @@ func gh(args ...string) ([]byte, error) {
 
 // contents is `gh api` for one file's raw bytes at a ref, the repo named
 // explicitly — the daemon's cwd is no git checkout, so `gh api
-// repos/{owner}/{repo}` placeholder expansion cannot be relied on. It asks
-// for `application/vnd.github.raw` so gh returns the file as stored, no
-// base64 JSON to decode. A path not on the ref comes back as fs.ErrNotExist
-// — the caller's keep-looking — and anything else surfaces as its own error.
+// repos/{owner}/{repo}` placeholder expansion cannot be relied on, and the
+// ref rides in the url: `gh api -f` form values silently turn the GET into
+// a POST, which the contents endpoint answers 404. It asks for
+// `application/vnd.github.raw` so gh returns the file as stored, no base64
+// JSON to decode. A path not on the ref comes back as fs.ErrNotExist — the
+// caller's keep-looking — and anything else surfaces as its own error.
 func contents(owner, repo, ref, path string) ([]byte, error) {
-	out, err := gh("api", fmt.Sprintf("repos/%s/%s/contents/%s", owner, repo, path),
-		"-H", "Accept: application/vnd.github.raw", "-f", "ref="+ref)
+	out, err := gh("api", fmt.Sprintf("repos/%s/%s/contents/%s?ref=%s",
+		owner, repo, path, url.QueryEscape(ref)),
+		"-H", "Accept: application/vnd.github.raw")
 	if err != nil {
 		// gh api reports a missing path as `gh: Not Found (HTTP 404)`; no
 		// sentinel is returned, so the message is the only tell.
