@@ -17,6 +17,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/factory"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/gate"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
@@ -45,6 +46,7 @@ Usage:
   herdr-docket task assign <id> <agent>  Hand a task to another agent
   herdr-docket task note <id>   Append to a task's notes
   herdr-docket task done|fail|block <id> [--note "..."] [--pr <url>]  Close with a verdict
+  herdr-docket task verdict <id> PASS|FAIL --pr <url> [--note "..."]  A verifier's verdict on a PR
   herdr-docket agent list       Show the agents and which are paused
   herdr-docket agent pause <n>  Stop scheduling an agent (a running task finishes)
   herdr-docket agent resume <n> Start scheduling it again
@@ -228,7 +230,18 @@ func taskCmd(args []string) error {
 		return err
 	}
 	cwd, _ := os.Getwd()
-	return runTaskCmd(src, queueFor(cwd, settings), args, os.Stdout)
+	env := taskEnv{src: src, defaultQueue: queueFor(cwd, settings), pipeline: settings.PipelineFor, forge: gate.GH{}}
+	return runTaskCmd(env, args, os.Stdout)
+}
+
+// taskEnv is what the task verbs work against, injected so the CLI's shape is
+// tested without a backend, a forge or a fleet.yaml on disk.
+type taskEnv struct {
+	src          work.Source
+	defaultQueue string
+	// pipeline answers whether a task's queue verifies before it merges.
+	pipeline func(taskID string) fleet.Pipeline
+	forge    gate.Forge
 }
 
 // queueFor is the queue a `task create` lands in when the command line did not
@@ -253,9 +266,10 @@ func queueFor(cwd string, s fleet.Settings) string {
 // list and view to read, create to hand on follow-up work, assign to pass one
 // on, note to say where things stand, and done/fail/block to close with a
 // verdict.
-func runTaskCmd(src work.Source, defaultQueue string, args []string, out io.Writer) error {
+func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
+	src, defaultQueue := env.src, env.defaultQueue
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|done|fail|block")
+		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|done|fail|block|verdict")
 	}
 	switch args[0] {
 	case "list":
@@ -285,7 +299,9 @@ func runTaskCmd(src work.Source, defaultQueue string, args []string, out io.Writ
 		}
 		return src.Comment(args[1], args[2])
 	case "done", "fail", "block":
-		return taskClose(src, args[0], args[1:], out)
+		return taskClose(env, args[0], args[1:], out)
+	case "verdict":
+		return taskVerdict(env, args[1:], out)
 	}
 	return fmt.Errorf("unknown task command %q", args[0])
 }
@@ -415,7 +431,8 @@ var closeVerbs = map[string]work.Verdict{
 
 // taskClose runs one of the three closing verbs. The note is recorded first,
 // so the reason is on the task by the time it closes.
-func taskClose(src work.Source, verb string, args []string, out io.Writer) error {
+func taskClose(env taskEnv, verb string, args []string, out io.Writer) error {
+	src := env.src
 	verdict, ok := closeVerbs[verb]
 	if !ok {
 		return fmt.Errorf("unknown closing verb %q", verb)
@@ -451,6 +468,17 @@ func taskClose(src work.Source, verb string, args []string, out io.Writer) error
 			return err
 		}
 	}
+	// A queue with a verifier takes a PR as a delivery, not a close: the task
+	// stays open and the runner hands the PR to the verifier (ADR 0013). The
+	// PR on the run record is the only signal the runner reads, so failing to
+	// write it fails the command.
+	if verb == "done" && pullRequest != "" && env.pipeline(id).Verifier != "" {
+		if err := history.SetPullRequest(id, pullRequest); err != nil {
+			return fmt.Errorf("%s: pull request was not recorded, nothing was delivered: %w", id, err)
+		}
+		fmt.Fprintf(out, "%s delivered — it stays open while the verifier judges the PR\n", id)
+		return nil
+	}
 	if err := src.Close(id, verdict); err != nil {
 		return err
 	}
@@ -464,6 +492,64 @@ func taskClose(src work.Source, verb string, args []string, out io.Writer) error
 		}
 	}
 	fmt.Fprintf(out, "%s %s\n", id, verb)
+	return nil
+}
+
+// taskVerdict is the verifier's one write: its verdict on a pull request,
+// pinned to the patch-id of the diff it judged, recorded on its own run and
+// said on the PR. It closes nothing — the runner reads the verdict and the
+// merge gate decides.
+func taskVerdict(env taskEnv, args []string, out io.Writer) error {
+	const usage = `usage: herdr-docket task verdict <id> PASS|FAIL --pr <url> [--note "<text>"]`
+	var id, verdict, pullRequest, note string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "-n", "--note":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			note = v
+		case "--pr":
+			v, err := flagValue(args, &i, args[i])
+			if err != nil {
+				return err
+			}
+			pullRequest = v
+		default:
+			switch {
+			case id == "":
+				id = args[i]
+			case verdict == "":
+				verdict = strings.ToUpper(args[i])
+			default:
+				return fmt.Errorf("task verdict: unexpected argument %q\n%s", args[i], usage)
+			}
+		}
+	}
+	if id == "" || pullRequest == "" || (verdict != gate.Pass && verdict != gate.Fail) {
+		return errors.New(usage)
+	}
+	pr, err := env.forge.PR(pullRequest)
+	if err != nil {
+		return fmt.Errorf("%s: cannot read %s to pin the verdict: %w", id, pullRequest, err)
+	}
+	if note != "" {
+		if err := env.src.Comment(id, fmt.Sprintf("verdict %s on %s: %s", verdict, pullRequest, note)); err != nil {
+			return err
+		}
+	}
+	if err := history.SetVerification(id, verdict, pr.PatchID); err != nil {
+		return fmt.Errorf("%s: verdict was not recorded: %w", id, err)
+	}
+	body := fmt.Sprintf("docket-verdict: %s patch-id=%s", verdict, pr.PatchID)
+	if note != "" {
+		body += "\n\n" + note
+	}
+	if err := env.forge.Comment(pullRequest, body); err != nil {
+		fmt.Fprintf(out, "%s: verdict recorded, but not said on the PR: %v\n", id, err)
+	}
+	fmt.Fprintf(out, "%s verdict %s\n", id, verdict)
 	return nil
 }
 

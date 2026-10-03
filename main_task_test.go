@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DnzzL/herdr-docket/internal/gate"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/text"
 	"github.com/DnzzL/herdr-docket/internal/work"
@@ -57,7 +58,34 @@ func runTask(t *testing.T, src work.Source, args ...string) (string, error) {
 func runTaskIn(t *testing.T, src work.Source, defaultQueue string, args ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
-	err := runTaskCmd(src, defaultQueue, args, &out)
+	err := runTaskCmd(taskEnv{src: src, defaultQueue: defaultQueue, pipeline: func(string) fleet.Pipeline { return fleet.Pipeline{} }}, args, &out)
+	return out.String(), err
+}
+
+// fakeForge answers for one pull request and records what was said on it.
+type fakeForge struct {
+	pr       gate.PR
+	comments []string
+	merged   []string
+	err      error
+}
+
+func (f *fakeForge) PR(string) (gate.PR, error) { return f.pr, f.err }
+func (f *fakeForge) Merge(url, head string) error {
+	f.merged = append(f.merged, url+"@"+head)
+	return nil
+}
+func (f *fakeForge) Comment(url, body string) error {
+	f.comments = append(f.comments, body)
+	return nil
+}
+
+// runTaskPiped runs a task verb in a queue whose pipeline names a verifier.
+func runTaskPiped(t *testing.T, src work.Source, forge gate.Forge, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	env := taskEnv{src: src, forge: forge, pipeline: func(string) fleet.Pipeline { return fleet.Pipeline{Verifier: "rev"} }}
+	err := runTaskCmd(env, args, &out)
 	return out.String(), err
 }
 
@@ -459,5 +487,84 @@ func TestQueueForPrefersTheProjectYouAreStandingIn(t *testing.T) {
 	}
 	if got := queueFor("", fleet.Settings{Sources: s.Sources}); got != "" {
 		t.Errorf("no project and no default is %q, want empty so the caller refuses", got)
+	}
+}
+
+// In a queue with a verifier, done --pr is a delivery: the PR is recorded on
+// the run and the task stays open for the pipeline.
+func TestDoneWithAPRInAVerifiedQueueDeliversWithoutClosing(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := history.Append(history.Record{RunID: "r1", Task: "TASK-2", Status: history.StatusRunning, At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	src := &fakeSource{}
+	const url = "https://example.com/pr/9"
+	out, err := runTaskPiped(t, src, &fakeForge{}, "done", "TASK-2", "--pr", url, "--note", "verified by X")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(src.verdicts) != 0 {
+		t.Fatalf("verdicts = %v, want the task left open", src.verdicts)
+	}
+	if r, _ := history.LastRun("TASK-2"); r == nil || r.PullRequest != url {
+		t.Fatalf("run record = %+v, want the PR on it", r)
+	}
+	if len(src.comments) != 1 || !strings.Contains(out, "delivered") {
+		t.Fatalf("comments = %v, out = %q", src.comments, out)
+	}
+}
+
+// Without --pr the same queue closes as always: a task with no code to merge.
+func TestDoneWithoutAPRInAVerifiedQueueStillCloses(t *testing.T) {
+	src := &fakeSource{}
+	if _, err := runTaskPiped(t, src, &fakeForge{}, "done", "TASK-2"); err != nil {
+		t.Fatal(err)
+	}
+	if len(src.verdicts) != 1 || src.verdicts[0] != work.Done {
+		t.Fatalf("verdicts = %v", src.verdicts)
+	}
+}
+
+// A delivery the runner cannot read is no delivery: with no run to stamp, the
+// agent is told it failed instead of the task sitting open unseen.
+func TestADeliveryWithNoRecordedRunFails(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if _, err := runTaskPiped(t, &fakeSource{}, &fakeForge{}, "done", "TASK-2", "--pr", "https://example.com/pr/9"); err == nil {
+		t.Fatal("want an error when the PR cannot be recorded")
+	}
+}
+
+// The verdict is pinned to the diff the forge reports now, recorded on the
+// verifier's run, and said on the PR in a line a human can grep.
+func TestVerdictRecordsThePatchItJudgedAndSaysSoOnThePR(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := history.Append(history.Record{RunID: "v1", Task: "TASK-2", Agent: "rev", Status: history.StatusRunning, At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	src := &fakeSource{}
+	forge := &fakeForge{pr: gate.PR{PatchID: "p42", State: "OPEN"}}
+	if _, err := runTaskPiped(t, src, forge, "verdict", "TASK-2", "pass", "--pr", "https://example.com/pr/9", "-n", "replayed the repro"); err != nil {
+		t.Fatal(err)
+	}
+	if v, p, _ := history.VerificationFor("v1"); v != "PASS" || p != "p42" {
+		t.Fatalf("verification = %q %q", v, p)
+	}
+	if len(forge.comments) != 1 || !strings.Contains(forge.comments[0], "docket-verdict: PASS patch-id=p42") {
+		t.Fatalf("PR comments = %q", forge.comments)
+	}
+	if len(src.verdicts) != 0 {
+		t.Fatalf("a verdict must not close the task: %v", src.verdicts)
+	}
+}
+
+func TestVerdictRefusesAMissingPROrAnUnknownWord(t *testing.T) {
+	for _, args := range [][]string{
+		{"verdict", "TASK-2", "PASS"},
+		{"verdict", "TASK-2", "MAYBE", "--pr", "u"},
+		{"verdict", "TASK-2"},
+	} {
+		if _, err := runTaskPiped(t, &fakeSource{}, &fakeForge{}, args...); err == nil {
+			t.Errorf("%v: want an error", args)
+		}
 	}
 }

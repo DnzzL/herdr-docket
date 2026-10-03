@@ -181,7 +181,7 @@ func TestListPropagatesTheBackendError(t *testing.T) {
 // Get is the full task: the list view plus what the prompt needs.
 func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 	s := NewWith("", &fakeClient{view: view{
-		task:        task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"dev"}},
+		task:        task{ID: "TASK-2", Title: "B", Status: "In Progress", Assignees: []string{"dev"}, Labels: []string{"critical"}},
 		Description: "do it",
 		AcceptanceCriteria: []criterion{
 			{Index: 1, Text: "works", Checked: false},
@@ -195,8 +195,9 @@ func TestGetCarriesBodyNotesAndCriteria(t *testing.T) {
 	}
 	want := work.Task{
 		ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "In Progress",
-		Body:  "do it",
-		Notes: "so far",
+		Labels: []string{"critical"},
+		Body:   "do it",
+		Notes:  "so far",
 		Criteria: []work.Criterion{
 			{Index: 1, Text: "works", Checked: false},
 			{Index: 2, Text: "tested", Checked: true},

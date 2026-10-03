@@ -57,7 +57,7 @@ var personas = []struct {
 	{"reviewer", reviewerPersona, true},
 }
 
-// entries are the four automations that drive the loop, verbatim as
+// entries are the three automations that drive the loop, verbatim as
 // docs/factory.md shows them (a drift test pins the two together). The only
 // thing Install does to them is point `repo:` at the fleet being installed.
 const entries = `  # Delete "Report only." from the intake entry after you have read one
@@ -71,23 +71,6 @@ const entries = `  # Delete "Report only." from the intake entry after you have 
       herdr-docket task create "Intake: turn new feedback into fleet tasks" -a intake \
         -d "Poll the sources your persona and mcp_config name and apply the
         gate. Report only."
-
-  # The review sweep drives the reviewer persona, which lands paused because
-  # only you know the repo it works. Point its workdir there, resume it, then
-  # delete this line.
-  - name: review-sweep
-    disabled: true
-    cron: "30 9 * * 1-5"
-    repo: ~/fleet
-    workspace: root
-    model: sonnet
-    prompt: |
-      herdr-docket task create "Sweep: review the oldest un-reviewed PR" -a reviewer \
-        -d "Review the oldest open pull request whose head commit carries no
-        verdict of yours. A PR you have already judged stays covered while it
-        waits on a human, and comes back to you only when new commits land on
-        it. Then re-task yourself for the rest. Your merge policy is in your
-        persona."
 
   - name: stall-sweep
     cron: "0 13 * * *"
@@ -156,7 +139,7 @@ func Install(dir string, out io.Writer) error {
 		if err := os.WriteFile(path, []byte("automations:\n"+block), 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "factory: created %s with the loop's four entries\n", path)
+		fmt.Fprintf(out, "factory: created %s with the loop's three entries\n", path)
 		return afterInstall(out)
 	case err != nil:
 		return err
@@ -186,7 +169,7 @@ func Install(dir string, out io.Writer) error {
 // before the loop is trusted, and where the rest is written down.
 func afterInstall(out io.Writer) error {
 	fmt.Fprintln(out, `factory: next — read docs/factory.md; the intake entry files nothing until you delete "Report only."`)
-	fmt.Fprintln(out, "factory: dev and reviewer are paused until their workdir names your repo; the review-sweep entry is disabled until the reviewer runs")
+	fmt.Fprintln(out, "factory: dev and reviewer are paused until their workdir names your repo; then name the reviewer as the queue's verifier in fleet.yaml")
 	return nil
 }
 

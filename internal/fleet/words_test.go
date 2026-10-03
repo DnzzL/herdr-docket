@@ -43,3 +43,22 @@ func TestOneQueueAnswersFromItsOwnSourceBlock(t *testing.T) {
 		t.Errorf("todo = %q, want the default", got)
 	}
 }
+
+func TestPipelineIsReadFromTheTasksOwnQueue(t *testing.T) {
+	s := Settings{Sources: map[string]SourceConfig{
+		"docket":  {Verifier: "rev", Merge: "auto"},
+		"dishnow": {Verifier: "rev"},
+		"fleet":   {Merge: "auto"},
+	}}
+	cases := map[string]Pipeline{
+		"docket/TASK-1":  {Verifier: "rev", AutoMerge: true},
+		"dishnow/TASK-1": {Verifier: "rev"},
+		"fleet/TASK-1":   {}, // merge: auto without a verifier merges nothing
+		"other/TASK-1":   {},
+	}
+	for id, want := range cases {
+		if got := s.PipelineFor(id); got != want {
+			t.Errorf("%s: %+v, want %+v", id, got, want)
+		}
+	}
+}

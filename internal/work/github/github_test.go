@@ -140,6 +140,7 @@ func TestGetReadsTheBodyTheChecklistAndTheThread(t *testing.T) {
 		{Body: "started", Author: gqlAuthor{Login: "octocat"}},
 		{Body: "halfway", Author: gqlAuthor{Login: "dev"}},
 	}
+	f.issue(n).labels = []string{"bug", "critical"}
 	f.setStatus(n, "In Progress")
 
 	task, err := f.source(t).Get(strconv.Itoa(n))
@@ -170,6 +171,9 @@ func TestGetReadsTheBodyTheChecklistAndTheThread(t *testing.T) {
 	}
 	if !strings.Contains(task.Notes, "octocat: started") || !strings.Contains(task.Notes, "dev: halfway") {
 		t.Errorf("notes lost the thread or its authors: %q", task.Notes)
+	}
+	if strings.Join(task.Labels, ",") != "bug,critical" {
+		t.Errorf("labels = %q, want the issue's own", task.Labels)
 	}
 }
 

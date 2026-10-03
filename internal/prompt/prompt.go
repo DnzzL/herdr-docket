@@ -72,6 +72,65 @@ func allComments(s string) bool {
 // outside it is what keeps the one contract the whole system depends on
 // pinned by a test.
 func assemble(a fleet.Agent, v work.Task, brief, fleetDir string, words fleet.Words) string {
+	return head(a, v, brief) + protocol(a, v, fleetDir, words, false)
+}
+
+// Deliver is Assemble for a queue with a verifier (ADR 0013): an author's pull
+// request is its delivery, and the task stays open for the verifier.
+// pr names the author's own earlier delivery when a verifier sent it back.
+func Deliver(a fleet.Agent, v work.Task, pr, fleetDir string, words fleet.Words) string {
+	return deliver(a, v, pr, readBrief(fleetDir), fleetDir, words)
+}
+
+func deliver(a fleet.Agent, v work.Task, pr, brief, fleetDir string, words fleet.Words) string {
+	rework := ""
+	if pr != "" {
+		rework = fmt.Sprintf(`## Your pull request came back
+
+%s is your delivery for this task, and the verifier failed it — its notes
+are the newest above. Work on that PR's branch (`+"`gh pr checkout %s`"+`),
+fix what the verifier found, push, and deliver the same PR again.
+
+`, pr, pr)
+	}
+	return head(a, v, brief) + rework + protocol(a, v, fleetDir, words, true)
+}
+
+// Verify is the verifier's prompt: the same layers and task, the pull request
+// that claims to deliver it, and the one command that records a verdict. The
+// verifier neither merges nor closes — the runner reads the verdict and the
+// merge gate decides.
+func Verify(a fleet.Agent, v work.Task, pr, fleetDir string) string {
+	return verify(a, v, pr, readBrief(fleetDir), fleetDir)
+}
+
+func verify(a fleet.Agent, v work.Task, pr, brief, fleetDir string) string {
+	return head(a, v, brief) + fmt.Sprintf(`## The pull request to verify
+
+%s claims to deliver this task. You did not write it, and your verdict is the
+only thing standing between it and main. Re-derive every acceptance criterion
+yourself, on the real surface: replay the verification the task states, run
+it, read the result. The author's description, its checkboxes and green CI
+are claims, not evidence. A criterion you could not check is not met.
+
+## When you are done — required
+
+Record exactly one verdict on that pull request, with the evidence — what
+you ran, what you saw, file and line for every finding:
+
+  herdr-docket task verdict %s PASS --pr "%s" --note "<what you checked and how>"
+  herdr-docket task verdict %s FAIL --pr "%s" --note "<what fails, and the fix you would make>"
+
+A FAIL goes back to the author with your note as its brief, so make it
+actionable. You never merge, never push to the branch, and never close or
+re-route the task: the fleet does that from your verdict. (The fleet dir,
+for context, is %s.)
+`, pr, v.ID, pr, v.ID, pr, fleetDir)
+}
+
+// head is everything a run is told before how to report: the layers, the
+// persona and the task in full.
+func head(a fleet.Agent, v work.Task, brief string) string {
 	var b strings.Builder
 	// Three layers, widest first: what is true of the fleet, then of the role,
 	// then of this post. Each one may be absent, and an absent layer changes
@@ -103,6 +162,14 @@ func assemble(a fleet.Agent, v work.Task, brief, fleetDir string, words fleet.Wo
 	if v.Notes != "" {
 		fmt.Fprintf(&b, "## Notes from previous runs\n\n%s\n\n", v.Notes)
 	}
+	return b.String()
+}
+
+// protocol is how an agent reports back. delivered is a queue with a
+// verifier: a PR leaves the task open, and handing work on is not the
+// agent's move.
+func protocol(a fleet.Agent, v work.Task, fleetDir string, words fleet.Words, delivered bool) string {
+	var b strings.Builder
 
 	// A prefixed id (myapp/TASK-12) means the fleet works several queues, and
 	// a follow-up has to land in the queue this task came from. The prefix is
@@ -129,13 +196,7 @@ Then close the task exactly once, reporting exactly one verdict:
   herdr-docket task fail %s --note "<why you could not do it>"
   herdr-docket task block %s --note "<what a human must decide or unblock>"
 
-If your work went out as a pull request, put it on the closing command:
-
-  herdr-docket task done <id> --pr "<the PR url>" --note "..."
-
-The PR is how the run history records where the work landed — a url in prose
-alone is one the fleet cannot read.
-
+%s
 A task you leave open with no verdict and no new agent is a task the fleet will
 pick up and run again, so don't leave one open. Do not touch other agents'
 tasks.
@@ -143,15 +204,7 @@ tasks.
 If you edit this project's board directly — triage, a status another task
 should sit in — use the word this project accepts, not the fleet's idea of it.
 %s
-If the real work belongs to another agent — you specced it, somebody else
-builds it — hand this task over instead of closing it and filing a near-copy:
-
-  herdr-docket task assign %s <agent>
-
-That is the one way to end a run without a verdict: the task stays open with
-its whole history in one place, and the fleet routes it to that agent on the
-next tick.
-
+%s
 This run has a time budget. If the task is too big to finish well within it,
 do one coherent slice, record exactly where you stopped in the closing note,
 then create the follow-up task for the rest and close this one done — a
@@ -160,8 +213,47 @@ finished slice with a good handoff beats a timed-out marathon.
 If you find follow-up work, create a task for it instead of expanding this one:
 
   herdr-docket task create "<title>" -d "<what and why>" -a %s%s
-`, fleetDir, v.ID, v.ID, v.ID, v.ID, wordList(words), v.ID, a.Name, createSource)
+`, fleetDir, v.ID, v.ID, v.ID, v.ID, prParagraph(v.ID, delivered), wordList(words), handOn(v.ID, delivered), a.Name, createSource)
 	return b.String()
+}
+
+// prParagraph says what a pull request on the closing command means here.
+func prParagraph(id string, delivered bool) string {
+	if !delivered {
+		return `If your work went out as a pull request, put it on the closing command:
+
+  herdr-docket task done <id> --pr "<the PR url>" --note "..."
+
+The PR is how the run history records where the work landed — a url in prose
+alone is one the fleet cannot read.
+`
+	}
+	return fmt.Sprintf(`This queue verifies before it merges. When your work is a pull request, end
+with it on the done command — CI green, the task's verification replayed,
+the evidence in the PR description:
+
+  herdr-docket task done %s --pr "<the PR url>" --note "<what you verified and how>"
+
+The task stays open: a verifier that did not write the code judges the PR,
+and the fleet either merges it or brings it back to you with the verifier's
+notes. Never merge it yourself.
+`, id)
+}
+
+// handOn teaches the assign verb, except where the runner sequences the work.
+func handOn(id string, delivered bool) string {
+	if delivered {
+		return ""
+	}
+	return fmt.Sprintf(`If the real work belongs to another agent — you specced it, somebody else
+builds it — hand this task over instead of closing it and filing a near-copy:
+
+  herdr-docket task assign %s <agent>
+
+That is the one way to end a run without a verdict: the task stays open with
+its whole history in one place, and the fleet routes it to that agent on the
+next tick.
+`, id)
 }
 
 // wordList is the queue's own status words, as the prompt states them. Only

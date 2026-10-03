@@ -44,6 +44,11 @@ const (
 	TriggerPoll Trigger = "poll"
 	// TriggerManual: somebody asked for it — `r` on the board, or `run`.
 	TriggerManual Trigger = "manual"
+	// TriggerVerify and TriggerRework are the pipeline's own stages (ADR
+	// 0013): the verifier judging a delivered PR, and the author sent back
+	// to it with the verifier's notes.
+	TriggerVerify Trigger = "verify"
+	TriggerRework Trigger = "rework"
 )
 
 // NewID names a run in the log: the task plus nanoseconds, unique enough for
@@ -91,6 +96,11 @@ type Record struct {
 	// agent's own `task close --pr` rather than looked up: the fleet knows
 	// nothing of forges.
 	PullRequest string `json:"pull_request,omitempty"`
+	// Verification is a verifier run's verdict on the pull request (PASS or
+	// FAIL), stamped by `task verdict`, and PatchID the `git patch-id` of the
+	// diff it judged: the merge gate trusts a verdict only on that diff.
+	Verification string `json:"verification,omitempty"`
+	PatchID      string `json:"patch_id,omitempty"`
 }
 
 // SetPullRequest records the pull request on the task's newest run record —
@@ -121,6 +131,31 @@ func PullRequestFor(runID string) (string, error) {
 		}
 	})
 	return pr, err
+}
+
+// SetVerification records a verifier's verdict on the task's newest run —
+// the verifier's own, since it is the run calling.
+func SetVerification(task, verdict, patchID string) error {
+	r, err := LastRun(task)
+	if err != nil {
+		return err
+	}
+	if r == nil {
+		return fmt.Errorf("no run recorded for %s", task)
+	}
+	r.Verification, r.PatchID = verdict, patchID
+	return Append(*r)
+}
+
+// VerificationFor returns the verdict and patch-id recorded on a run, or
+// empty strings, for the same reason PullRequestFor exists.
+func VerificationFor(runID string) (verdict, patchID string, err error) {
+	err = each(func(r Record) {
+		if r.RunID == runID && r.Verification != "" {
+			verdict, patchID = r.Verification, r.PatchID
+		}
+	})
+	return verdict, patchID, err
 }
 
 func path() string { return filepath.Join(hostpath.StateDir(), "history.jsonl") }

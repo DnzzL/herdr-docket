@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/gate"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
@@ -42,6 +43,13 @@ type Runner struct {
 	fleetDir string
 	busy     map[string]*os.File
 	mu       sync.Mutex
+	// The pipeline's reach beyond the host (ADR 0013), swappable in tests:
+	// the forge the gate reads and merges through, the clock it waits on,
+	// the roster the verifier is found in, and a repo's CODEOWNERS patterns.
+	forge  gate.Forge
+	sleep  func(time.Duration)
+	agents func() map[string]fleet.Agent
+	owners func(workdir string) []string
 }
 
 // New returns a Runner working through h. The queue is not held here: it is
@@ -49,8 +57,27 @@ type Runner struct {
 // the same value by construction, even as the daemon rebuilds its source
 // between ticks.
 func New(h host.Host, settings fleet.Settings) *Runner {
-	return &Runner{host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{}}
+	return &Runner{
+		host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{},
+		forge: gate.GH{}, sleep: time.Sleep, owners: codeowners,
+		agents: func() map[string]fleet.Agent {
+			a, _ := fleet.LoadAgents(settings.Dir)
+			return a
+		},
+	}
 }
+
+// Running reports whether this process holds the task's run — for the whole
+// pipeline, not just one stage, so the daemon never hands a task back to its
+// author while the verifier has it.
+func (r *Runner) Running(taskID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, held := r.busy[taskKey(taskID)]
+	return held
+}
+
+func taskKey(id string) string { return "taskid-" + sanitize(id) }
 
 // key keeps a run off the workspace another run may be mutating: the
 // agent itself in worktree mode (each run gets a fresh checkout — the
@@ -167,28 +194,59 @@ func sanitize(s string) string {
 // the same task however the routing disagrees: agents hold different keys,
 // and a `fleet.yaml` edit re-reads the default routing every tick, so an open
 // task can present itself to a second agent while the first is mid-run.
+//
+// In a queue with a verifier, an author's run that delivers a pull request goes
+// on to the pipeline (ADR 0013) under the same task lock; the author's own
+// slot is given back first, so the verifier can share its checkout.
 func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger) error {
 	key := LockKey(a)
-	taskKey := "taskid-" + sanitize(t.ID)
-	taken, ok := r.acquire(key, taskKey)
+	tk := taskKey(t.ID)
+	taken, ok := r.acquire(key, tk)
 	if !ok {
-		if taken == taskKey {
+		if taken == tk {
 			return fmt.Errorf("%s: a run is already in flight", t.ID)
 		}
 		return fmt.Errorf("%s: a run is already in flight for %s", t.ID, key)
 	}
-	defer r.release(key)
-	defer r.release(taskKey)
+	defer r.release(tk)
+	res, err := r.attempt(src, t, a, trigger, "")
+	r.release(key)
+	if err != nil || !res.delivered {
+		return err
+	}
+	return r.pipeline(src, t, a, res.pr)
+}
 
+// outcome is what one attempt left for the pipeline: whether the agent
+// delivered — an author's PR, a verifier's verdict — and what.
+type outcome struct {
+	delivered      bool
+	pr             string
+	verdict, patch string
+}
+
+// attempt is one agent's run on the task, start to reconcile: the author's
+// first run, a rework, or a verifier's run when pr names what it judges.
+func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger, pr string) (outcome, error) {
+	verifying := pr != "" && trigger == history.TriggerVerify
+	piped := r.settings.PipelineFor(t.ID).Verifier != ""
 	rec := recorder{id: history.NewID(t.ID), task: t.ID, agent: a.Name, trigger: trigger, started: time.Now()}
 	var errInspect error
 	v, err := src.Get(t.ID)
 	if err != nil {
 		rec.record(history.StatusFailed, host.Session{}, err.Error())
 		r.notifyFailed(t, err.Error())
-		return err
+		return outcome{}, err
 	}
 	r.claim(src, t.ID)
+	words := r.settings.WordsFor(t.ID)
+	text := prompt.Assemble(a, v, r.fleetDir, words)
+	switch {
+	case verifying:
+		text = prompt.Verify(a, v, pr, r.fleetDir)
+	case piped:
+		text = prompt.Deliver(a, v, pr, r.fleetDir, words)
+	}
 	rec.record(history.StatusScheduled, host.Session{}, "")
 
 	spec := host.Spec{
@@ -203,18 +261,18 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		Base:      work.BaseBranchOf(src, t.ID),
 		Agent:     a.Kind,
 		Model:     a.Model,
-		Prompt:    prompt.Runnable(prompt.Assemble(a, v, r.fleetDir, r.settings.WordsFor(t.ID))),
+		Prompt:    prompt.Runnable(text),
 		MCPConfig: a.MCPConfig,
 		AgentArgs: a.AgentArgs,
 	}
 	session, err := r.host.Provision(spec)
 	if err != nil {
-		v, _, _ := r.reconcile(src, t.ID, a.Name, err)
+		v, _, _ := r.reconcile(src, t.ID, a.Name, err, false)
 		// No run happened past provisioning, so there is no delivery to
 		// report beside the failure.
 		rec.close(history.StatusFailed, session, v, host.Delivery{}, false, err.Error())
 		r.notifyFailed(t, err.Error())
-		return err
+		return outcome{}, err
 	}
 	rec.record(history.StatusRunning, session, "")
 
@@ -230,7 +288,23 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 			log.Printf("inspect delivery of %s: %v", t.ID, errInspect)
 		}
 	}
-	final, handedOn, reported := r.reconcile(src, t.ID, a.Name, err)
+	// What the agent delivered through the CLI, read before reconcile: a
+	// delivery keeps the task open on purpose, like a handoff. Read whatever
+	// this runner believes about the queue — the CLI decides delivery from
+	// fleet.yaml as it is now, and a PR left on an open task is a delivery
+	// either way, never a silent run to close Failed.
+	var out outcome
+	if err == nil {
+		if verifying {
+			out.verdict, out.patch, _ = history.VerificationFor(rec.id)
+			out.delivered = out.verdict != ""
+		} else {
+			out.pr, _ = history.PullRequestFor(rec.id)
+			out.delivered = out.pr != ""
+		}
+	}
+	final, handedOn, reported := r.reconcile(src, t.ID, a.Name, err, out.delivered)
+	out.delivered = out.delivered && handedOn
 	final, keep := r.guardDelivery(src, t.ID, session, final, handedOn, d, session.Branch != "" && errInspect != nil)
 	r.cleanup(src, t.ID, session, final, handedOn, keep)
 	// Uncommitted is the fact the guard acted on: a worktree about to be torn
@@ -259,7 +333,12 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 	default:
 		rec.close(history.StatusDone, session, final, d, uncommitted, "")
 	}
-	return err
+	// A delivery the guard re-closed (uncommitted work left behind) is no
+	// longer one: the task is a human's now.
+	if final == work.Blocked {
+		out.delivered = false
+	}
+	return out, err
 }
 
 func (r *Runner) notifyFailed(t work.Task, reason string) {
@@ -294,7 +373,11 @@ func (r *Runner) claim(src work.Source, id string) {
 // reported is what tells those two Faileds apart afterwards. Without it a
 // reviewer that refuses to merge and says so — its whole job — is recorded in
 // the same words as an agent that closed nothing, and a fleet cannot be read.
-func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) (verdict work.Verdict, handedOn, reported bool) {
+//
+// delivered is the pipeline's open-on-purpose: an author that handed in its PR
+// or a verifier that recorded its verdict left the task open for the next
+// stage, exactly as a handoff does.
+func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error, delivered bool) (verdict work.Verdict, handedOn, reported bool) {
 	v, err := src.Get(taskID)
 	if err != nil {
 		log.Printf("%s: cannot re-read the task after the run: %v", taskID, err)
@@ -308,7 +391,7 @@ func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error) 
 	// Closing it here would undo the handoff and the next tick would never
 	// route it. Only on a clean run — a task reassigned by an agent that then
 	// crashed is still an unreported task.
-	if runErr == nil && v.Assignee != "" && v.Assignee != agent {
+	if runErr == nil && (delivered || (v.Assignee != "" && v.Assignee != agent)) {
 		return "", true, true
 	}
 	verdict, note := work.Failed, "fleet: the agent settled without reporting a verdict."
@@ -404,6 +487,9 @@ type recorder struct {
 	agent   string
 	trigger history.Trigger
 	started time.Time
+	// verification and patch are what `task verdict` stamped mid-run, carried
+	// onto the closing record like the pull request.
+	verification, patch string
 }
 
 func (r recorder) record(status history.Status, s host.Session, errText string) {
@@ -422,6 +508,7 @@ func (r recorder) close(status history.Status, s host.Session, verdict work.Verd
 	if err != nil {
 		log.Printf("carry pull request for %s: %v", r.id, err)
 	}
+	r.verification, r.patch, _ = history.VerificationFor(r.id)
 	r.appendWith(status, s, string(verdict), int(time.Since(r.started).Seconds()), errText, d, unverified, pr)
 }
 
@@ -436,6 +523,7 @@ func (r recorder) appendWith(status history.Status, s host.Session, verdict stri
 		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, TabID: s.TabID, Branch: s.Branch, BaseCommit: s.BaseCommit,
 		DurationSeconds: seconds, Verdict: verdict, Error: errText,
 		Commits: d.Commits, Uncommitted: unverified, PullRequest: pullRequest,
+		Verification: r.verification, PatchID: r.patch,
 	})
 	if err != nil {
 		log.Printf("history append failed: %v", err)

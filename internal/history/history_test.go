@@ -205,3 +205,20 @@ func TestLatestPerTaskAnswersTheWholeBoardInOnePass(t *testing.T) {
 		t.Error("the pass returned a task the board did not ask for")
 	}
 }
+
+// The verifier's verdict rides on its own run, pinned to the diff it judged,
+// and the run's closing record does not drop it.
+func TestAVerdictIsStampedOnTheNewestRunWithItsPatch(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	mustAppend(t, Record{RunID: "r1", Task: "TASK-1", Agent: "dev", Status: StatusRunning, At: time.Now()})
+	mustAppend(t, Record{RunID: "r2", Task: "TASK-1", Agent: "verifier", Status: StatusRunning, At: time.Now()})
+	if err := SetVerification("TASK-1", "PASS", "p1"); err != nil {
+		t.Fatal(err)
+	}
+	if v, p, _ := VerificationFor("r2"); v != "PASS" || p != "p1" {
+		t.Fatalf("r2 verification = %q %q", v, p)
+	}
+	if v, _, _ := VerificationFor("r1"); v != "" {
+		t.Fatalf("the worker's run must carry no verdict, got %q", v)
+	}
+}

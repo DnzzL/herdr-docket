@@ -49,3 +49,17 @@ func (s Settings) sourceOf(taskID string) (SourceConfig, bool) {
 	c, ok := s.Sources[work.SourceOf(taskID)]
 	return c, ok
 }
+
+// Pipeline is how a task's queue ends a run that delivered a pull request:
+// the agent that verifies it, and whether a PASS may merge on its own. An
+// empty verifier means the queue has no pipeline.
+type Pipeline struct {
+	Verifier  string
+	AutoMerge bool
+}
+
+// PipelineFor is the pipeline of the queue a task's id points at.
+func (s Settings) PipelineFor(taskID string) Pipeline {
+	c, _ := s.sourceOf(taskID)
+	return Pipeline{Verifier: c.Verifier, AutoMerge: c.Verifier != "" && c.Merge == "auto"}
+}

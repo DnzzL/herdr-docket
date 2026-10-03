@@ -4,6 +4,17 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A queue can verify and merge on its own.** Name a `verifier:` on a queue
+  and a PR delivered with `task done --pr` stays open, goes to that agent,
+  comes back to its author on a FAIL (twice at most), and on a PASS reaches a
+  merge gate in code: verdict on the PR's current diff, green CI, no
+  `critical` label, no `CODEOWNERS` path, and `merge: auto`. Anything else is
+  held for you with the reason, and notified. `task verdict ID PASS|FAIL --pr
+  URL` is the verifier's one command. A queue without `verifier:` works as
+  before.
+- **The factory's reviewer verifies, it no longer merges**, and the
+  `review-sweep` automation is gone: every delivered PR reaches the verifier.
+
 - **The board pane is gone.** Herdr's sidebar and `herdr agent list` show what
   is running; `herdr-docket history` and `logs` show what ran.
   `herdr-docket pane` and the plugin's board overlay no longer exist.
