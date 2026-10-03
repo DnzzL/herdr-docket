@@ -146,8 +146,11 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		}
 		// Only work the fleet could pick up is work it could misroute. A
 		// closed task is nobody's to route, and saying so on one would write
-		// a comment onto somebody's finished work every tick, forever.
-		if !t.Open {
+		// a comment onto somebody's finished work every tick, forever. So is
+		// a task parked on a human (TASK-53): the fleet will never act on it,
+		// the human it waits on is the one who moves it, and a comment would
+		// only re-read the wall it stands against.
+		if !t.Open || t.Blocked {
 			routable = append(routable, t)
 			continue
 		}

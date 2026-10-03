@@ -205,6 +205,7 @@ func (s *Source) asTask(t task) work.Task {
 		Title:     t.Title,
 		Assignee:  assignee(t.Assignees),
 		Open:      s.vocab.open(t.Status),
+		Blocked:   s.vocab.parked(t.Status),
 		Phase:     s.vocab.phase(t.Status),
 		Verdict:   s.vocab.verdictOf(t.Status),
 		Priority:  rank(t.Priority),
@@ -243,6 +244,16 @@ func (v Vocabulary) open(status string) bool {
 		return false
 	}
 	return status == v.Todo || status == v.InProgress
+}
+
+// parked reports whether a status is the one that waits on a human — this
+// project's own blocked word. Written only where the queue names one, a
+// task the vocabulary does not know at all is not parked by guess: the
+// whitelist above already leaves it invisible to routing, and inventing a
+// parked state for a column the fleet never mapped would be a second
+// vocabulary, not a translation.
+func (v Vocabulary) parked(status string) bool {
+	return status != "" && status == v.Blocked
 }
 
 // rank reads a Backlog.md priority as a rank the core can compare. Higher is
