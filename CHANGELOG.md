@@ -9,6 +9,16 @@ What changed for someone using the plugin. Dates are release dates.
   It now prints `<id> noted` the way `done`, `fail` and `block` confirm theirs;
   a refused note still prints only the error.
 
+- **The ending command runs before the farewell.** The prompt asked every run
+  to close its task, and runs refused: the agent wrote "Now closing per merge
+  policy" in chat and stopped — the command never executed, `reconcile`
+  recorded *settled without reporting a verdict*, and a good run landed in the
+  human's column filed failed (five-plus on 2026-09-25 alone). The prompt now
+  states the ordering outright — the closing or handoff command is the run's
+  last tool call, then the summary — and presents `done|fail|block` and
+  `assign` as the two ways a run can end, deferring the choice to the task and
+  the persona instead of scoring the verdict as the only ending. A task left
+  open and unassigned stays explicitly named as the failure it is.
 - **A queue can verify and merge on its own.** Name a `verifier:` on a queue
   and a PR delivered with `task done --pr` stays open, goes to that agent,
   comes back to its author on a FAIL (twice at most), and on a PASS reaches a

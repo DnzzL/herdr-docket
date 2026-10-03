@@ -47,6 +47,11 @@ Rules:
   the agent reports on them in prose rather than ticking boxes.
 - **Creating a task is enough.** Don't try to start it — the daemon picks it
   up within seconds. `herdr-docket run TASK-12` exists for humans who want it now.
-- **Closing is the report.** `done`, `fail` and `block` all take a `--note`;
-  the note is where the reasoning goes. A task left open will be run again, so
-  always close what you touch.
+- **An ending is the report.** A run ends one of two ways: close the task with
+  a verdict — `done`, `fail` or `block`, each taking a `--note` where the
+  reasoning goes — or hand it on with `task assign <id> <agent>`. Which one
+  fits is the task's and your persona's to say; leaving the task open and
+  unassigned is neither, and the fleet files it as a failed run.
+- **The ending command runs before the farewell.** Make it your last tool
+  call, and put the summary in the note — a conclusion said only in chat is
+  one the queue never receives.
