@@ -19,6 +19,14 @@ What changed for someone using the plugin. Dates are release dates.
   `assign` as the two ways a run can end, deferring the choice to the task and
   the persona instead of scoring the verdict as the only ending. A task left
   open and unassigned stays explicitly named as the failure it is.
+
+- **A verify run cannot end in prose either.** That ordering lived only in the
+  worker's ending section; the verifier's own required section stated none, so
+  a verifier could reach its verdict, write it in chat and stop — the run
+  *settled without reporting a verdict*, and the pull request hung. The
+  verifier's section now says its verdict command is the run's last tool call
+  too: execute it, then summarise.
+
 - **A queue can verify and merge on its own.** Name a `verifier:` on a queue
   and a PR delivered with `task done --pr` stays open, goes to that agent,
   comes back to its author on a FAIL (twice at most), and on a PASS reaches a

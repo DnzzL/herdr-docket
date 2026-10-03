@@ -333,6 +333,33 @@ func TestStopIsNotDoneUntilTheCommandRan(t *testing.T) {
 	}
 }
 
+// verify()'s own required section stated no ordering (TASK-59): a verifier
+// could reach its verdict, say it in prose, and stop — the exact run type
+// TASK-46's prose-ending failure cites — and the fleet would file the run
+// "settled without reporting a verdict". Same pin as
+// TestStopIsNotDoneUntilTheCommandRan, one section over.
+func TestTheVerdictCommandIsTheLastToolCallOfAVerifyRun(t *testing.T) {
+	got := verify(fleet.Agent{Name: "rev", Persona: "R"},
+		work.Task{ID: "docket/TASK-59", Title: "t", Open: true},
+		"https://github.com/o/r/pull/7", "", "/fleet")
+	for _, want := range []string{
+		"the last tool call of the run",
+		"execute it, then summarise",
+		"settled without reporting a verdict",
+	} {
+		if !contains(got, want) {
+			t.Fatalf("verifier prompt is missing %q:\n%s", want, got)
+		}
+	}
+	i, j := strings.Index(fold(got), "## The pull request to verify"), strings.Index(fold(got), "## When you are done")
+	if i < 0 || j < 0 || i > j {
+		t.Fatalf("the verifier's required section must sit after the PR is named:\n%s", got)
+	}
+	if k := strings.Index(fold(got), "execute it, then summarise"); k < j {
+		t.Fatalf("the ordering statement must sit inside the required section:\n%s", got)
+	}
+}
+
 // In a queue with a verifier, a worker's PR is a delivery, not a close: the
 // prompt says the task stays open and never teaches the agent to merge or to
 // hand the task on itself.
