@@ -42,9 +42,11 @@ Rules:
   place. Closing it and creating a near-copy splits the thread. Create a
   follow-up only for work that is genuinely new.
 - **Say what "done" means.** The task description is the whole brief: the
-  agent gets exactly what the task says, nothing more. Acceptance criteria are
-  added by whoever owns the queue (`-d` is the field `herdr-docket` writes), and
-  the agent reports on them in prose rather than ticking boxes.
+  agent gets exactly what the task says, nothing more. Write the bar as
+  repeatable `--ac` flags on `task create` — one observable claim each — and
+  report on them in the closing note rather than ticking boxes. A queue that
+  cannot store criteria separately says so, and the words land in the
+  description instead of nowhere: never route past the CLI to fake the field.
 - **Creating a task is enough.** Don't try to start it — the daemon picks it
   up within seconds. `herdr-docket run TASK-12` exists for humans who want it now.
 - **An ending is the report.** A run ends one of two ways: close the task with

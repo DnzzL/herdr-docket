@@ -334,6 +334,42 @@ func (s *Source) Comment(id, text string) error {
 	}, &out)
 }
 
+// WriteCriteria appends the criteria to the issue body as a markdown task
+// list — the same shape the adapter reads them back from. Existing boxes are
+// untouched; the bar is added, not replaced, because an issue may already say
+// part of what done means.
+func (s *Source) WriteCriteria(id string, criteria []string) error {
+	if len(criteria) == 0 {
+		return nil
+	}
+	t, err := s.locate(id)
+	if err != nil {
+		return err
+	}
+	it, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	body := it.Body
+	if body != "" && !strings.HasSuffix(body, "\n") {
+		body += "\n"
+	}
+	for _, c := range criteria {
+		body += fmt.Sprintf("- [ ] %s\n", c)
+	}
+	var out struct {
+		UpdateIssue struct {
+			Issue struct {
+				ID string `json:"id"`
+			} `json:"issue"`
+		} `json:"updateIssue"`
+	}
+	return s.api.do("UpdateIssue", updateIssueMutation, map[string]any{
+		"issue": t.issueID,
+		"body":  body,
+	}, &out)
+}
+
 // Close ends the work: the issue is closed with the reason the verdict
 // implies, and the verdict is written to the thread.
 //

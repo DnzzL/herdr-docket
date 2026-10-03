@@ -26,6 +26,8 @@ type fakeSource struct {
 	err   error
 
 	created  []string // title, body, assignee
+	criteria []string
+
 	comments []string
 	verdicts []work.Verdict
 }
@@ -210,6 +212,51 @@ func TestTaskCreateReportsWhereTheTaskLanded(t *testing.T) {
 			t.Fatalf("output must say the fleet did not choose the column:\n%s", got)
 		}
 	})
+}
+
+// The two capabilities on one create, in order: the queue files the task
+// where the daemon can claim it, and the bar is written through the id it
+// returned. Either alone was green on its own side of the merge; this is the
+// reconciliation this task exists for.
+type bothCapabilitiesSource struct {
+	fakeSource
+	started      bool
+	criteriaFor  []string
+	criteriaSeen []string
+	order        []string
+}
+
+func (f *bothCapabilitiesSource) CreateTodo(title, body, assignee string) (string, error) {
+	f.started = true
+	f.order = append(f.order, "create")
+	return f.fakeSource.Create(title, body, assignee)
+}
+
+func (f *bothCapabilitiesSource) WriteCriteria(id string, criteria []string) error {
+	f.criteriaFor = []string{id}
+	f.criteriaSeen = criteria
+	f.order = append(f.order, "criteria")
+	return nil
+}
+
+func TestTaskCreateFilesThePickupStatusThenCarriesTheBar(t *testing.T) {
+	src := &bothCapabilitiesSource{}
+	got, err := runTask(t, src, "create", "Follow up", "-d", "why", "--ac", "compiles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !src.started {
+		t.Fatal("the create must reach the pickup capability (ADR-0012)")
+	}
+	if !reflect.DeepEqual(src.criteriaSeen, []string{"compiles"}) {
+		t.Fatalf("criteria = %v, want the one the run handed on", src.criteriaSeen)
+	}
+	if !reflect.DeepEqual(src.order, []string{"create", "criteria"}) {
+		t.Fatalf("writes happened %v, want create before criteria", src.order)
+	}
+	if !strings.Contains(got, "in To Do") {
+		t.Fatalf("the landing report must survive a criteria write:\n%s", got)
+	}
 }
 
 // multiSource is a composite queue for the CLI tests: it records which source
@@ -591,4 +638,51 @@ func TestVerdictRefusesAMissingPROrAnUnknownWord(t *testing.T) {
 			t.Errorf("%v: want an error", args)
 		}
 	}
+}
+
+// The bar a run hands on must survive the create. Criteria are the thing the
+// prompt insists a follow-up carries; a CLI that cannot spell them is the gap
+// personas route around.
+func (f *fakeSource) WriteCriteria(id string, criteria []string) error {
+	f.criteria = criteria
+	return nil
+}
+
+func TestTaskCreateCarriesCriteria(t *testing.T) {
+	src := &fakeSource{}
+	_, err := runTask(t, src, "create", "Hand the fix on", "-a", "dev",
+		"-d", "why", "--ac", "compiles", "--ac", "the probe stops flaking")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(src.criteria) != 2 || src.criteria[0] != "compiles" || src.criteria[1] != "the probe stops flaking" {
+		t.Fatalf("criteria = %v, want two in order", src.criteria)
+	}
+}
+
+func TestTaskCreateRefusesAnEmptyCriterion(t *testing.T) {
+	if _, err := runTask(t, &fakeSource{}, "create", "T", "--ac", "   "); err == nil {
+		t.Fatal("an empty criterion must be refused, not stored")
+	}
+}
+
+// Degradation is stated, never silent: a queue with no place for the bar
+// refuses and names where the words go instead, so the caller's next create
+// puts them in -d — and no criterion quietly becomes prose nobody reads.
+func TestTaskCreateStatesWhatADegradingQueueCannotStore(t *testing.T) {
+	_, err := runTask(t, &bareSource{}, "create", "T", "-d", "body", "--ac", "the bar")
+	if err == nil {
+		t.Fatal("a queue without CriterionWriter must not pretend the word was stored")
+	}
+	if !strings.Contains(err.Error(), "does not store acceptance criteria") ||
+		!strings.Contains(err.Error(), "the bar") {
+		t.Fatalf("refusal must name the loss and carry the words back:\n%v", err)
+	}
+}
+
+// bareSource is a queue with no criteria place — the Basecamp shape.
+type bareSource struct{ work.Source }
+
+func (f bareSource) Create(title, body, assignee string) (string, error) {
+	return "T-1", nil
 }

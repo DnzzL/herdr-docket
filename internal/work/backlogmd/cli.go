@@ -159,6 +159,20 @@ func (c *cli) AppendNote(id, note string) error {
 	return err
 }
 
+// SetCriteria replaces the task's acceptance criteria in one edit, numbering
+// them from one in the order given. On the task Create just made the list is
+// empty, so the CLI's append `--ac`, one flag per criterion, is the write:
+// the edit verb's replace-all form swallows neighbouring values as task ids,
+// which is not a call the adapter can make honestly.
+func (c *cli) SetCriteria(id string, criteria []string) error {
+	args := []string{"task", "edit", id, "--plain"}
+	for _, text := range criteria {
+		args = append(args, "--ac", text)
+	}
+	_, err := c.exec(args...)
+	return err
+}
+
 // Create adds a task and returns its id. status starts the new task in a
 // specific status — the word the project's own mapping calls To Do, which is
 // how the fleet files work it creates to be picked up. Empty means the

@@ -134,6 +134,28 @@ type Assigner interface {
 	Assign(id, agent string) error
 }
 
+// CriterionWriter is the optional capability of a source that can put
+// acceptance criteria on an existing task — the bar a run hands on writes
+// through the id Create returned (ADR-0014), beside the landing that ADR-0012
+// gave Create and CreateTodo: the landing decides whether the next tick can
+// claim the task, the criteria decide what the run has to show. Backlog.md
+// appends through its task edit's --ac, one flag per criterion; GitHub writes
+// them into the body's checklist; a Basecamp to-do has no step endpoint
+// after the create, so it says so rather than taking the words.
+//
+// Optional, like Phaser and unlike Assigner: criteria with no place to live
+// are lost wherever a source cannot speak them at all, so a refusal is a
+// shift rather than a dropped detail — unlike a misroute, an absent bar keeps
+// work moving and only makes it easier to get wrong, which is the calling
+// queue's own trade to watch for.
+//
+// The task id is taken rather than nothing so a composite can forward to the
+// queue the id names the same way Assign does; an adapter answers for its
+// own.
+type CriterionWriter interface {
+	WriteCriteria(id string, nc []string) error
+}
+
 // BaseBrancher is the optional capability of a source that knows which git
 // ref a worktree run of it branches from. Backlog.md, whose queue
 // is the project's own repo, answers with the project's default branch read
@@ -174,6 +196,27 @@ type Source interface {
 	Close(id string, verdict Verdict) error
 }
 
+// MultiSource is a Source over several named queues — the shape one fleet has
+// when its projects keep their work in different places. A surface that must
+// choose where work goes (the CLI's -s/--source) speaks it; a fleet with one
+// queue is an ordinary Source and never sees a name.
+//
+// The names are routing, not decoration: every task a MultiSource returns
+// carries a prefixed id ("myapp/TASK-12"), and Get, Comment, Close and
+// SetPhase take that same id back. A prefixed id is the only id such a
+// surface ever holds, so the prefix travels with the task.
+type MultiSource interface {
+	Source
+	// Names lists the configured queues, in a stable order.
+	Names() []string
+	// CreateIn creates work in the named queue, returning its prefixed id.
+	// The second answer records where it landed, so a caller's output says
+	// it honestly (ADR-0012): started is true when the queue filed the task
+	// into its own pickup status, false when the backend filed it by its own
+	// default and nothing above the queue chose the column.
+	CreateIn(source, title, body, assignee string) (id string, started bool, err error)
+}
+
 // LocalOf reads the backend's own id off a prefixed one: the part after the
 // queue name, which is what a person reads and retypes. A bare id is its own
 // local id, so a fleet with one prefixless queue is unchanged.
@@ -194,27 +237,6 @@ func SourceOf(id string) string {
 		return ""
 	}
 	return name
-}
-
-// MultiSource is a Source over several named queues — the shape one fleet has
-// when its projects keep their work in different places. A surface that must
-// choose where work goes (the CLI's -s/--source) speaks it; a fleet with one
-// queue is an ordinary Source and never sees a name.
-//
-// The names are routing, not decoration: every task a MultiSource returns
-// carries a prefixed id ("myapp/TASK-12"), and Get, Comment, Close and
-// SetPhase take that same id back. A prefixed id is the only id such a
-// surface ever holds, so the prefix travels with the task.
-type MultiSource interface {
-	Source
-	// Names lists the configured queues, in a stable order.
-	Names() []string
-	// CreateIn creates work in the named queue, returning its prefixed id.
-	// The second answer records where it landed, so a caller's output says
-	// it honestly (ADR-0012): started is true when the queue filed the task
-	// into its own pickup status, false when the backend filed it by its own
-	// default and nothing above the queue chose the column.
-	CreateIn(source, title, body, assignee string) (id string, started bool, err error)
 }
 
 // BaseBranchOf answers the ref worktree runs of this task's queue branch
