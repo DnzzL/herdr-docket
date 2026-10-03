@@ -177,3 +177,11 @@ reviewer runs.
   task, and blocked to a human — the guard in `cleanup` is the one piece of
   the loop that is code rather than prose, and it exists because everything
   else here believes an agent's sentence.
+
+## Known gaps
+
+- `not done` — the worker → verifier → merge-gate pipeline of
+  [ADR 0013](adr/0013-the-factory-is-a-worker-a-verifier-and-a-gate-in-code.md):
+  the reviewer still merges on its own judgment, from its persona's prose.
+- `fragile` — nothing caps a self-tasking loop since budgets went; `agent
+  pause` is the brake, applied by a human reading `history`.

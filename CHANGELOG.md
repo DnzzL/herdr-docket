@@ -2,6 +2,17 @@
 
 What changed for someone using the plugin. Dates are release dates.
 
+## Unreleased
+
+- **The board pane is gone.** Herdr's sidebar and `herdr agent list` show what
+  is running; `herdr-docket history` and `logs` show what ran.
+  `herdr-docket pane` and the plugin's board overlay no longer exist.
+- **Budgets are gone.** `runs_per_day` and `minutes_per_day` are ignored;
+  `agent pause` stops an agent that runs away.
+- **The factory has no pm.** Intake blocks what it cannot verify, with the one
+  question for you; lookback files its structural fixes to `dev`.
+  `init --factory` writes five personas, not six.
+
 ## v0.8.0 — 2026-10-02
 
 - **The prompt names a CLI the agent can actually run.** The plugin is not on
