@@ -297,7 +297,14 @@ func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 		if len(args) != 3 {
 			return fmt.Errorf(`usage: herdr-docket task note <id> "<text>"`)
 		}
-		return src.Comment(args[1], args[2])
+		if err := src.Comment(args[1], args[2]); err != nil {
+			return err // the error is the only output of a failed note
+		}
+		// The write is confirmed the way done/fail/block confirm theirs: a note
+		// that lands silently is one an agent reads as a failure and rewrites
+		// (TASK-57).
+		fmt.Fprintf(out, "%s noted\n", args[1])
+		return nil
 	case "done", "fail", "block":
 		return taskClose(env, args[0], args[1:], out)
 	case "verdict":
