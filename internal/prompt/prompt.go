@@ -121,6 +121,12 @@ you ran, what you saw, file and line for every finding:
   herdr-docket task verdict %s PASS --pr "%s" --note "<what you checked and how>"
   herdr-docket task verdict %s FAIL --pr "%s" --note "<what fails, and the fix you would make>"
 
+The verdict command is the last tool call of the run: **execute it, then
+summarise**. If your run has already reached its verdict and stops there, the
+queue receives nothing: a verify run that ends with a conclusion in prose is
+filed *settled without reporting a verdict* — the failure mode this section
+exists to prevent.
+
 A FAIL goes back to the author with your note as its brief, so make it
 actionable. You never merge, never push to the branch, and never close or
 re-route the task: the fleet does that from your verdict. (The fleet dir,
