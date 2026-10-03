@@ -134,6 +134,27 @@ func TestHistoryLineShowsTheDelivery(t *testing.T) {
 	}
 }
 
+// A verifier's verdict rides on the closing record since ADR 0013, but a
+// supervising human reads history, not history.jsonl: without it here the
+// queue's PASS/FAIL is invisible from the CLI.
+func TestHistoryLineShowsTheVerification(t *testing.T) {
+	r := history.Record{
+		At:           time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC),
+		Status:       history.StatusDone,
+		Task:         "TASK-1",
+		Trigger:      "poll",
+		Verdict:      "done",
+		Verification: "PASS",
+		PatchID:      "9ad5c1e2c0f4b8a76d3e5f7a9c1b2d4e5f6a7b8c",
+	}
+	line := formatHistory(r)
+	for _, want := range []string{"verified PASS", "p=9ad5c1e2"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("history line %q missing %q", line, want)
+		}
+	}
+}
+
 // The one-step factory setup is the only flag init takes: an unknown
 // argument is refused before anything on disk is touched, and the refusal
 // names the flag so the discovery path is the error message.
