@@ -4,6 +4,16 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A run whose workspace was closed mid-flight reports cancelled again.** The
+  vanished-agent recovery branched on `agent_not_running` — a code herdr 0.9.x
+  never sends to `agent get` / `wait` / `prompt`. Every vanished shape it does
+  send is `agent_not_found` (workspace closed under the agent, agent exited on
+  its own, target never registered — four shapes probed against 0.9.0 and
+  0.9.1), so the recovery matched nothing and a called-off run sat pinned on a
+  dead pane until its timeout instead of ending within one wait slice as a
+  blocked, human-decides task. The constant now reads what herdr sends, and
+  the contract suite holds the real binary to that pin.
+
 - **`task note` says what it wrote.** A note that landed printed nothing, so
   an agent read its own successful writes as failures and kept rephrasing them.
   It now prints `<id> noted` the way `done`, `fail` and `block` confirm theirs;
