@@ -37,6 +37,8 @@ And the block both of them take:
 | `kind` | `backlogmd` (the default), `basecamp`, or `github`. |
 | `dir` | A Backlog.md project other than the fleet's own: absolute, `~`, or relative to the fleet dir. |
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
+| `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](factory.md#the-pipeline)). Unset: no pipeline, a run ends on the agent's own verdict. |
+| `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |
 | `statuses` | The project's own status words — [a project you already have](#work-a-project-you-already-have). |
 | `basecamp` | `account_id` and `lists` — [a hosted queue](#a-hosted-queue-basecamp). |

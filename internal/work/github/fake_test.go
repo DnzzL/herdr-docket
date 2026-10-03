@@ -143,6 +143,7 @@ type fakeIssue struct {
 	reason    string
 	createdAt string
 	comments  []gqlComment
+	labels    []string
 }
 
 // The shapes the fake answers with. They carry the JSON tags the API uses, not
@@ -195,6 +196,7 @@ type gqlIssue struct {
 	Body         string                `json:"body,omitempty"`
 	State        string                `json:"state,omitempty"`
 	CreatedAt    string                `json:"createdAt,omitempty"`
+	Labels       *gqlNodes[gqlValue]   `json:"labels,omitempty"`
 	Comments     *gqlNodes[gqlComment] `json:"comments,omitempty"`
 	ProjectItems *gqlNodes[gqlItem]    `json:"projectItems,omitempty"`
 }
@@ -550,6 +552,7 @@ func (f *fakeBoard) issueNode(number int, vars map[string]any) any {
 		Body:         issue.body,
 		State:        issue.state,
 		CreatedAt:    issue.createdAt,
+		Labels:       labelNodes(issue.labels),
 		Comments:     &gqlNodes[gqlComment]{Nodes: issue.comments},
 		ProjectItems: f.itemsNode(number),
 	}
@@ -849,4 +852,12 @@ func (f *fakeBoard) tokens() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]string(nil), f.bearer...)
+}
+
+func labelNodes(names []string) *gqlNodes[gqlValue] {
+	n := &gqlNodes[gqlValue]{Nodes: []gqlValue{}}
+	for _, name := range names {
+		n.Nodes = append(n.Nodes, gqlValue{Name: name})
+	}
+	return n
 }

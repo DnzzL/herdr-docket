@@ -32,6 +32,13 @@ type SourceConfig struct {
 	// fleet's own. An agent carries its workdir, so the project a task came
 	// from is what decides which agent may take it unasked.
 	DefaultAgent string `yaml:"default_agent"`
+	// Verifier names the agent that judges an author's pull request before it
+	// can merge (ADR 0013). Empty means no pipeline: a run ends on the
+	// agent's own verdict, as it always has.
+	Verifier string `yaml:"verifier"`
+	// Merge is "auto" when the fleet may merge a verified PR on its own;
+	// anything else stops at a PASS and leaves the merge to a human.
+	Merge string `yaml:"merge"`
 	// Statuses is the project's own status words. Empty means the project
 	// speaks the fleet's, which is true of one the fleet laid down itself.
 	Statuses backlogmd.Vocabulary `yaml:"statuses"`

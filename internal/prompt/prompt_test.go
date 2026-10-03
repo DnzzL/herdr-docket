@@ -251,3 +251,46 @@ func TestAQueueWithoutWordsIsToldSo(t *testing.T) {
 		}
 	}
 }
+
+// In a queue with a verifier, a worker's PR is a delivery, not a close: the
+// prompt says the task stays open and never teaches the agent to merge or to
+// hand the task on itself.
+func TestAWorkerInAVerifiedQueueDeliversItsPRAndNeverHandsOn(t *testing.T) {
+	got := deliver(fleet.Agent{Name: "dev", Persona: "P"}, work.Task{ID: "TASK-3", Title: "T"}, "", "", "/fleet", fleet.Words{})
+	for _, want := range []string{
+		"herdr-docket task done TASK-3 --pr",
+		"stays open",
+		"verifier",
+		"Never merge",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("worker prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(got, "task assign") {
+		t.Error("a verified queue's worker must not be taught to hand the task on")
+	}
+}
+
+// The verifier is told the PR, the one command that records its verdict, and
+// that it neither merges nor closes.
+func TestTheVerifierIsToldThePRAndTheVerdictCommandOnly(t *testing.T) {
+	got := verify(fleet.Agent{Name: "rev", Persona: "R"}, work.Task{ID: "TASK-3", Title: "T", Body: "verify by running X"}, "https://github.com/o/r/pull/7", "", "/fleet")
+	for _, want := range []string{
+		"R",
+		"verify by running X",
+		"https://github.com/o/r/pull/7",
+		"herdr-docket task verdict TASK-3 PASS --pr \"https://github.com/o/r/pull/7\"",
+		"herdr-docket task verdict TASK-3 FAIL --pr \"https://github.com/o/r/pull/7\"",
+		"never merge",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("verifier prompt lacks %q", want)
+		}
+	}
+	for _, unwanted := range []string{"task done", "task assign", "task fail", "task block"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("verifier prompt teaches %q — the runner closes the task, not the verifier", unwanted)
+		}
+	}
+}

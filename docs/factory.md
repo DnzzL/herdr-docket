@@ -12,19 +12,19 @@ service, an account, or a second daemon.
 ## The loop
 
 ```text
- sources ──► intake ──► queue ──► dev ──► PR ──► reviewer ──► merge or a human
-    ▲                                                     │
-    │                                                     ▼
-    └────────────── lookback ◄── history ◄── runs ◄──────┘
+ sources ──► intake ──► queue ──► dev ──► PR ──► verifier ──► gate ──► merge or a human
+    ▲                                       ▲          │ FAIL
+    │                                       └──────────┘ (twice at most)
+    └────────────── lookback ◄── history ◄── runs
                         │
-                        └── one follow-up per pattern, back to the queue
+                        └── one structural fix per pattern, back to the queue
 ```
 
 | Stage | Persona (in [examples](examples.md)) | Schedule |
 | --- | --- | --- |
 | Turn feedback into verified tasks | [Example 5, `intake`](examples.md#5-an-intake-that-turns-feedback-into-fleet-work) | every few hours |
 | Carry the task to a green PR | [Example 2, `dev`](examples.md#2-a-dev-that-works-ready-for-agent-tickets) | the queue, as ever |
-| Verdict — and merge what the policy allows | [Example 4, `reviewer`](examples.md#4-a-reviewer-that-gates-the-devs-prs) | daily sweep |
+| Verdict on every delivered PR | [Example 4, `reviewer`](examples.md#4-a-reviewer-that-verifies-the-devs-prs), named as the queue's `verifier` | each delivery, sequenced by the fleet |
 | Nudge work that ended short | [Example 6, `stall`](examples.md#6-a-stall-sweep-that-nudges-work-that-ended-short) | daily |
 | Find what keeps coming back | [Example 7, `lookback`](examples.md#7-a-lookback-that-finds-what-keeps-coming-back) | weekly |
 
@@ -53,23 +53,6 @@ automations:
       herdr-docket task create "Intake: turn new feedback into fleet tasks" -a intake \
         -d "Poll the sources your persona and mcp_config name and apply the
         gate. Report only."
-
-  # The review sweep drives the reviewer persona, which lands paused because
-  # only you know the repo it works. Point its workdir there, resume it, then
-  # delete this line.
-  - name: review-sweep
-    disabled: true
-    cron: "30 9 * * 1-5"
-    repo: ~/fleet
-    workspace: root
-    model: sonnet
-    prompt: |
-      herdr-docket task create "Sweep: review the oldest un-reviewed PR" -a reviewer \
-        -d "Review the oldest open pull request whose head commit carries no
-        verdict of yours. A PR you have already judged stays covered while it
-        waits on a human, and comes back to you only when new commits land on
-        it. Then re-task yourself for the rest. Your merge policy is in your
-        persona."
 
   - name: stall-sweep
     cron: "0 13 * * *"
@@ -107,6 +90,40 @@ Two knobs the loop leans on, both already built:
   If you want real oversight, make it a stronger model than the one that did
   the merging.
 
+## The pipeline
+
+A queue that names a verifier turns a delivered PR into a fixed sequence the
+runner owns — no agent hands work on, so none can forget to
+([ADR 0013](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)):
+
+```yaml
+sources:
+  myapp:
+    default_agent: dev
+    verifier: reviewer
+    merge: auto        # omit, and a PASS stops short: you merge
+```
+
+1. **The author delivers.** `task done --pr <url>` records the PR on the run
+   and leaves the task open.
+2. **The verifier judges**, in a run of its own, and records exactly one
+   `task verdict <id> PASS|FAIL --pr <url>`. The CLI pins the verdict to the
+   PR's `git patch-id` and says it on the PR as `docket-verdict: …`.
+3. **A FAIL goes back to the author** with the verifier's note as its brief
+   and its own PR to fix. A second FAIL holds the task for you.
+4. **A PASS goes to the gate**, which is code: it waits out pending CI (up to
+   15 minutes), then merges only when the verdict covers the PR's current
+   diff, CI is green, the task has no `critical` label, no changed file
+   matches the repo's `CODEOWNERS`, and the queue says `merge: auto`. The
+   merge is a squash pinned to the head commit the gate looked at.
+5. **Anything else is a hold**: the task goes to your blocked column with the
+   one reason the gate stopped, and Herdr raises a notification. A merge is
+   notified too.
+
+`CODEOWNERS` is the list of what a human merges — every rule in it counts, so
+a catch-all `* @you` line means the fleet merges nothing. A repo with no CI
+merges nothing either: a verdict alone is one agent's word.
+
 ## The dials
 
 Nothing about how much autonomy the loop has lives in the loop. It is the
@@ -123,11 +140,11 @@ The loop is one command, but it does not have to be run as one:
 1. **File the tasks by hand first.** Create the intake task yourself for a
    week and read what the gate would file. Retune the persona between runs —
    it is a file.
-2. **Add one schedule at a time.** Intake first, then the review sweep.
+2. **Add one schedule at a time.** Intake first, then the sweeps.
    Watch a few rounds of each in `herdr-docket history` before the next enters the week.
-3. **Leave the merge policy alone until the sweep has verdicts you have read
-   yourself.** The policy paragraph in the reviewer persona is where the
-   autonomy lives; loosen it one sentence at a time.
+3. **Name the verifier before you allow the merge.** Run with `verifier:` and
+   no `merge:` until you have read verdicts you agree with, then add
+   `merge: auto` — and `CODEOWNERS` lines for whatever must stay yours.
 
 ## One step
 
@@ -143,8 +160,8 @@ The three that read the queue (`intake`, `stall`, `lookback`) are pointed at
 the fleet dir and run from the first tick. The two that work a repo (`dev`,
 `reviewer`) land **paused**, carrying the placeholder workdir from
 [examples](examples.md): the loop refers to both by name — lookback files its
-patterns to `dev`, the reviewer takes the dev's handoff — so a fleet missing
-them routes that work to nobody. Intake files what it cannot verify as a
+patterns to `dev`, the reviewer verifies its PRs — so a fleet missing them
+routes that work to nobody. Intake files what it cannot verify as a
 blocked task: that column is yours.
 They exist, and they wait:
 
@@ -153,17 +170,14 @@ $EDITOR ~/fleet/agents/dev/AGENT.md     # workdir: your repo
 herdr-docket agent resume dev
 ```
 
-The `review-sweep` entry ships `disabled: true` for the same reason — a sweep
-that files onto a paused reviewer is a pile, not a loop. Enable it once the
-reviewer runs.
+Then name the reviewer as the queue's `verifier:` in `fleet.yaml` — `init`
+never edits that file.
 
 ## What it refuses
 
-- **The fleet never merges. Agents do**, under the merge policy written in
-  the reviewer's own persona — a paragraph the one human owner edits. The
-  daemon, the runner and the CLI have no forge verbs, and
-  [ADR 0008](adr/0008-the-board-is-a-triage-surface.md) still holds: the
-  board shows, it does not pass judgment.
+- **No agent merges.** The gate does, in code, on a verdict from an agent
+  that did not write the change. CI green alone is not a verdict, and the
+  verifier holding the merge would be the gated party holding the gate.
 - **No event triggers.** Work happens on a cron, because
   [that is all a local scheduler can honestly promise](https://github.com/DnzzL/herdr-automations/blob/main/docs/adr/0008-no-event-triggers.md).
   Polling a source every four hours is the same deal, said in cron.
@@ -172,11 +186,11 @@ reviewer runs.
   your apps, not this plugin. A `history.jsonl` that grows forever is accepted
   for the same reason everything else here has no store: it is a file you can
   rotate.
-- **The delivery record is the only thing the loop trusts on its own.** A
-  worktree that ends `done` holding uncommitted work is kept, said on the
-  task, and blocked to a human — the guard in `cleanup` is the one piece of
-  the loop that is code rather than prose, and it exists because everything
-  else here believes an agent's sentence.
+- **What guards main is code; how to work is prose.** The run lock, the
+  delivery guard (a worktree ending `done` with uncommitted work is kept and
+  blocked to a human) and the merge gate are code, because breaking them can
+  ship bad work. Everything about *how* to do the work lives in personas you
+  edit.
 
 ## The first week — 2026-09-25 to 2026-10-02
 
@@ -262,8 +276,12 @@ the shape):
 
 ## Known gaps
 
-- `not done` — the worker → verifier → merge-gate pipeline of
-  [ADR 0013](adr/0013-the-factory-is-a-worker-a-verifier-and-a-gate-in-code.md):
-  the reviewer still merges on its own judgment, from its persona's prose.
 - `fragile` — nothing caps a self-tasking loop since budgets went; `agent
   pause` is the brake, applied by a human reading `history`.
+- `fragile` — the runner reads `fleet.yaml` once, when the daemon starts:
+  adding a `verifier:` takes a daemon restart. A PR delivered before that is
+  held, not lost.
+- `not tested` — the pipeline has not run live yet; the gate's `gh` calls were
+  probed against real PRs, the sequence only against fakes.
+- `unknown` — `gh pr view` lists at most 100 changed files; a larger PR is
+  checked against `CODEOWNERS` on those only.

@@ -191,7 +191,12 @@ func (s *Source) Get(id string) (work.Task, error) {
 				Body      string `json:"body"`
 				State     string `json:"state"`
 				CreatedAt string `json:"createdAt"`
-				Comments  struct {
+				Labels    struct {
+					Nodes []struct {
+						Name string `json:"name"`
+					} `json:"nodes"`
+				} `json:"labels"`
+				Comments struct {
 					Nodes []comment `json:"nodes"`
 				} `json:"comments"`
 				ProjectItems struct {
@@ -228,6 +233,9 @@ func (s *Source) Get(id string) (work.Task, error) {
 		Phase:     s.phase(item.Status.Name, open),
 		CreatedAt: issue.CreatedAt,
 		Criteria:  criteria(issue.Body),
+	}
+	for _, l := range issue.Labels.Nodes {
+		task.Labels = append(task.Labels, l.Name)
 	}
 	if !open {
 		// The issue's state says the work stopped; only the thread says how it

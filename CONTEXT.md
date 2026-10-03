@@ -65,11 +65,40 @@ _Avoid_: owner, runner
 One execution of a task by an agent. Strictly one at a time per checkout.
 _Avoid_: job, session, execution
 
-**Board**:
-The interactive view of the queue.
-
 **Project**:
 What a backend calls the container its queue lives in: a GitHub Projects v2
 project, say, which is the queue itself rather than a view of it. A backend
 whose queue is a board says *board* in its own documentation, because that is
-what its users call it; the fleet's _Board_ is always the view.
+what its users call it.
+
+## The pipeline
+
+**Author**:
+The agent whose run delivered a pull request for a task — the queue's
+default agent, in a queue with a verifier.
+_Avoid_: worker, dev (a persona's name, not a role)
+
+**Delivery**:
+A pull request an author hands in with `task done --pr` in a queue with a
+verifier. The task stays open: a delivery is not a verdict.
+_Avoid_: submission, handoff
+
+**Verifier**:
+The agent a queue names to judge every delivery. It records a verification
+and never merges, pushes or closes.
+_Avoid_: reviewer (a persona's name, not a role), approver
+
+**Verification**:
+A verifier's _PASS_ or _FAIL_ on a delivery, pinned to the patch-id of the
+diff it judged. Not a Verdict: a verdict ends a task, a verification feeds
+the gate.
+_Avoid_: review, approval
+
+**Gate**:
+The code that merges a verified delivery or holds it: PASS on the current
+diff, green CI, no `critical` label, no CODEOWNERS path, `merge: auto`.
+
+**Hold**:
+A delivery the gate or the pipeline stopped: the task is closed _blocked_
+with the one reason, and a human is notified.
+_Avoid_: reject, park

@@ -138,6 +138,12 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	var wrong []work.Task
 	routable := tasks[:0:0]
 	for _, t := range tasks {
+		// A task this process is already running — a pipeline between its
+		// worker and its verifier — is spoken for. Offering it again would be
+		// refused by the task lock and cost its agent the tick.
+		if runs.Running(t.ID) {
+			continue
+		}
 		// Only work the fleet could pick up is work it could misroute. A
 		// closed task is nobody's to route, and saying so on one would write
 		// a comment onto somebody's finished work every tick, forever.

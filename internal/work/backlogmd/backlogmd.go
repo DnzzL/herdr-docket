@@ -210,6 +210,7 @@ func (s *Source) asTask(t task) work.Task {
 		Priority:  rank(t.Priority),
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,
+		Labels:    t.Labels,
 	}
 }
 

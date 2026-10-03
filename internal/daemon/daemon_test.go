@@ -281,3 +281,62 @@ func TestAClosedTaskIsNeverCalledMisrouted(t *testing.T) {
 		t.Errorf("a closed task must be left alone, got %d notes: %v", n, src.notesFor())
 	}
 }
+
+// gatedHost holds every run in Do until released, and counts what started.
+type gatedHost struct {
+	fakeHost
+	mu      sync.Mutex
+	started []string
+	release chan struct{}
+}
+
+func (h *gatedHost) Provision(s host.Spec) (host.Session, error) {
+	h.mu.Lock()
+	h.started = append(h.started, s.Name)
+	h.mu.Unlock()
+	return host.Session{WorkspaceID: "ws", PaneID: "p"}, nil
+}
+func (h *gatedHost) Do(host.Session, host.Spec, time.Duration) error {
+	<-h.release
+	return nil
+}
+
+func (h *gatedHost) count() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.started)
+}
+
+// A task whose run this process holds — a pipeline between its worker and
+// its verifier — is not offered to its worker again: the refusal would burn
+// the worker's turn for the tick while its next task waited.
+func TestATaskThisProcessIsRunningIsNotPickedAgain(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(
+		work.Task{ID: "TASK-1", Title: "held", Open: true, Assignee: "a", Priority: 3},
+		work.Task{ID: "TASK-2", Title: "next", Open: true, Assignee: "a"},
+	)
+	agents := map[string]fleet.Agent{
+		"a": {Name: "a", Workdir: "/w/a", Workspace: "root", TimeoutMinutes: 1},
+		"b": {Name: "b", Workdir: "/w/b", Workspace: "root", TimeoutMinutes: 1},
+	}
+	withFleet(t, agents, src)
+	h := &gatedHost{release: make(chan struct{})}
+	defer close(h.release)
+	runs := runner.New(h, fleet.Settings{Dir: "/fleet"})
+
+	// TASK-1 is in flight under b, the way a verifier stage holds it.
+	go runs.Run(src, work.Task{ID: "TASK-1", Title: "held", Open: true}, agents["b"], "manual")
+	for h.count() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+
+	evaluate(runs, map[string]bool{})
+	deadline := time.Now().Add(2 * time.Second)
+	for h.count() < 2 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if h.count() != 2 || !strings.Contains(h.started[1], "TASK-2") {
+		t.Fatalf("started = %v, want a to take TASK-2 this tick", h.started)
+	}
+}

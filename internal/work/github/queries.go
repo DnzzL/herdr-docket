@@ -65,6 +65,7 @@ const issueQuery = `query Issue($owner: String!, $project: Int!, $repoOwner: Str
   repository(owner: $repoOwner, name: $repoName) {
     issue(number: $issue) {
       number title body state createdAt
+      labels(first: 20) { nodes { name } }
       comments(last: 100) { nodes { body author { login } } }
       projectItems(first: 10) {
         nodes {

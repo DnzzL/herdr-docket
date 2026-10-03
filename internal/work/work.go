@@ -39,6 +39,9 @@ type Task struct {
 	Ordinal   float64
 	CreatedAt string
 	Criteria  []Criterion
+	// Labels are the task's tags, filled by Get where the backend has them.
+	// The merge gate reads one: `critical` keeps a PR for a human.
+	Labels []string
 }
 
 // Criterion is one acceptance criterion of a task. Criteria are read-only to

@@ -81,7 +81,7 @@ line of config, and you can move them one project at a time:
 | `statuses.todo` | a column you fill by hand — `ready-for-agent` | your project's default column: everything new is fair game |
 | assignee / `default_agent` | name the agent on the task, one at a time | `default_agent` picks up everything unassigned — per project, so each one has its own intake |
 | `statuses.failed` | points at a human column — `needs-info`, `ready-for-human` | points at a real `Failed`; nobody is paged |
-| a reviewer agent | gates the dev's PRs ([Example 4](docs/examples.md#4-a-reviewer-that-gates-the-devs-prs)) | no gate; the dev merges its own work |
+| `verifier` | a reviewer verifies every delivered PR, you merge ([Example 4](docs/examples.md#4-a-reviewer-that-verifies-the-devs-prs)) | `merge: auto` — the gate merges a PASS on green CI, except `critical` tasks and `CODEOWNERS` paths ([the pipeline](docs/factory.md#the-pipeline)) |
 | `disabled` / `agent pause` | park an agent while you look at something | never paused |
 
 The one lever with teeth is the first: **the fleet only ever picks up the
@@ -94,7 +94,8 @@ reaches a paused agent, because pressing the button is
 human intent, not scheduling.
 
 These levers are also the whole of a running *factory* — intake polling
-sources into verified tasks, a review sweep, a stall sweep, a weekly lookback
+sources into verified tasks, a verifier and a merge gate on every PR, a stall
+sweep, a weekly lookback
 over what keeps recurring. The loop is personas and cron, wired in
 [docs/factory.md](docs/factory.md); `herdr-docket init --factory` writes it
 into an existing fleet, the repo-side personas paused until you name the repo.
@@ -190,7 +191,8 @@ that fails, blocks or is held back from merging raises a Herdr notification.
 | `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several) |
 | `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-docket task note ID "…"` | say where things stand without closing |
-| `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence) |
+| `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence; `--pr URL` delivers a PR to the verifier) |
+| `herdr-docket task verdict ID PASS\|FAIL --pr URL` | a verifier's verdict, pinned to the PR's diff |
 | `herdr-docket agent list` | the agents, and which are parked |
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |

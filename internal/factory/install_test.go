@@ -238,12 +238,10 @@ func entryBlock(yaml, name string) string {
 	return yaml[start:]
 }
 
-// The review sweep is the one entry whose persona lands paused: `reviewer`
-// works a project, and only its owner knows which. Live, it would file a task
-// every weekday onto an agent that is not scheduling, so it ships disabled —
-// and the output names the dial, the same way the intake entry names the
-// phrase to delete.
-func TestTheReviewSweepShipsDisabledUntilTheProjectPersonasExist(t *testing.T) {
+// Every entry drives a persona init wrote and that runs from the first tick,
+// so none ships disabled; the output names what is still owed on the project
+// side — the paused dev and reviewer, and the verifier line in fleet.yaml.
+func TestTheEntriesRunAndTheOutputNamesWhatIsOwed(t *testing.T) {
 	dir := t.TempDir()
 	cfg := t.TempDir()
 	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, cfg, 0))
@@ -257,16 +255,11 @@ func TestTheReviewSweepShipsDisabledUntilTheProjectPersonasExist(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(raw)
-
-	sweep := entryBlock(got, "review-sweep")
-	if sweep == "" {
-		t.Fatalf("no review-sweep entry:\n%s", got)
+	if strings.Contains(got, "review-sweep") {
+		t.Errorf("the pipeline hands every delivered PR to the verifier; no sweep drives it:\n%s", got)
 	}
-	if !strings.Contains(sweep, "disabled: true") {
-		t.Errorf("review-sweep must ship disabled — it names a persona init never wrote:\n%s", sweep)
-	}
-	if !strings.Contains(sweep, "resume") {
-		t.Errorf("the entry must say what has to happen before it is enabled:\n%s", sweep)
+	if !strings.Contains(out.String(), "verifier") {
+		t.Errorf("output must say the reviewer becomes the queue's verifier:\n%s", out.String())
 	}
 
 	// The fleet-side three drive personas this command did write, so they run.

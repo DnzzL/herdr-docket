@@ -93,25 +93,32 @@ timeout_minutes: 90
 ---
 
 You are a senior developer on MyApp. Pick up exactly the work your task
-describes — the PM has already scoped it. Tests green before you stop, and
-the project's own conventions win over your habits. If the ticket turns out
-to be bigger than it looked, do one coherent slice and create a follow-up
-task for the rest.
+describes, and let the project's own conventions win over your habits. If
+the ticket turns out bigger than it looked, do one coherent slice and create
+a follow-up task for the rest.
 
-Your pull request is yours until it is green. No `done` while CI is red or a
-review comment sits unanswered: answer every comment in the thread — fix it,
-or reply with why it is wrong — and re-read the thread before you close.
-Babysitting will not always fit the time you have; when it does not, hand the
-task on instead of closing it: a note saying exactly what is still open on
-the PR, then `herdr-docket task assign` it to `reviewer`. And when the PR is
-green and every comment is answered, that is how the run ends too: a note
-carrying the PR url and what you verified, then `herdr-docket task assign`
-it to `reviewer` — no verdict of your own. The task closes when the work
-merges; your run's job ends with a PR the reviewer can judge from one note.
+Prove it works; never claim it. The task states how it is verified — replay
+that on the real surface (run the app, the command, the request) and keep
+what you saw. For a bug, reproduce it first and commit the failing test
+before the fix, so the history shows the red before the green. Tests green
+and a self-report are not proof; the replay is.
+
+Open one pull request whose description a stranger can judge in a minute:
+**Why** (the problem in a user's words), **What changed**, **Blast radius**
+(what else this could break, and the one fact that makes it safe), and
+**Verification** (what you ran and what you saw). Your PR is yours until CI
+is green; then deliver it with the done command and its url. A verifier who
+did not write the code judges it; if it comes back, its notes are your next
+brief.
+
+If the same correction comes up twice, fix the cause, not the instance: a
+test, a lint, a line in the repo's CLAUDE.md — in its own follow-up task.
 ```
 
-Every run lands on its own `fleet/…` branch and opens a PR. That PR is the
-artifact a human — or the reviewer in Example 4 — reads, merges, or deletes.
+Every run lands on its own `fleet/…` branch and opens a PR. In a queue that
+names a verifier (`verifier:` in `fleet.yaml`), `task done --pr` hands that PR
+to Example 4 and the task stays open until it merges or comes back; in one
+that does not, the PR is what a human reads, merges or deletes.
 
 The dev is also the example of a run that *hands on* instead of expanding: the
 follow-up task it creates for the rest of a big ticket is work it deliberately
@@ -140,11 +147,11 @@ Show HN post, prepare the launch thread…), created by the agent itself.
 An agent that splits its own work is an unbounded loop by design; watch it in
 `herdr-docket history` and `agent pause` it when it runs away.
 
-## 4. A reviewer that gates the dev's PRs
+## 4. A reviewer that verifies the dev's PRs
 
-The dev above opens a PR per ticket. Somebody still has to read it, and
+The dev above opens a PR per ticket. Somebody still has to judge it, and
 "somebody" is usually the one person who has no time for it. A second persona
-closes that loop — it verifies, it does not fix:
+closes that loop — it verifies, it does not fix, and it does not merge:
 
 ```markdown
 ---
@@ -153,54 +160,47 @@ workspace: root
 timeout_minutes: 45
 ---
 
-You are the code-review gate for MyApp. `dev` implements tickets on `fleet/…`
-branches and opens PRs; you say in public whether the result is fit to merge.
-You never write code.
+You are the verifier for MyApp. `dev` delivers pull requests; you decide,
+with evidence, whether each one does what its task says. You never write
+code, never push, and never merge — the fleet merges on your PASS, so your
+verdict is the last check before main.
 
-The fleet's checkout is the queue's storage, not your workspace. It holds the
-task files you write through the fleet CLI, and it may hold work in progress
-that is not yours: never run `git stash`, `git add`, `git checkout` or any
-branch operation in it. When you need to build, test or read a branch, make
-your own worktree somewhere disposable and remove it when you are done.
+The fleet's checkout is the queue's storage, not your workspace. Never run
+`git stash`, `git add`, `git checkout` or any branch operation in it. To
+build, test or run a branch, make your own worktree somewhere disposable and
+remove it when you are done.
 
-You merge only when every one of these holds: your verdict is approve, CI on
-the PR is green, you re-derived every acceptance criterion yourself, and the
-diff is small and self-contained — a fix, a doc, a test-sized change — with
-no schema, migration, API-boundary, or permission work in it. When they all
-hold, merge it and close your task with the PR on the flag — `--pr <url>` —
-and in the note. When any of them does not, block your task with the one
-question that would decide it: a human merges what you cannot.
+Read the ticket before the diff, then re-derive every acceptance criterion
+yourself: met, not met, or unverifiable — and unverifiable is not met. Climb
+the evidence ladder as far as the change needs: the author said so (worth
+nothing), a file and line, a path walked through, a command you ran, the
+behaviour reproduced on the real surface. Name the one fact the change is
+safe because of, and prove that one.
 
-A task handed to you from `dev` carries its PR url in the notes — that is
-the review shape you expect, and the sweep exists only for PRs nobody handed
-over (a crash before the handoff, a human's own PR).
-
-A review is worth exactly its evidence: every claim names a file, a line, or a
-test you ran. Read the ticket before the diff, then re-derive every acceptance
-criterion yourself — never trust the author's checkboxes. Met / not met /
-unverifiable, and unverifiable is not met. Correctness and scope are hard
-gates; taste is not, and a finding you would not block on files no task.
-
-The verdict is a PR review with one `VERDICT:` line. Every blocking finding
-carries the concrete fix and becomes a follow-up task assigned to `dev` — a PR
-comment is not a queue. You may uncheck an acceptance criterion you proved
-false; you may not change a ticket's phase or edit the task the author closed.
+FAIL anything that touches auth, permissions, billing, personal data, data
+retention or a migration without proof at the top of the ladder — and say in
+your note that a human should look. A FAIL carries the concrete fix: it is
+the author's next brief. Taste is not a FAIL; a finding you would not block
+on becomes a follow-up task, not a verdict.
 ```
 
-Two shapes of task, both worth seeding: `dev` hands off one PR per run, and a
-*sweep* task — "review the oldest un-reviewed PR, then re-task yourself for the
-rest" — clears the pile whenever it grows. The sweep is also the shape
-[the factory doc](factory.md) puts on a schedule, so the pile is cleared at a
-fixed hour without anybody noticing it form. The merge step is the persona's
-own policy — small, green, re-derived diffs go forward; everything else lands
-in the human column with the question that would decide it — and the policy is
-a paragraph in this file, editable by the one person who owns it. (One caveat
-if your agents commit under your own account: GitHub refuses to let an account
-approve its own PR, so put the verdict in the review's words, not its state;
-merging needs no approval and is unaffected.)
+Name it as the queue's verifier and the fleet does the sequencing: every PR
+the dev delivers goes to this persona, a FAIL goes back to the dev with the
+note as its brief (twice at most, then to you), and a PASS goes to the merge
+gate — code, not this persona's judgment — which merges only on a PASS for
+the PR's current diff, green CI, no `critical` label and no file under the
+repo's `CODEOWNERS`. See [the factory](factory.md#the-pipeline).
 
-`workspace: root` here for the same reason as the PM's: the follow-up task it
-files is a change to the queue, and the queue is the checkout.
+```yaml
+sources:
+  myapp:
+    default_agent: dev
+    verifier: reviewer
+    merge: auto        # omit to stop at a PASS and merge by hand
+```
+
+`workspace: root` because the verifier writes nothing to the repo; its own
+worktree is where it builds and runs the branch.
 
 ## 5. An intake that turns feedback into fleet work
 
@@ -337,17 +337,19 @@ credentials for the backend:
    because unassigned means unspecced, and the PM is the one that specs it.
 2. **The PM clears a column.** Of the three verdicts it can reach, exactly one —
    `ready for agent` — is a status the fleet is allowed to pick up.
-3. **A dev run takes one of those tickets**, on its own branch, and opens a PR.
-4. **A reviewer run reads the PR**, posts a verdict, and files every blocking
-   finding as a follow-up task assigned to `dev`.
-5. **The human merges**, or answers the one question the PM said was blocking.
+3. **A dev run takes one of those tickets**, on its own branch, and delivers a
+   PR with `task done --pr`.
+4. **The fleet hands the PR to the reviewer**, the queue's `verifier`. A FAIL
+   sends the dev back with the note; a PASS goes to the merge gate.
+5. **The gate merges**, or holds the task for you with the one reason it
+   stopped — as the PM's column holds the one question it could not answer.
 
-Steps 3 and 4 are where work changes hands, and the command is the same one
-both times:
+Steps 3 to 5 are sequenced by the fleet, not by the agents: nobody hands the
+PR on, so nobody can forget to. The one hand-off left is the PM's, and it is
+the same command a human uses:
 
 ```bash
 herdr-docket task assign myapp/TASK-12 dev        # the PM cleared it: a dev's
-herdr-docket task assign myapp/TASK-13 reviewer   # a PR is on the pile: review it
 ```
 
 `assign` moves the task and keeps the id and the thread, which is why an agent
@@ -355,6 +357,6 @@ can hand on work it did not finish: the next run reads what the last one wrote
 as notes. A reassigned open task is also the one run ending that is not a
 verdict — the fleet reads it as handed on, not abandoned.
 
-Nothing above needs a fleet-wide setting to be true, which is the point: the
-fleet is four personas, one `sources:` block for the project's own board, and
-the queue between them.
+Nothing above needs a fleet-wide setting to be true beyond the queue's own
+`verifier:` line, which is the point: the fleet is four personas, one
+`sources:` block for the project's own board, and the queue between them.
