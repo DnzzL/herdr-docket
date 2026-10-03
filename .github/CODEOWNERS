@@ -1,0 +1,10 @@
+# What a human merges. The fleet's merge gate holds any PR that touches a
+# path below (ADR 0013): this repo is the scheduler, and these are the parts
+# that decide what runs, what merges, and how the plugin starts.
+/internal/gate/      @DnzzL
+/internal/runner/    @DnzzL
+/internal/daemon/    @DnzzL
+/internal/host/      @DnzzL
+/.github/            @DnzzL
+/herdr-plugin.toml   @DnzzL
+/scripts/            @DnzzL
