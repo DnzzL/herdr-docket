@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,11 @@ type fakeForge struct {
 	states []gate.PR
 	reads  int
 	merged []string
+	// owners is what the forge serves as the base branch's CODEOWNERS rule
+	// patterns, nil meaning no file on the base; ownerAsked counts how often
+	// the gate came for it.
+	owners     []string
+	ownerAsked int
 }
 
 func (f *fakeForge) PR(string) (gate.PR, error) {
@@ -31,6 +38,13 @@ func (f *fakeForge) Merge(url, head string) error {
 	return nil
 }
 func (f *fakeForge) Comment(string, string) error { return nil }
+
+// owners are what the forge serves as the PR's base branch's CODEOWNERS —
+// nil is no file on the base.
+func (f *fakeForge) Codeowners(string) ([]string, error) {
+	f.ownerAsked++
+	return f.owners, nil
+}
 
 func greenPR() gate.PR {
 	return gate.PR{HeadSHA: "h1", PatchID: "p1", Checks: gate.ChecksPass, Files: []string{"main.go"}, State: "OPEN"}
@@ -45,12 +59,19 @@ type pipeline struct {
 	forge    *fakeForge
 	runner   *Runner
 	verdicts []string
+	// owners is what the forge serves as the base branch's CODEOWNERS rule
+	// patterns, nil meaning no file on the base.
+	owners     []string
+	ownerAsked int
 	// workerDelivers false makes the worker close the task itself, no PR.
 	workerDelivers bool
 	workerRuns     int
 	verifierRuns   int
 	prompts        []string
 	slept          int
+	// authorWorkdir is where the author's checkout lives — a test that wants
+	// files in it points the field here.
+	authorWorkdir string
 }
 
 func newPipeline(t *testing.T, merge string, verdicts ...string) *pipeline {
@@ -62,7 +83,6 @@ func newPipeline(t *testing.T, merge string, verdicts ...string) *pipeline {
 	p.runner.agents = func() map[string]fleet.Agent {
 		return map[string]fleet.Agent{"rev": {Name: "rev", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "R"}}
 	}
-	p.runner.owners = func(string) []string { return nil }
 	p.host.after = func() {
 		p.prompts = append(p.prompts, p.host.spec.Prompt)
 		if strings.Contains(p.host.spec.Prompt, "task verdict") {
@@ -90,8 +110,12 @@ func newPipeline(t *testing.T, merge string, verdicts ...string) *pipeline {
 
 func (p *pipeline) run() error {
 	p.t.Helper()
+	p.forge.owners = p.owners // the fake maps the pipeline's answer, at run time
+	if p.authorWorkdir == "" {
+		p.authorWorkdir = "/w"
+	}
 	return p.runner.Run(p.board, work.Task{ID: "TASK-1", Title: "T", Open: true},
-		fleet.Agent{Name: "dev", Workdir: "/w", Workspace: "worktree", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
+		fleet.Agent{Name: "dev", Workdir: p.authorWorkdir, Workspace: "worktree", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
 }
 
 func TestAPassOnAGreenPRMergesAndClosesDone(t *testing.T) {
@@ -163,12 +187,64 @@ func TestACriticalTaskIsHeldWithTheReasonOnIt(t *testing.T) {
 
 func TestACodeownersPathIsHeld(t *testing.T) {
 	p := newPipeline(t, "auto", gate.Pass)
-	p.runner.owners = func(string) []string { return []string{"*.go"} }
+	p.owners = []string{"*.go"}
 	if err := p.run(); err != nil {
 		t.Fatal(err)
 	}
 	if len(p.forge.merged) != 0 || !hasNoteContaining(p.board, "main.go") {
 		t.Fatalf("merged %v, notes %v", p.forge.merged, p.board.notes)
+	}
+}
+
+// The gate's CODEOWNERS is the PR's base branch's, read through the forge:
+// the author's checkout on disk is behind or on a branch without the file, so
+// asking it would protect whatever its stale copy says — or nothing. The
+// forge is named with the PR's url because that is where the base ref is
+// known (TASK-57).
+func TestTheGateReadsCodeownersFromTheForgeNotTheAuthorsCheckout(t *testing.T) {
+	p := newPipeline(t, "auto", gate.Pass)
+	p.owners = []string{"main.go"} // a base-branch rule the changed file falls under
+	p.authorWorkdir = "/nowhere"   // and the author's checkout does not exist
+	if err := p.run(); err != nil {
+		t.Fatal(err)
+	}
+	if p.forge.ownerAsked == 0 {
+		t.Fatal("the gate never asked the forge for the base branch's CODEOWNERS")
+	}
+	if len(p.forge.merged) != 0 || !hasNoteContaining(p.board, "main.go") {
+		t.Fatalf("merged %v, notes %v: the base branch's rule must hold the merge", p.forge.merged, p.board.notes)
+	}
+}
+
+// The gate asks the forge once per pipeline, and a base branch without
+// CODEOWNERS leaves nothing protected, whatever sits in the author's
+// checkout on disk.
+func TestTheGateAsksForBaseCodeownersOnceAndNoFileHoldsNothing(t *testing.T) {
+	p := newPipeline(t, "auto", gate.Pass)
+	p.owners = nil // the forge: no file on the base
+	plain := t.TempDir()
+	for _, rel := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
+		full := filepath.Join(plain, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("*.go @me"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p.authorWorkdir = plain // the local checkout says *.go, the base says nothing
+	p.runner.agents = func() map[string]fleet.Agent {
+		return map[string]fleet.Agent{"rev": {Name: "rev", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "R"}}
+	}
+	if err := p.run(); err != nil {
+		t.Fatal(err)
+	}
+	if p.forge.ownerAsked != 1 {
+		t.Fatalf("the forge was asked %d times, want once per pipeline", p.forge.ownerAsked)
+	}
+	if p.board.verdict("TASK-1") != work.Done || len(p.forge.merged) != 1 {
+		t.Fatalf("verdict %q, merged %v: no file on the base protects nothing",
+			p.board.verdict("TASK-1"), p.forge.merged)
 	}
 }
 

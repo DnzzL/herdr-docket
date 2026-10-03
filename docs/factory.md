@@ -121,7 +121,10 @@ sources:
    notified too.
 
 `CODEOWNERS` is the list of what a human merges — every rule in it counts, so
-a catch-all `* @you` line means the fleet merges nothing. A repo with no CI
+a catch-all `* @you` line means the fleet merges nothing. The rules that hold
+are the base branch's: the gate reads the file through the forge from the ref
+the PR targets, not from a checkout on disk, so a stale checkout cannot
+protect less (or more) than the branch says. A repo with no CI
 merges nothing either: a verdict alone is one agent's word.
 
 ## The dials

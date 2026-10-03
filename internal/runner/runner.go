@@ -45,11 +45,10 @@ type Runner struct {
 	mu       sync.Mutex
 	// The pipeline's reach beyond the host (ADR 0013), swappable in tests:
 	// the forge the gate reads and merges through, the clock it waits on,
-	// the roster the verifier is found in, and a repo's CODEOWNERS patterns.
+	// the roster the verifier is found in.
 	forge  gate.Forge
 	sleep  func(time.Duration)
 	agents func() map[string]fleet.Agent
-	owners func(workdir string) []string
 }
 
 // New returns a Runner working through h. The queue is not held here: it is
@@ -59,8 +58,7 @@ type Runner struct {
 func New(h host.Host, settings fleet.Settings) *Runner {
 	return &Runner{
 		host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{},
-		forge: gate.GH{}, sleep: time.Sleep, owners: codeowners,
-		agents: func() map[string]fleet.Agent {
+		forge: gate.GH{}, sleep: time.Sleep, agents: func() map[string]fleet.Agent {
 			a, _ := fleet.LoadAgents(settings.Dir)
 			return a
 		},
