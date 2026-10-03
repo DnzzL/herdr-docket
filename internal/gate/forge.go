@@ -161,16 +161,22 @@ func gh(args ...string) ([]byte, error) {
 // JSON to decode. A path not on the ref comes back as fs.ErrNotExist — the
 // caller's keep-looking — and anything else surfaces as its own error.
 func contents(owner, repo, ref, path string) ([]byte, error) {
-	out, err := gh("api", fmt.Sprintf("repos/%s/%s/contents/%s?ref=%s",
-		owner, repo, path, url.QueryEscape(ref)),
-		"-H", "Accept: application/vnd.github.raw")
+	var stderr bytes.Buffer
+	end := fmt.Sprintf("repos/%s/%s/contents/%s?ref=%s", owner, repo, path, url.QueryEscape(ref))
+	cmd := exec.Command("gh", "api", end, "-H", "Accept: application/vnd.github.raw")
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
 		// gh api reports a missing path as `gh: Not Found (HTTP 404)`; no
-		// sentinel is returned, so the message is the only tell.
-		if strings.Contains(err.Error(), "404") {
+		// sentinel is returned, so the message is the only tell. Only gh's
+		// own stderr carries that tell — the endpoint it rode in on names
+		// the owner, repo and ref, and any of them could contain "404".
+		// Matching more would turn credentials/network trouble into "no
+		// file" and merge a PR unguarded.
+		if strings.Contains(stderr.String(), "HTTP 404") {
 			return nil, fmt.Errorf("repos/%s/%s/contents/%s: %w", owner, repo, path, fs.ErrNotExist)
 		}
-		return nil, err
+		return nil, fmt.Errorf("gh api %s: %v: %s", end, err, strings.TrimSpace(stderr.String()))
 	}
 	return out, nil
 }
