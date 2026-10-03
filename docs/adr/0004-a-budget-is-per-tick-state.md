@@ -29,7 +29,7 @@ same reason: an honest zero beats a guessed one.
 counts a ledger it can trust: append-only, tolerant of a torn write, and read as
 the latest record per run.
 
-**Status:** accepted
+**Status:** superseded by [0013](0013-the-factory-is-a-worker-a-verifier-and-a-gate-in-code.md) — no agent set a budget
 
 ## Considered options
 

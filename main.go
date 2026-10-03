@@ -20,7 +20,6 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
-	"github.com/DnzzL/herdr-docket/internal/pane"
 	"github.com/DnzzL/herdr-docket/internal/pick"
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/skill"
@@ -51,7 +50,6 @@ Usage:
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket history [id]     Show recent runs
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
-  herdr-docket pane             Interactive board (used by the Herdr pane)
   herdr-docket install-skill    Teach your coding agent to write fleet tasks
   herdr-docket version          Print the version
 
@@ -88,8 +86,6 @@ func main() {
 		err = historyCmd(os.Args[2:])
 	case "logs":
 		err = logsCmd(os.Args[2:], os.Stdout)
-	case "pane":
-		err = pane.Run()
 	case "install-skill":
 		target := ""
 		if len(os.Args) > 2 {
@@ -590,10 +586,8 @@ func agentCmd(args []string) error {
 
 // agentList reports the agents as the fleet dir holds them: paused is a fact
 // about the persona file, so it stays true even with the daemon not running.
-// A budgeted agent also shows what it has spent in the rolling window.
 func agentList(dir string) error {
 	agents, diags := fleet.LoadAgents(dir)
-	usage := history.UsageSince(time.Now())
 	names := make([]string, 0, len(agents))
 	for name := range agents {
 		names = append(names, name)
@@ -605,12 +599,7 @@ func agentList(dir string) error {
 		if a.Disabled {
 			status = "paused"
 		}
-		u := usage[name]
-		line := fmt.Sprintf("%-14s %-8s %s", a.Name, status, a.Workdir)
-		if b := pick.BudgetLine(a, u.Runs, u.Minutes); b != "" {
-			line += "  " + b
-		}
-		fmt.Println(line)
+		fmt.Printf("%-14s %-8s %s\n", a.Name, status, a.Workdir)
 	}
 	for _, d := range diags {
 		fmt.Fprintf(os.Stderr, "herdr-docket: %s\n", d)

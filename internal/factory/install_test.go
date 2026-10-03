@@ -276,17 +276,16 @@ func TestTheReviewSweepShipsDisabledUntilTheProjectPersonasExist(t *testing.T) {
 		}
 	}
 
-	for _, owed := range []string{"pm", "dev", "reviewer"} {
+	for _, owed := range []string{"dev", "reviewer"} {
 		if !strings.Contains(out.String(), owed) {
 			t.Errorf("output must name the stage still waiting on a human (%q):\n%s", owed, out.String())
 		}
 	}
 }
 
-// Every stage the loop's prose refers to exists after one install. intake
-// files unclear items to pm and lookback files its patterns to pm; a fleet
-// where pm is a name nobody answers to routes that work to nobody. So the
-// project-side three land too — paused, carrying the example's placeholder
+// Every stage the loop's prose refers to exists after one install. lookback
+// files its patterns to dev; a fleet where dev is a name nobody answers to
+// routes that work to nobody. So the project-side two land too — paused, carrying the example's placeholder
 // workdir, because only their owner knows the repo they work.
 func TestInstallWritesTheProjectPersonasPaused(t *testing.T) {
 	dir := t.TempDir()
@@ -296,7 +295,7 @@ func TestInstallWritesTheProjectPersonasPaused(t *testing.T) {
 	if err := Install(dir, &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"pm", "dev", "reviewer"} {
+	for _, name := range []string{"dev", "reviewer"} {
 		raw, err := os.ReadFile(filepath.Join(dir, "agents", name, "AGENT.md"))
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)

@@ -198,54 +198,6 @@ func Runs(task string, limit int) ([]Record, error) {
 	return out, nil
 }
 
-// Usage is what one agent has spent in a rolling window: completed runs and
-// minutes, with each run's duration rounded up to a whole minute.
-type Usage struct {
-	Runs    int
-	Minutes int
-}
-
-// Window is how far back a budget looks. A rolling day, not a calendar one:
-// "today" would reset at midnight and let a self-tasking agent spend the whole
-// allowance twice in a minute around the boundary.
-const Window = 24 * time.Hour
-
-// UsageSince totals each agent's completed runs over the window ending at
-// now. Records written before the fleet recorded an agent or a duration are
-// ignored: an honest zero beats a guessed one, and a budget must never be
-// spent against a number the log never carried.
-//
-// The unit is the run, not the record. The log is append-only and a run owns
-// several lines of it — and more than one of them can be a closing line, since
-// stamping a pull request on a run that has already closed appends a copy of
-// its closing record. Counting lines charged an agent twice for one run, which
-// reads as a wrong number and behaves as a smaller budget: OverBudget parks an
-// agent that still had spend. So collapse per run first, exactly as Runs does,
-// and count what is left.
-func UsageSince(now time.Time) map[string]Usage {
-	cutoff := now.Add(-Window)
-	latest := map[string]Record{}
-	// A read failure is not this function's to report: a caller treats an empty
-	// window as "no spend recorded", which is the safe default for a budget.
-	_ = each(func(r Record) {
-		if r.At.Before(cutoff) {
-			return
-		}
-		latest[r.RunID] = r
-	})
-	usage := map[string]Usage{}
-	for _, r := range latest {
-		if r.Agent == "" || !r.Status.closes() {
-			continue
-		}
-		u := usage[r.Agent]
-		u.Runs++
-		u.Minutes += (r.DurationSeconds + 59) / 60
-		usage[r.Agent] = u
-	}
-	return usage
-}
-
 // LatestPerTask returns the newest run's latest record for each of ids, in a
 // single pass over the log. It answers exactly what LastRun answers, for many
 // tasks at once: the board draws a record per row and refreshes on a timer, so

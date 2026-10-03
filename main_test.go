@@ -45,18 +45,6 @@ func TestManualRunResolvesTheDefaultAgent(t *testing.T) {
 	}
 }
 
-// Budgets are scheduling policy, not a lock: a manual run reaches an
-// over-budget agent the same way it reaches a parked one, because pressing
-// the button is human intent. The budget is decided in the daemon, so routing
-// a one-off run must not consult it.
-func TestManualRunReachesAnOverBudgetAgent(t *testing.T) {
-	agents := map[string]fleet.Agent{"dev": {Name: "dev", RunsPerDay: 6, MinutesPerDay: 180}}
-	agent, err := routedAgent(agents, work.Task{ID: "TASK-9", Assignee: "dev"}, defaults(""))
-	if err != nil || agent.Name != "dev" {
-		t.Fatalf("manual run must not consult the budget: %v %+v", err, agent)
-	}
-}
-
 // The history line answers both audit questions on one row: how long the run
 // took and how it ended, when the closing record carries them.
 func TestHistoryLineShowsDurationAndVerdict(t *testing.T) {

@@ -30,7 +30,7 @@ service, an account, or a second daemon.
 
 The schedule never does the work. An automation's whole job is to put one task
 on the queue — `herdr-docket task create … -a intake` — and the daemon runs it
-on the persona like any other task, with `FLEET.md` and roles and budgets
+on the persona like any other task, with `FLEET.md` and roles
 intact. Automations decide *when*; the fleet decides *what* and *who*. That is
 [the composition the README promises](../README.md#what-it-isnt), and this
 page is where it gets a cron.
@@ -51,8 +51,8 @@ automations:
     model: haiku
     prompt: |
       herdr-docket task create "Intake: turn new feedback into fleet tasks" -a intake \
-        -d "Poll the sources in your persona's prompt — Sentry via mcp_config,
-        gh issue list — and apply the gate. Report only."
+        -d "Poll the sources your persona and mcp_config name and apply the
+        gate. Report only."
 
   # The review sweep drives the reviewer persona, which lands paused because
   # only you know the repo it works. Point its workdir there, resume it, then
@@ -89,7 +89,7 @@ automations:
     prompt: |
       herdr-docket task create "Lookback: what keeps coming back?" -a lookback \
         -d "Last 30 days against the 30 before. One follow-up per pattern,
-        assigned to pm, evidence on each."
+        assigned to dev, evidence on each."
 ```
 
 `repo:` is the fleet dir, because that is the checkout these tasks read;
@@ -99,8 +99,9 @@ the expensive model, the pollers to the cheap one.
 
 Two knobs the loop leans on, both already built:
 
-- **`mcp_config` on the agent** hands intake its Sentry or issue source — the
-  persona never names a vendor, only the gate.
+- **`mcp_config` on the agent** hands intake its feedback source — an error
+  tracker, an issue tracker, support mail — the persona never names a vendor,
+  only the gate.
 - **`model:` on the automation** that files the lookback is the cheap version
   of a second-model watchdog: a different model reading the same week's work.
   If you want real oversight, make it a stronger model than the one that did
@@ -111,9 +112,9 @@ Two knobs the loop leans on, both already built:
 Nothing about how much autonomy the loop has lives in the loop. It is the
 levers the [README's autonomy table](../README.md#how-much-autonomy) already
 lists: which status the fleet may pick up, who takes unassigned work, where
-`failed` points, the budgets per agent, `agent pause` on anything that
+`failed` points, `agent pause` on anything that
 misbehaves. The loop runs *inside* those decisions — turn intake off by
-pausing `intake`, slow the whole thing by giving `dev` two runs a day.
+pausing `intake`.
 
 ## Start small
 
@@ -123,7 +124,7 @@ The loop is one command, but it does not have to be run as one:
    week and read what the gate would file. Retune the persona between runs —
    it is a file.
 2. **Add one schedule at a time.** Intake first, then the review sweep.
-   Watch a few rounds of each on the board before the next enters the week.
+   Watch a few rounds of each in `herdr-docket history` before the next enters the week.
 3. **Leave the merge policy alone until the sweep has verdicts you have read
    yourself.** The policy paragraph in the reviewer persona is where the
    autonomy lives; loosen it one sentence at a time.
@@ -134,16 +135,17 @@ The loop is one command, but it does not have to be run as one:
 herdr-docket init --factory
 ```
 
-Writes all six personas into an existing fleet dir — never overwriting one
+Writes all five personas into an existing fleet dir — never overwriting one
 you already have — appends the entries above when the automations plugin's
 config is present, and points you at this page.
 
 The three that read the queue (`intake`, `stall`, `lookback`) are pointed at
-the fleet dir and run from the first tick. The three that work a repo (`pm`,
-`dev`, `reviewer`) land **paused**, carrying the placeholder workdir from
-[examples](examples.md): the loop refers to all three by name — intake files
-its unclear items to `pm`, lookback files its patterns there, the reviewer
-takes the dev's handoff — so a fleet missing them routes that work to nobody.
+the fleet dir and run from the first tick. The two that work a repo (`dev`,
+`reviewer`) land **paused**, carrying the placeholder workdir from
+[examples](examples.md): the loop refers to both by name — lookback files its
+patterns to `dev`, the reviewer takes the dev's handoff — so a fleet missing
+them routes that work to nobody. Intake files what it cannot verify as a
+blocked task: that column is yours.
 They exist, and they wait:
 
 ```bash
@@ -257,3 +259,11 @@ the shape):
   is one week of data, not a resting point. Nothing in the loop forces it to
   move; the dial is the persona's merge policy, loosened one sentence at a
   time.
+
+## Known gaps
+
+- `not done` — the worker → verifier → merge-gate pipeline of
+  [ADR 0013](adr/0013-the-factory-is-a-worker-a-verifier-and-a-gate-in-code.md):
+  the reviewer still merges on its own judgment, from its persona's prose.
+- `fragile` — nothing caps a self-tasking loop since budgets went; `agent
+  pause` is the brake, applied by a human reading `history`.

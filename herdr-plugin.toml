@@ -10,15 +10,3 @@ command = ["sh", "scripts/install.sh"]
 
 [[startup]]
 command = ["./bin/herdr-docket", "daemon"]
-
-[[actions]]
-id = "run-task"
-title = "Herdr-Docket: run a task now"
-contexts = ["workspace"]
-command = ["./bin/herdr-docket", "pane"]
-
-[[panes]]
-id = "board"
-title = "Herdr-Docket"
-placement = "overlay"
-command = ["./bin/herdr-docket", "pane"]

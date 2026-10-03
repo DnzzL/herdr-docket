@@ -12,8 +12,6 @@ workdir: ~/Projects/myapp     # required — where the work happens
 workspace: worktree           # worktree (default): fresh branch per run
                               # root: work directly on the checkout
 timeout_minutes: 60           # optional — the run's time budget (default 60)
-runs_per_day: 6               # optional — cap poll-triggered runs per rolling 24h
-minutes_per_day: 180          # optional — cap their total minutes over that window
 agent: claude                 # optional — any kind `herdr agent start` supports
 disabled: false               # optional — true parks the agent: no new runs
 ---
@@ -35,8 +33,6 @@ Every field:
 | `mcp_config` | Emits `--mcp-config`, which is Claude Code's flag — leave it empty on any other runtime. |
 | `role` | Shared method: `roles/<role>.md`, prepended after `FLEET.md`. |
 | `timeout_minutes` | One run's time budget (default 60). |
-| `runs_per_day` | Cap on poll-triggered runs per rolling 24 hours. Unset — unbounded. |
-| `minutes_per_day` | Cap on their total minutes over that same window. |
 | `disabled` | `true` keeps the persona and takes the agent out of scheduling. |
 
 `workspace: worktree` gives every run a disposable branch (`fleet/task-12-…`) —
@@ -123,34 +119,6 @@ queue accepts — so a persona that says "move it to `ready-for-agent`" is a
 rename away from being wrong, and does not need to exist. The words live in
 `fleet.yaml`; see [Where the queue lives](queues.md).
 
-## Budgeting an agent
-
-An agent that keeps creating follow-up work for itself — the marketer that
-decomposes its own plan, the reviewer's sweep — is the design working: a run
-hands on what it found instead of expanding its own scope. It is also an
-unbounded loop, and `timeout_minutes` caps one run, not the day. Two optional
-fields cap the day:
-
-- `runs_per_day` — how many poll-triggered runs the agent may complete in a
-  rolling 24 hours.
-- `minutes_per_day` — how many minutes of run time it may spend over the same
-  rolling window.
-
-Unset means unbounded, exactly as before. Reaching a limit spends it: the run
-that would cross the line waits. A spent agent is like a busy one — its `To Do`
-tasks stay open with nothing written on them, and the rest of the queue keeps
-moving — and because the window rolls, the budget re-opens on its own as old
-runs age out. `herdr-docket agent list` (and the board's `g` view) shows the
-spend for any agent that has a budget:
-
-```bash
-herdr-docket agent list           # dev  active  ~/Projects/myapp  4/6 runs in 24h, 130/180 min
-```
-
-Budgets are scheduling policy, not a lock: `herdr-docket run TASK-12` still
-starts a run for an over-budget agent, because pressing the button is human
-intent — the same rule that lets a manual run reach a paused agent.
-
 ## Parking an agent
 
 `disabled: true` keeps the persona on disk but takes the agent out of
@@ -175,4 +143,3 @@ says the same thing in yellow on every row an agent is paused on.
 - [Worked examples](examples.md) — four personas you can copy, and how they
   compose into one fleet.
 - [Where the queue lives](queues.md) — the status words a persona must not name.
-- [The board pane](pane.md) — watching a run, and jumping in.

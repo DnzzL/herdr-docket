@@ -50,8 +50,7 @@ autonomy as a dial you set yourself, per project, rather than a mode you switch
 on.
 
 **Docs:** [writing an agent](docs/agents.md) · [worked examples](docs/examples.md) ·
-[the factory](docs/factory.md) · [where the queue lives](docs/queues.md) ·
-[the board pane](docs/pane.md)
+[the factory](docs/factory.md) · [where the queue lives](docs/queues.md)
 
 ## Install and first run
 
@@ -65,7 +64,7 @@ herdr-docket task create "First task" -a example
 `init` writes the fleet dir — a Backlog.md project and one example agent — and
 Herdr starts the daemon for you. Edit that persona, create a task, and the
 daemon opens a workspace on it within ~15 seconds. `herdr-docket list` is the
-queue as a list; `herdr-docket pane` is the board over it.
+queue as a list.
 
 Where the queue already lives somewhere else — your own repo's backlog, a
 Basecamp project, a GitHub Projects board — or the fleet works several projects
@@ -83,7 +82,6 @@ line of config, and you can move them one project at a time:
 | assignee / `default_agent` | name the agent on the task, one at a time | `default_agent` picks up everything unassigned — per project, so each one has its own intake |
 | `statuses.failed` | points at a human column — `needs-info`, `ready-for-human` | points at a real `Failed`; nobody is paged |
 | a reviewer agent | gates the dev's PRs ([Example 4](docs/examples.md#4-a-reviewer-that-gates-the-devs-prs)) | no gate; the dev merges its own work |
-| `runs_per_day`, `minutes_per_day` | a ceiling on the day ([Budgeting](docs/agents.md#budgeting-an-agent)) | unset — unbounded |
 | `disabled` / `agent pause` | park an agent while you look at something | never paused |
 
 The one lever with teeth is the first: **the fleet only ever picks up the
@@ -92,7 +90,7 @@ board. Your triage, your wontfix, your waiting-on-a-human columns stay yours —
 see [Where the queue lives](docs/queues.md).
 
 It never overrides you in the other direction either: `herdr-docket run TASK-12`
-reaches a paused agent and an over-budget one, because pressing the button is
+reaches a paused agent, because pressing the button is
 human intent, not scheduling.
 
 These levers are also the whole of a running *factory* — intake polling
@@ -137,9 +135,9 @@ read, diff, and back up:
   knowledge of, whatever backend is behind the queue. If it ends silent, the
   daemon closes the task for it: a run that ends with nothing to show for it
   goes `Failed`, a workspace you closed mid-run goes `Blocked` (you decided,
-  and the board says so).
+  and the queue says so).
 - **Approvals are the agent's own.** Claude Code asks in its pane like it always
-  does; jump in from the board, answer, leave. Configure permissiveness per repo
+  does; jump in from Herdr's sidebar, answer, leave. Configure permissiveness per repo
   the way you already do (`.claude/settings.json`).
 - **Cleanup is automatic where it's safe.** `Done` → the workspace is torn down
   (the work is in the repo and the notes). `Failed`/`Blocked` → the workspace
@@ -168,36 +166,13 @@ Runs have a time budget. The prompt tells the agent the honest way out of a
 task that won't fit: one coherent slice, a handoff note, a follow-up task —
 the queue itself is the checkpoint mechanism.
 
-## The board
+## Watching the fleet
 
-The board pane (overlay in Herdr, or `herdr-docket pane`) is the fleet's
-triage surface: what runs next, what is running now, and the keys to act on
-both. `r` runs a task now, `x` stops the run on the selected row, `enter` jumps
-into the workspace a run opened, `v` reads the task, `s` re-routes it, `a` adds
-one, `/` filters, and `g` switches to the agent roster where `p` pauses and
-resumes an agent. Rows show the task's queue and the id its own board uses, the
-Running group sits above the phases, and a run past its agent's timeout is
-marked stale.
-
-![The Docket board: the Running group, the queue each task came from, a run past its timeout, and the roster behind g](docs/board.gif)
-
-```
-  TASK-12   myapp  Fix the parser           dev paused      12m / 45m
-  TASK-4    ops    Rotate the deploy keys   example         last run done Wed 14:28
-```
-
-The queue column appears only when the fleet has more than one, and the agent
-column says the three ways routing can be wrong: yellow `paused` for an agent
-the scheduler is skipping, red `ghost?` for a name nobody answers to, and red
-`broken` for a persona that exists and did not parse — a different repair, so a
-different word. The roster names the broken file and the reason under the
-agents, where `p` deliberately cannot reach it. The last
-column is the run — elapsed against the timeout it was started with, marked
-stale past it — or how the last run ended. It never closes a task with a
-verdict: see
-[ADR 0008](docs/adr/0008-the-board-is-a-triage-surface.md) for what the pane
-shows and what it deliberately refuses. Binding it to a chord, and what to do
-when the key does nothing: [the board pane](docs/pane.md).
+Herdr already shows what is live: each run is a workspace in the sidebar with
+its agent's status, and `herdr agent list` names them all. The past is
+`herdr-docket history` — how long each run took, its verdict, its branch,
+commits and PR — and `herdr-docket logs` is the daemon's own account. A run
+that fails, blocks or is held back from merging raises a Herdr notification.
 
 ## Commands
 
@@ -220,7 +195,6 @@ when the key does nothing: [the board pane](docs/pane.md).
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
 | `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
-| `herdr-docket pane` | the interactive board: what runs next, what is running now |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |
 
 ## The queue
