@@ -30,7 +30,7 @@ service, an account, or a second daemon.
 
 The schedule never does the work. An automation's whole job is to put one task
 on the queue — `herdr-docket task create … -a intake` — and the daemon runs it
-on the persona like any other task, with `FLEET.md` and roles and budgets
+on the persona like any other task, with `FLEET.md` and roles
 intact. Automations decide *when*; the fleet decides *what* and *who*. That is
 [the composition the README promises](../README.md#what-it-isnt), and this
 page is where it gets a cron.
@@ -111,9 +111,9 @@ Two knobs the loop leans on, both already built:
 Nothing about how much autonomy the loop has lives in the loop. It is the
 levers the [README's autonomy table](../README.md#how-much-autonomy) already
 lists: which status the fleet may pick up, who takes unassigned work, where
-`failed` points, the budgets per agent, `agent pause` on anything that
+`failed` points, `agent pause` on anything that
 misbehaves. The loop runs *inside* those decisions — turn intake off by
-pausing `intake`, slow the whole thing by giving `dev` two runs a day.
+pausing `intake`.
 
 ## Start small
 

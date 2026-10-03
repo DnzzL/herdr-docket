@@ -586,10 +586,8 @@ func agentCmd(args []string) error {
 
 // agentList reports the agents as the fleet dir holds them: paused is a fact
 // about the persona file, so it stays true even with the daemon not running.
-// A budgeted agent also shows what it has spent in the rolling window.
 func agentList(dir string) error {
 	agents, diags := fleet.LoadAgents(dir)
-	usage := history.UsageSince(time.Now())
 	names := make([]string, 0, len(agents))
 	for name := range agents {
 		names = append(names, name)
@@ -601,12 +599,7 @@ func agentList(dir string) error {
 		if a.Disabled {
 			status = "paused"
 		}
-		u := usage[name]
-		line := fmt.Sprintf("%-14s %-8s %s", a.Name, status, a.Workdir)
-		if b := pick.BudgetLine(a, u.Runs, u.Minutes); b != "" {
-			line += "  " + b
-		}
-		fmt.Println(line)
+		fmt.Printf("%-14s %-8s %s\n", a.Name, status, a.Workdir)
 	}
 	for _, d := range diags {
 		fmt.Fprintf(os.Stderr, "herdr-docket: %s\n", d)

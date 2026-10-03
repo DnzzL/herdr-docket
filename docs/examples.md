@@ -5,7 +5,7 @@
 Four agents that run in production, each one a complete `AGENT.md` plus the
 queue wiring it needs — then the three that make the fleet a loop, whose
 schedules live in [the factory doc](factory.md). [Writing an agent](agents.md)
-is the reference — the fields, the runtimes, the budgets. This is what it looks
+is the reference — the fields and the runtimes. This is what it looks
 like in use.
 
 They compose: the PM clears a column, the dev works what the PM cleared, the
@@ -137,8 +137,8 @@ Seed it once — *"Write the publication strategy, then decompose it into
 tasks"* — and it fans out: each follow-up run is one concrete step (draft the
 Show HN post, prepare the launch thread…), created by the agent itself.
 
-An agent that splits its own work is exactly the loop `runs_per_day` and
-`minutes_per_day` exist for; see [Budgeting an agent](agents.md#budgeting-an-agent).
+An agent that splits its own work is an unbounded loop by design; watch it in
+`herdr-docket history` and `agent pause` it when it runs away.
 
 ## 4. A reviewer that gates the dev's PRs
 

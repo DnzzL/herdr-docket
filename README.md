@@ -82,7 +82,6 @@ line of config, and you can move them one project at a time:
 | assignee / `default_agent` | name the agent on the task, one at a time | `default_agent` picks up everything unassigned — per project, so each one has its own intake |
 | `statuses.failed` | points at a human column — `needs-info`, `ready-for-human` | points at a real `Failed`; nobody is paged |
 | a reviewer agent | gates the dev's PRs ([Example 4](docs/examples.md#4-a-reviewer-that-gates-the-devs-prs)) | no gate; the dev merges its own work |
-| `runs_per_day`, `minutes_per_day` | a ceiling on the day ([Budgeting](docs/agents.md#budgeting-an-agent)) | unset — unbounded |
 | `disabled` / `agent pause` | park an agent while you look at something | never paused |
 
 The one lever with teeth is the first: **the fleet only ever picks up the
@@ -91,7 +90,7 @@ board. Your triage, your wontfix, your waiting-on-a-human columns stay yours —
 see [Where the queue lives](docs/queues.md).
 
 It never overrides you in the other direction either: `herdr-docket run TASK-12`
-reaches a paused agent and an over-budget one, because pressing the button is
+reaches a paused agent, because pressing the button is
 human intent, not scheduling.
 
 These levers are also the whole of a running *factory* — intake polling

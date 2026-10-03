@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
-	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/work"
@@ -182,42 +181,6 @@ func TestEachTickWritesToTheQueueItReadFrom(t *testing.T) {
 
 	evaluate(runs, reported)
 	waitClosed(t, second, "TASK-1")
-}
-
-// A spent agent is Unavailable, not unknown: its task stays open with no
-// comment written, exactly like a busy agent. The queue keeps moving.
-func TestAnAgentPastItsBudgetStartsNoRun(t *testing.T) {
-	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
-	now := time.Now()
-	for i := 0; i < 6; i++ {
-		if err := history.Append(history.Record{
-			RunID: "run-" + string(rune('0'+i)), Task: "TASK-0", Agent: "a",
-			Status: history.StatusDone, At: now.Add(-time.Duration(i) * time.Minute),
-			DurationSeconds: 60, Verdict: "done",
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	src := newMemSource(work.Task{ID: "TASK-1", Title: "T", Open: true, Assignee: "a"})
-	withFleet(t, map[string]fleet.Agent{
-		"a": {Name: "a", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1, RunsPerDay: 6},
-	}, src)
-
-	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
-
-	if src.closed("TASK-1") {
-		t.Fatal("an agent past its budget must not run")
-	}
-	if notes := src.notesFor(); len(notes) != 0 {
-		t.Fatalf("the task must stay open unremarked, got notes %v", notes)
-	}
-	// A budgeted agent is not an unknown one: the daemon must not write the
-	// "is not a fleet agent" note it writes for a real routing mistake.
-	for _, n := range src.notesFor() {
-		if strings.Contains(n, "not a fleet agent") {
-			t.Fatalf("a spent agent must not be reported unknown: %q", n)
-		}
-	}
 }
 
 // An agent works one checkout. Sending it a task from another project would
