@@ -12,6 +12,9 @@ What changed for someone using the plugin. Dates are release dates.
   held for you with the reason, and notified. `task verdict ID PASS|FAIL --pr
   URL` is the verifier's one command. A queue without `verifier:` works as
   before.
+- **History shows a verifier run's verdict** — `verified PASS p=9ad5c1e2` on the
+  run that carried it, so supervising the merge gate no longer means reading
+  history.jsonl.
 - **The factory's reviewer verifies, it no longer merges**, and the
   `review-sweep` automation is gone: every delivered PR reaches the verifier.
 

@@ -737,6 +737,15 @@ func formatHistory(r history.Record) string {
 	if r.PullRequest != "" {
 		line += "  " + r.PullRequest
 	}
+	// Since ADR 0013 a verifier run stamps its PASS/FAIL and the patch-id it
+	// judged on its record; a human supervising the merge gate reads it here,
+	// not in history.jsonl.
+	if r.Verification != "" {
+		line += fmt.Sprintf("  verified %s", r.Verification)
+		if r.PatchID != "" {
+			line += fmt.Sprintf("  p=%.8s", r.PatchID)
+		}
+	}
 	if r.Error != "" {
 		line += "  " + r.Error
 	}
