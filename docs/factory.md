@@ -281,7 +281,8 @@ the shape):
 - `fragile` — the runner reads `fleet.yaml` once, when the daemon starts:
   adding a `verifier:` takes a daemon restart. A PR delivered before that is
   held, not lost.
-- `not tested` — the pipeline has not run live yet; the gate's `gh` calls were
-  probed against real PRs, the sequence only against fakes.
+- `fragile` — the gate reads `CODEOWNERS` from the author's local checkout,
+  so a checkout behind its base protects what its stale file says (docket
+  TASK-57 moves the read to the PR's base branch).
 - `unknown` — `gh pr view` lists at most 100 changed files; a larger PR is
   checked against `CODEOWNERS` on those only.
