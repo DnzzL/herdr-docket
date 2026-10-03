@@ -11,37 +11,38 @@ the agent it names — agents in parallel, one run each, in
 *docket*: the list on the wall of the work a crew will get to — what the queue is, all of it.
 Part of the [Herdr plugin family](https://herdr.dev/docs/plugins/).
 
-Wired end to end — intake polling sources into verified tasks, the dev
-carrying each PR to green, the reviewer's own merge policy, a weekly lookback
-over what keeps recurring, and the merged worktrees pruned behind it — the
-queue becomes a loop. The personas, the schedules and the refusals live in
-[The factory](docs/factory.md); `herdr-docket init --factory` writes it in
-one command — the queue-side stages running, the ones that work your repo
-paused until you point them at it.
+Wired end to end it is a minimal software factory: intake turns feedback into
+tasks that say how they will be verified, an author agent carries each one to a
+green pull request, a verifier that did not write it re-derives every claim,
+and a merge gate — code, not a prompt — merges what passed and holds the rest
+for you. `herdr-docket init --factory` writes it in one command; the stages,
+schedules and refusals live in [The factory](docs/factory.md).
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.26-00ADD8.svg)](https://go.dev)
 
 ```text
-      you ─────────┐
- an automation ────┼──► the queue (open) ──► daemon ──► herdr agent run ──► Done | Failed | Blocked
- another agent ────┘    markdown, Basecamp    one run per agent          (the agent reports itself)
-                        or a GitHub board
+ you / intake ──► task ──► author ──► PR ──► verifier ──► gate ──► merged
+ (says how it's                ▲               │ FAIL       │
+  verified)                    └───────────────┘            └──► held: your Blocked column
 ```
 
-Write a task, assign it to an agent, walk away:
+Write a task the way you would brief a senior engineer, and walk away:
 
 ```bash
-herdr-docket task create "Triage the project backlog" \
-  -d "Route every needs-triage task: out of scope, agent-ready, or needs a human." \
-  -a pm
+herdr-docket task create "A plan respects a vegetarian preference written in French" -a dev \
+  -d "Users who type « végétarien » still get meat in their week plan.
+Done when: the planner treats the preference the same in any language.
+Verify by: a planner test with « végétarien » that is red on main, green after."
 ```
 
-Within 15 seconds the daemon opens a workspace on that agent's repo, starts a real
-coding agent (Claude Code by default) with the agent's persona plus the task, and
-the agent reports back into the queue itself with `herdr-docket task done|fail|block`.
-You come back to a board that tells the truth — and to nothing else,
-because a run that ends `Done` cleans its own workspace up.
+Within 15 seconds the daemon opens a [Herdr](https://herdr.dev) workspace on the
+agent's repo and starts a real coding agent with its persona plus the task.
+The author delivers a PR; the verifier replays the task's own check and records
+PASS or FAIL; a PASS on green CI merges on its own unless the task is
+`critical` or the diff touches a path in your `CODEOWNERS`. You come back to
+merged work, a notification per merge or hold, and a `Blocked` column holding
+only the questions that are genuinely yours.
 
 [paperclip.ing](https://paperclip.ing) runs a company of agents autonomously.
 This is the smallest version of that idea that still works, built for Herdr:
@@ -49,7 +50,8 @@ named agents, a shared queue, no org chart, markdown all the way down — and
 autonomy as a dial you set yourself, per project, rather than a mode you switch
 on.
 
-**Docs:** [writing an agent](docs/agents.md) · [worked examples](docs/examples.md) ·
+**Docs:** [working with the factory](#working-with-a-software-factory) ·
+[writing an agent](docs/agents.md) · [worked examples](docs/examples.md) ·
 [the factory](docs/factory.md) · [where the queue lives](docs/queues.md)
 
 ## Install and first run
@@ -100,6 +102,83 @@ over what keeps recurring. The loop is personas and cron, wired in
 [docs/factory.md](docs/factory.md); `herdr-docket init --factory` writes it
 into an existing fleet, the repo-side personas paused until you name the repo.
 
+## Working with a software factory
+
+A factory turns well-stated work into merged code while you sleep. It does not
+decide what is worth building, and it is only as good as the tasks it is fed
+and the corrections it keeps. The habits below are the difference.
+
+**The task is the prompt.** Every task answers three things, and the third is
+the one that matters:
+
+- **Outcome** — the problem in a user's words, not the fix you imagine.
+- **Done when** — the observable change, one sentence.
+- **Verify by** — how a stranger proves it: the test that is red today, the
+  request and its expected response, the screen and what it should show.
+
+If you cannot write *Verify by*, the task is not ready for an agent — it is
+still a decision (see below). One task, one pull request, a few hours of
+work: a task you would not review in ten minutes is two tasks.
+
+| Instead of | Write |
+| --- | --- |
+| "Improve onboarding" | "New users drop at step 2. Done when: step 2 needs one field, not four. Verify by: the signup e2e completes with only an email." |
+| "Fix the flaky test" | "`week-plan.spec.ts` fails 1 run in 5 on CI. Done when: it waits on hydration, not a timeout. Verify by: 20 consecutive green runs, pasted." |
+| "Refactor the planner" | Don't. Name the bug or the feature the refactor unblocks, and let the author choose the shape. |
+
+**Delegate ideas, not solutions.** An idea goes in as a *spike*: "Investigate
+X; deliverable: a note on the task with two or three options, their cost, and
+a recommendation — no code." The author researches, you choose, and the
+choice becomes the next task with its *Verify by*. Agents are good at options;
+choosing between them is yours.
+
+**What stays human** — and how the factory keeps it that way:
+
+- **Product decisions**: what to build, for whom, what to drop. Intake files
+  anything it cannot verify straight into your `Blocked` column with the one
+  question that would unblock it. That column is your inbox: answer the
+  question in a note, move the task back to the pickup column, done.
+- **The irreversible**: schema and migrations, auth, payments, deploys,
+  anything touching personal data. List those paths in the repo's
+  `CODEOWNERS` and the gate holds every PR that touches them; label a single
+  task `critical` for the same effect.
+- **Taste and voice**: brand, copy, design direction. Give the factory a
+  style guide in the repo and it will follow it; do not expect it to invent one.
+
+**Correct the system, not the run.** When a merged PR is wrong, resist fixing
+it by hand. File the fix as a task, and put the lesson where the next run
+will read it: a line in the repo's `CLAUDE.md`, a lint rule, a test that
+fails on the mistake. The second time you write the same review comment, it
+should become a check. The weekly lookback files these patterns for you; the
+repo is the factory's memory, and it compounds.
+
+**Raise the dial slowly.** Start a queue with `verifier:` and no `merge:` —
+read the verdicts, merge by hand. When a week of PASSes would have been your
+merges too, add `merge: auto`, and add a `CODEOWNERS` line every time a merge
+makes you nervous. `agent pause` stops anything at once.
+
+**A daily rhythm that works:**
+
+- *Morning*: read the merge and hold notifications, answer the `Blocked`
+  column, skim what merged (`herdr-docket history`).
+- *During the day*: turn what you notice into tasks — two minutes each, with
+  *Verify by*. Ideas become spikes.
+- *Evening*: leave the queue with a night's worth of small, verifiable work.
+
+**Acquisition and growth.** The factory ships; it does not find users. Split
+the work the same way as product: positioning, channels, pricing and talking
+to users are yours. What it does well is the measurable execution behind
+them — landing-page variants, SEO pages from a keyword list, release notes
+from merged PRs, analytics events, onboarding emails as code — each a task
+whose *Verify by* is a number or an observable (the event fires, the page
+scores 90 on Lighthouse, the email renders in the preview). Point intake at
+where your users already talk — issues, support inbox, reviews — and their
+complaints arrive as verifiable tasks: that is the loop from users to code.
+
+**What breaks a factory:** vague tasks; big tasks; fixing agents' PRs by hand
+so nothing is learned; letting `Failed` pile up unread; auto-merge on a repo
+with no CI; one model judging its own work.
+
 ## The model
 
 Everything lives in one **fleet dir** (default `~/fleet`) — a git repo you can
@@ -110,8 +189,8 @@ read, diff, and back up:
 ├── backlog/           # the Backlog.md project: one markdown file per task
 │                      # (the default queue — see "Where the queue lives")
 └── agents/
-    ├── pm/AGENT.md    # who the agents are
-    └── dev/AGENT.md
+    ├── dev/AGENT.md       # who the agents are: an author…
+    └── reviewer/AGENT.md  # …and the verifier its queue names
 ```
 
 - **A task** is one unit of work in the queue: goal, description, acceptance
@@ -136,7 +215,9 @@ read, diff, and back up:
   knowledge of, whatever backend is behind the queue. If it ends silent, the
   daemon closes the task for it: a run that ends with nothing to show for it
   goes `Failed`, a workspace you closed mid-run goes `Blocked` (you decided,
-  and the queue says so).
+  and the queue says so). In a queue with a verifier, an author's PR is a
+  delivery, not a close: `task done --pr` leaves the task open for the
+  pipeline, and the fleet closes it — `Done` once merged, `Blocked` when held.
 - **Approvals are the agent's own.** Claude Code asks in its pane like it always
   does; jump in from Herdr's sidebar, answer, leave. Configure permissiveness per repo
   the way you already do (`.claude/settings.json`).
@@ -144,7 +225,7 @@ read, diff, and back up:
   (the work is in the repo and the notes). `Failed`/`Blocked` → the workspace
   stays open as the place to resume, and the ticket gets a note naming it.
 
-Four personas built this way, from a PM that triages to a reviewer that gates:
+Personas built this way — a dev, a verifier, an intake, a lookback:
 [Worked examples](docs/examples.md).
 
 ## Anatomy of a run
@@ -162,6 +243,9 @@ Four personas built this way, from a PM that triages to a reviewer that gates:
    with `done`, `fail`, or `block` and a note saying what happened and how it
    knows. The daemon reconciles anything left hanging and records the run in
    an append-only `history.jsonl`.
+5. In a queue with a verifier, a delivered PR goes on: the verifier runs on
+   the same task, a FAIL sends the author back with the note (twice at most),
+   and a PASS reaches the merge gate — [the pipeline](docs/factory.md#the-pipeline).
 
 Runs have a time budget. The prompt tells the agent the honest way out of a
 task that won't fit: one coherent slice, a handoff note, a follow-up task —
@@ -172,7 +256,8 @@ the queue itself is the checkpoint mechanism.
 Herdr already shows what is live: each run is a workspace in the sidebar with
 its agent's status, and `herdr agent list` names them all. The past is
 `herdr-docket history` — how long each run took, its verdict, its branch,
-commits and PR — and `herdr-docket logs` is the daemon's own account. A run
+commits and PR, and for a verifier run `verified PASS p=…` — and
+`herdr-docket logs` is the daemon's own account. A run
 that fails, blocks or is held back from merging raises a Herdr notification.
 
 ## Commands
@@ -237,8 +322,9 @@ Every backend, every field, and what each one costs:
   [herdr-automations](https://github.com/DnzzL/herdr-automations) — point an
   automation's prompt at `herdr-docket task create` and the two plugins compose:
   automations decide *when*, fleet decides *what* and *who*.
-- **Not a workflow engine.** A task is one goal for one agent. Fan-out happens
-  the honest way: an agent creates follow-up tasks in the same queue.
+- **Not a workflow engine.** A task is one goal; its only fixed sequence is
+  author → verifier → gate. Fan-out happens the honest way: an agent creates
+  follow-up tasks in the same queue.
 - **Not a job scheduler with priorities and preemption.** One run per agent,
   serialized per shared checkout, nothing preempted: the concurrency model is
   what a git checkout can survive, with zero infrastructure.
