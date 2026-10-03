@@ -20,7 +20,6 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
-	"github.com/DnzzL/herdr-docket/internal/pane"
 	"github.com/DnzzL/herdr-docket/internal/pick"
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/skill"
@@ -51,7 +50,6 @@ Usage:
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket history [id]     Show recent runs
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
-  herdr-docket pane             Interactive board (used by the Herdr pane)
   herdr-docket install-skill    Teach your coding agent to write fleet tasks
   herdr-docket version          Print the version
 
@@ -88,8 +86,6 @@ func main() {
 		err = historyCmd(os.Args[2:])
 	case "logs":
 		err = logsCmd(os.Args[2:], os.Stdout)
-	case "pane":
-		err = pane.Run()
 	case "install-skill":
 		target := ""
 		if len(os.Args) > 2 {

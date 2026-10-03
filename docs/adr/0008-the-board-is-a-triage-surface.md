@@ -68,7 +68,7 @@ different action with a different key, and it closes the run's workspace — the
 cancellation path that already exists, which ends the task `Blocked` so a human
 says what happens next.
 
-**Status:** accepted
+**Status:** superseded by [0013](0013-the-factory-is-a-worker-a-verifier-and-a-gate-in-code.md) — the board TUI is gone
 
 ## Considered options
 

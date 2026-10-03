@@ -123,7 +123,7 @@ The loop is one command, but it does not have to be run as one:
    week and read what the gate would file. Retune the persona between runs —
    it is a file.
 2. **Add one schedule at a time.** Intake first, then the review sweep.
-   Watch a few rounds of each on the board before the next enters the week.
+   Watch a few rounds of each in `herdr-docket history` before the next enters the week.
 3. **Leave the merge policy alone until the sweep has verdicts you have read
    yourself.** The policy paragraph in the reviewer persona is where the
    autonomy lives; loosen it one sentence at a time.

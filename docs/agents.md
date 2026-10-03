@@ -140,7 +140,7 @@ Unset means unbounded, exactly as before. Reaching a limit spends it: the run
 that would cross the line waits. A spent agent is like a busy one — its `To Do`
 tasks stay open with nothing written on them, and the rest of the queue keeps
 moving — and because the window rolls, the budget re-opens on its own as old
-runs age out. `herdr-docket agent list` (and the board's `g` view) shows the
+runs age out. `herdr-docket agent list` shows the
 spend for any agent that has a budget:
 
 ```bash
@@ -175,4 +175,3 @@ says the same thing in yellow on every row an agent is paused on.
 - [Worked examples](examples.md) — four personas you can copy, and how they
   compose into one fleet.
 - [Where the queue lives](queues.md) — the status words a persona must not name.
-- [The board pane](pane.md) — watching a run, and jumping in.
