@@ -3,7 +3,9 @@ package gate
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os/exec"
 	"strings"
 )
@@ -15,6 +17,11 @@ type Forge interface {
 	// Merge squashes the PR, refusing if its head moved past headSHA — the
 	// commit the gate decided on.
 	Merge(url, headSHA string) error
+	// Codeowners reads the repo's CODEOWNERS patterns from the ref a PR
+	// targets, not from any checkout on disk: a workdir behind the base is
+	// the stale file, a workdir on a branch without the file is nothing
+	// (TASK-57). nil is no file on that ref.
+	Codeowners(prURL string) ([]string, error)
 	Comment(url, body string) error
 }
 
@@ -50,6 +57,36 @@ func (GH) PR(url string) (PR, error) {
 func (GH) Merge(url, headSHA string) error {
 	_, err := gh("pr", "merge", url, "--squash", "--delete-branch", "--match-head-commit", headSHA)
 	return err
+}
+
+// codeownerPaths are where GitHub looks for CODEOWNERS, in its own order.
+var codeownerPaths = []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"}
+
+// Codeowners fetches the CODEOWNERS of the PR's base ref through the gh API
+// (repos/{owner}/{repo}/contents/{path}?ref={base}), first of the three
+// places GitHub looks. No file on the base is nil, no error — unchanged from
+// the disk read.
+func (GH) Codeowners(prURL string) ([]string, error) {
+	owner, repo, err := githubRepo(prURL)
+	if err != nil {
+		return nil, err
+	}
+	ref, err := baseRef(prURL)
+	if err != nil {
+		return nil, fmt.Errorf("the base ref: %w", err)
+	}
+	for _, path := range codeownerPaths {
+		raw, err := contents(owner, repo, ref, path)
+		switch {
+		case err == nil:
+			return ParseCodeowners(string(raw)), nil
+		case errors.Is(err, fs.ErrNotExist):
+			continue // GitHub looks in the next place.
+		default:
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 func (GH) Comment(url, body string) error {
@@ -112,4 +149,54 @@ func gh(args ...string) ([]byte, error) {
 		return nil, fmt.Errorf("gh %s: %v: %s", args[0]+" "+args[1], err, strings.TrimSpace(stderr.String()))
 	}
 	return out, nil
+}
+
+// contents is `gh api` for one file's raw bytes at a ref, the repo named
+// explicitly — the daemon's cwd is no git checkout, so `gh api
+// repos/{owner}/{repo}` placeholder expansion cannot be relied on. It asks
+// for `application/vnd.github.raw` so gh returns the file as stored, no
+// base64 JSON to decode. A path not on the ref comes back as fs.ErrNotExist
+// — the caller's keep-looking — and anything else surfaces as its own error.
+func contents(owner, repo, ref, path string) ([]byte, error) {
+	out, err := gh("api", fmt.Sprintf("repos/%s/%s/contents/%s", owner, repo, path),
+		"-H", "Accept: application/vnd.github.raw", "-f", "ref="+ref)
+	if err != nil {
+		// gh api reports a missing path as `gh: Not Found (HTTP 404)`; no
+		// sentinel is returned, so the message is the only tell.
+		if strings.Contains(err.Error(), "404") {
+			return nil, fmt.Errorf("repos/%s/%s/contents/%s: %w", owner, repo, path, fs.ErrNotExist)
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
+// githubRepo reads owner and repo out of the PR url the pipeline carries:
+// the whole https://github.com/owner/repo/pull/N form, or nothing.
+func githubRepo(prURL string) (owner, repo string, err error) {
+	const marker = "github.com/"
+	i := strings.Index(prURL, marker)
+	if i < 0 {
+		return "", "", fmt.Errorf("not a GitHub pull request url: %s", prURL)
+	}
+	parts := strings.SplitN(prURL[i+len(marker):], "/", 4) // owner/repo/pull/N
+	if len(parts) < 4 || parts[2] != "pull" {
+		return "", "", fmt.Errorf("not a GitHub pull request url: %s", prURL)
+	}
+	return parts[0], parts[1], nil
+}
+
+// baseRef is the branch the PR merges into: the ref whose CODEOWNERS hold.
+func baseRef(prURL string) (string, error) {
+	out, err := gh("pr", "view", prURL, "--json", "baseRefName")
+	if err != nil {
+		return "", err
+	}
+	var v struct {
+		BaseRefName string `json:"baseRefName"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return "", fmt.Errorf("base ref of %s: %w", prURL, err)
+	}
+	return v.BaseRefName, nil
 }

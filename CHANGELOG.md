@@ -12,6 +12,14 @@ What changed for someone using the plugin. Dates are release dates.
   held for you with the reason, and notified. `task verdict ID PASS|FAIL --pr
   URL` is the verifier's one command. A queue without `verifier:` works as
   before.
+- **The gate reads CODEOWNERS from the PR's base branch.** The merge gate
+  used to read the file from the author agent's checkout on disk: a
+  checkout behind the base protected what its stale copy said, and one on a
+  branch without the file protected nothing. Now the gate fetches
+  CODEOWNERS from the forge at the ref the PR targets (`.github/`, root,
+  `docs/` — GitHub's own order); no file on the base still means no
+  protected path, and a forge that cannot answer holds the task rather
+  than merging unguarded.
 - **History shows a verifier run's verdict** — `verified PASS p=9ad5c1e2` on the
   run that carried it, so supervising the merge gate no longer means reading
   history.jsonl.
