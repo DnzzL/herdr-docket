@@ -721,6 +721,12 @@ func historyCmd(args []string) error {
 // shows neither.
 func formatHistory(r history.Record) string {
 	line := fmt.Sprintf("%s  %-9s %-10s %s", r.At.Format(time.DateTime), r.Status, r.Task, r.Trigger)
+	// A run that passed its deadline says so on its own line — the delivery
+	// still landed, but it landed late, and a supervisor should not have to
+	// open history.jsonl to learn that (ADR 0014).
+	if r.TimedOut {
+		line += "  timed-out"
+	}
 	if r.DurationSeconds > 0 {
 		line += "  " + (time.Duration(r.DurationSeconds) * time.Second).String()
 	}
