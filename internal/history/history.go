@@ -24,6 +24,11 @@ const (
 	// Closing a run's workspace is how you call one off, so it is not a
 	// failure: nothing broke, somebody decided.
 	StatusCancelled Status = "cancelled"
+	// StatusTimedOut records the moment a run passed its deadline with the
+	// agent still working. The run is not over — the fleet keeps the agent
+	// and listens for it (ADR 0014) — so this is a mark on the way, not an
+	// ending: only done, failed and cancelled close a run.
+	StatusTimedOut Status = "timed_out"
 )
 
 // closes reports whether a status is a run's final one. Only these records
@@ -79,6 +84,12 @@ type Record struct {
 	// workspace of a borrowed tab ends every run in it.
 	TabID string `json:"tab_id,omitempty"`
 	Error string `json:"error,omitempty"`
+	// TimedOut marks a run that passed its deadline: the agent kept working
+	// past timeout_minutes and the run waited for it. Set on the record
+	// written at the deadline and carried on the closing record, so a reader
+	// — which collapses to a run's latest record — can still tell a late
+	// delivery from an on-time one.
+	TimedOut bool `json:"timed_out,omitempty"`
 	// Branch is the branch the run was provisioned on — written from the
 	// session, never derived later. Commits is how far it moved beyond the
 	// repo's own checkout, and Uncommitted says the worktree was about to be

@@ -57,7 +57,7 @@ var personas = []struct {
 	{"reviewer", reviewerPersona, true},
 }
 
-// entries are the three automations that drive the loop, verbatim as
+// entries are the four automations that drive the loop, verbatim as
 // docs/factory.md shows them (a drift test pins the two together). The only
 // thing Install does to them is point `repo:` at the fleet being installed.
 const entries = `  # Delete "Report only." from the intake entry after you have read one
@@ -91,6 +91,57 @@ const entries = `  # Delete "Report only." from the intake entry after you have 
       herdr-docket task create "Lookback: what keeps coming back?" -a lookback \
         -d "Last 30 days against the 30 before. One follow-up per pattern,
         assigned to dev, evidence on each."
+
+  - name: merge-digest
+    cron: "30 7 * * *"
+    repo: ~/fleet
+    workspace: root
+    model: haiku
+    prompt: |
+      Daily merge digest — one issue per repo listing every open pull request
+      labelled merge-needed. It decides nothing; it only lists: exactly one
+      open issue titled "Merges waiting" per repo, rewritten each run, closed
+      when the repo has nothing waiting.
+
+      Queue repos: for every "dir:" under "sources:" in the fleet.yaml inside
+      the dir printed by herdr plugin config-dir dnzzl.herdr-docket (a source
+      with no "dir:" is the fleet's own queue at the top-level "dir:"), take
+      git -C <dir> remote get-url origin and strip any
+      git@github.com:/https://github.com/ prefix and .git suffix. An
+      owner/repo answer is a repo to read — each repo once, even when two
+      queues share it. No remote, or not github.com: that queue has no pull
+      requests — say so and skip it. A kind: github source names its repo in
+      the "repo:" of its "github:" block instead.
+
+      Per repo: gh pr list --repo <owner/repo> --state open --label
+      merge-needed --limit 1000 --json number,url. An empty list is the
+      normal answer; a gh error is not — report it and move on. No waiting
+      PRs: close that repo's open "Merges waiting" issue if there is one
+      (gh issue close <n> --comment "nothing waiting — no pull request is
+      labelled merge-needed"), then say so and move to the next repo.
+
+      Per waiting PR, four facts — read them, never guess them. Link: from
+      the list. Task id: grep -rl the url under <dir>/backlog/tasks/ and take
+      the frontmatter id: of the file that also carries "is held for a
+      human", under the source name fleet.yaml gives that dir; if no file
+      mentions the url, the last "task" beside it in
+      ~/.local/state/herdr/plugins/dnzzl.herdr-docket/history.jsonl; if
+      neither, "not recorded". Reason: the text after the dash on that
+      "is held for a human —" line; no such line, "not recorded". Waiting
+      since: the last created_at of a merge-needed label event in gh api
+      repos/<owner/repo>/issues/<n>/timeline --paginate --jq
+      '.[]|select(.event=="labeled" and .label.name=="merge-needed")|.created_at'
+      (piped through tail -1); no event, "unknown".
+
+      A repo with waiting PRs keeps exactly one open "Merges waiting" issue:
+      gh issue create --repo <owner/repo> --title "Merges waiting" --body-file -
+      when none is open, gh issue edit <n> --repo <owner/repo> --body-file -
+      on the one already open, and a second open one is closed as superseded
+      (gh issue close <m> --comment "superseded — one digest issue per repo").
+      The body: one bullet per PR — link, task id, reason, waiting since —
+      under a line saying it is rewritten daily and lists only.
+
+      End with one line per repo: what you listed, what you closed.
 `
 
 // Install writes the loop into dir: the fleet-side personas, then the
@@ -139,7 +190,7 @@ func Install(dir string, out io.Writer) error {
 		if err := os.WriteFile(path, []byte("automations:\n"+block), 0o644); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "factory: created %s with the loop's three entries\n", path)
+		fmt.Fprintf(out, "factory: created %s with the loop's four entries\n", path)
 		return afterInstall(out)
 	case err != nil:
 		return err

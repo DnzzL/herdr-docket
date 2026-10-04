@@ -86,6 +86,12 @@ type Delivery struct {
 type Host interface {
 	Provision(a Spec) (Session, error)
 	Do(s Session, a Spec, timeout time.Duration) error
+	// Settle waits for the agent Do left working when the run's own clock ran
+	// out. The deadline reports itself (ErrTimedOut), it does not end the run:
+	// the runner records it and calls this to keep listening — nil when the
+	// agent settles within the window, ErrCancelled when the pane is gone,
+	// ErrTimedOut again when the window passes first.
+	Settle(s Session, window time.Duration) error
 	// Inspect reads what the run's workspace produced. It is asked before a
 	// teardown, because it is the only answer that survives the teardown —
 	// and it refuses a session with no branch rather than report a clean
@@ -99,7 +105,7 @@ type Host interface {
 	// a caller logs a refusal and moves on, never re-decides what happened.
 	// sound names the audio the popup plays, herdr's own words (SoundNone
 	// for silence); which sound a stop deserves is policy, so the caller
-	// says it and this port only carries it (ADR 0014).
+	// says it and this port only carries it (ADR 0015).
 	Notify(title, body, sound string) error
 }
 
@@ -115,6 +121,11 @@ const (
 // Closing it is the gesture for calling a run off, so the run is reported
 // cancelled rather than failed.
 var ErrCancelled = errors.New("the run's workspace was closed")
+
+// ErrTimedOut means the run's clock ran out with the agent still working.
+// It reports a deadline, not an end: Do and Settle both answer with it, and
+// the runner decides what a late run does (ADR 0014).
+var ErrTimedOut = errors.New("the agent was still working")
 
 // New returns the Host that drives the real Herdr.
 func New() Host { return &live{ops: herdrOps{}, knobs: defaultKnobs()} }
@@ -204,8 +215,19 @@ func (h *live) Provision(a Spec) (Session, error) {
 }
 
 // Do runs the automation's work in the session and reports whether it worked.
+// At the timeout it answers ErrTimedOut with the agent still working — the
+// caller decides what a late run does, through Settle.
 func (h *live) Do(s Session, a Spec, timeout time.Duration) error {
 	return h.workFor(a).do(s, timeout)
+}
+
+// Settle keeps listening for the agent Do left working at the deadline. It
+// waits exactly as Do waits — in slices, watching for cancellation, bounded
+// by its own window — with nothing started and nothing submitted: the prompt
+// is already in front of the agent.
+func (h *live) Settle(s Session, window time.Duration) error {
+	w := agentWork{ops: h.ops, knobs: h.knobs}
+	return w.await(s, window)
 }
 
 // Inspect answers with what git says about the run's branch, not what anybody

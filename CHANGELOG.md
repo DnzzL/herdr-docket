@@ -4,6 +4,38 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A daily digest lists every PR waiting on your merge.** The merge-needed
+  popup dies with the terminal — eleven DishNow PRs piled up unnoticed on
+  2026-10-04. The factory ships a fourth schedule, `merge-digest`: once a day
+  it reads every queue's repo for open pull requests labelled `merge-needed`
+  and keeps exactly one issue per repo titled `Merges waiting` — PR link,
+  task id, reason, waiting since — rewritten each run and closed when
+  nothing waits. It decides nothing; it only lists. Fresh installs get it
+  from `init --factory`; a loop installed earlier pastes it in from
+  docs/factory.md, where the installer gap is recorded as a known gap.
+
+- **A run whose workspace was closed mid-flight reports cancelled again.** The
+  vanished-agent recovery branched on `agent_not_running` — a code herdr 0.9.x
+  never sends to `agent get` / `wait` / `prompt`. Every vanished shape it does
+  send is `agent_not_found` (workspace closed under the agent, agent exited on
+  its own, target never registered — four shapes probed against 0.9.0 and
+  0.9.1), so the recovery matched nothing and a called-off run sat pinned on a
+  dead pane until its timeout instead of ending within one wait slice as a
+  blocked, human-decides task. The constant now reads what herdr sends, and
+  the contract suite holds the real binary to that pin.
+
+- **A run that passes its timeout keeps its delivery.** The deadline used
+  to close the task Failed and walk away from a still-working agent: its PR
+  or verdict arrived after the fleet stopped listening, and nothing verified
+  or gated it (five DishNow PRs with no verifier; one run recorded both
+  failed and PASS). The run now records `timed_out`, keeps its agent and
+  listens — a delivery that lands within twice the run's timeout runs the
+  verifier and the gate exactly like an on-time one, and `herdr-docket
+  history` marks the late run `timed-out`. An agent that never settles gets
+  that whole window and then the fleet gives it up: task Failed, notified,
+  and its workspace closed so nothing keeps working on a closed task (what
+  it held uncommitted is said on the record, the task and the notification).
+
 - **A merge the human owes announces itself.** Every stop that leaves a pull
   request only a human can move — a gate hold (`critical`, a CODEOWNERS path,
   `merge: never`, a refused merge), a verifier's second FAIL, or a failed run
@@ -59,6 +91,15 @@ What changed for someone using the plugin. Dates are release dates.
 - **The factory has no pm.** Intake blocks what it cannot verify, with the one
   question for you; lookback files its structural fixes to `dev`.
   `init --factory` writes five personas, not six.
+- **A task parked on a human no longer gets a run.** Blocked is open: a task
+  sitting in the queue's blocked column with an agent free was picked the
+  moment that agent came free, and the run's whole effect was one more read
+  of the wall the task is parked against — observed as a reviewer run on a
+  task parked waiting for a human since the day before. A queue marks its
+  own parked column, and the daemon now leaves those tasks alone no matter
+  who they are assigned to: the human the work waits on is the only one who
+  can answer it, and everything the fleet would say is already in the
+  column's word.
 
 ## v0.8.0 — 2026-10-02
 

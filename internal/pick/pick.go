@@ -24,6 +24,10 @@ type Result struct {
 //
 // Open, not "To Do": a task left In Progress by a process that died still
 // owes work, and picking it up again is what makes a crashed run self-heal.
+// Blocked is the exception a run cannot serve: work parked on a human is
+// read by running it, and the answer only a human can give does not come
+// from another read — so a task the queue marks parked (work.Task.Blocked)
+// is left alone, whatever its agent is doing.
 // A task whose agent is mid-run is not re-picked — its agent is simply not
 // free. And one task is kept to one run by the runner's per-task flock
 // (`run-taskid-<id>.lock`), not by routing: the agent/checkout lock keys the
@@ -31,9 +35,11 @@ type Result struct {
 // routing is re-read every tick and a `fleet.yaml` edit can present an open
 // task to a second agent while the first is mid-run.
 func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defaults) Result {
+	// Blocked stays unrun: a parked task is standing in its own way, and the
+	// word reaches pick through the task — not a literal.
 	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
-		if it.Open {
+		if it.Open && !it.Blocked {
 			open = append(open, it)
 		}
 	}

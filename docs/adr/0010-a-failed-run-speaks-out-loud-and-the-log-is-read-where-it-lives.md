@@ -21,7 +21,7 @@ and it never learns that a notification can be refused — the
 refusal is logged and the run's verdict already stands. A caller that
 re-decides anything on a notification's failure is mis-specified. The fake
 hosts record what was asked for, so "a failed run asked exactly once" is a
-test, not a review. (Amended by ADR 0014: the sound did join the call —
+test, not a review. (Amended by ADR 0015: the sound did join the call —
 which sound a stop deserves is policy, so the runner names it and the port
 still owns the invocation.)
 

@@ -1,8 +1,10 @@
 package history
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -220,5 +222,22 @@ func TestAVerdictIsStampedOnTheNewestRunWithItsPatch(t *testing.T) {
 	}
 	if v, _, _ := VerificationFor("r1"); v != "" {
 		t.Fatalf("the worker's run must carry no verdict, got %q", v)
+	}
+}
+
+// TASK-62: timed_out is a mark on a run, not an ending of one — the run is
+// still listening, so it must not close (or count as a close), and the flag
+// on the wire is what tells a late delivery from an on-time one after the
+// reader collapses a run to its latest record.
+func TestTimedOutIsAMarkNotAnEnding(t *testing.T) {
+	if StatusTimedOut.closes() {
+		t.Fatal("timed_out must not close a run: the fleet is still listening for the agent")
+	}
+	raw, err := json.Marshal(Record{RunID: "r", Task: "TASK-1", Status: StatusDone, TimedOut: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"timed_out":true`) {
+		t.Fatalf("record = %s, want the timeout on the wire", raw)
 	}
 }

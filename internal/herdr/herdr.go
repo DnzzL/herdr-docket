@@ -216,11 +216,15 @@ const CodePaneBusy = "agent_pane_busy"
 // cannot take a prompt yet. The start succeeded; readiness is what's pending.
 const CodeAgentNotReady = "agent_not_ready"
 
-// CodeAgentGone means there is no agent in the target pane any more — the
-// workspace was closed, or the agent exited on its own. herdr only reports it
-// when the call it was given returns, so a wait handed the run's whole timeout
-// sits on a dead pane for that long before saying so.
-const CodeAgentGone = "agent_not_running"
+// CodeAgentGone means the target pane holds no agent the call can reach — the
+// workspace was closed, the agent exited on its own, or the target never
+// registered. Probed against herdr 0.9.0 and 0.9.1, all three shapes answer
+// agent_not_found; the binary also carries an agent_not_running message
+// ("agent is no longer running in the target pane"), but no probe reached it
+// through agent get / wait / prompt, so the constant is pinned to the code
+// herdr actually sends. Every answer here means the run cannot wait on that
+// agent any more — the await slice maps it to ErrCancelled.
+const CodeAgentGone = "agent_not_found"
 
 // CodeWorkspaceGone is herdr's answer when the workspace ID no longer names
 // anything — the expected result of asking about a run somebody has reviewed

@@ -207,3 +207,20 @@ func TestHistoryLineNamesTheCommitTheRunCutFrom(t *testing.T) {
 		t.Fatal("a run with no base commit on file must not invent one")
 	}
 }
+
+// TASK-62: history.jsonl marks the timeout, but a supervising human reads
+// the CLI — a delivery that arrived past its deadline must be visible there,
+// on the closing record the reader shows.
+func TestHistoryLineMarksATimedOutRun(t *testing.T) {
+	r := history.Record{
+		At: time.Now(), Status: history.StatusDone, Task: "TASK-1", Trigger: "poll",
+		DurationSeconds: 90, Verdict: "done", TimedOut: true,
+	}
+	if line := formatHistory(r); !strings.Contains(line, "timed-out") {
+		t.Fatalf("history line %q missing the timed-out mark", line)
+	}
+	r.TimedOut = false
+	if line := formatHistory(r); strings.Contains(line, "timed-out") {
+		t.Fatalf("an on-time run must not be marked late: %q", line)
+	}
+}
