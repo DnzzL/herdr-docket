@@ -24,6 +24,18 @@ What changed for someone using the plugin. Dates are release dates.
   blocked, human-decides task. The constant now reads what herdr sends, and
   the contract suite holds the real binary to that pin.
 
+- **A run that passes its timeout keeps its delivery.** The deadline used
+  to close the task Failed and walk away from a still-working agent: its PR
+  or verdict arrived after the fleet stopped listening, and nothing verified
+  or gated it (five DishNow PRs with no verifier; one run recorded both
+  failed and PASS). The run now records `timed_out`, keeps its agent and
+  listens — a delivery that lands within twice the run's timeout runs the
+  verifier and the gate exactly like an on-time one, and `herdr-docket
+  history` marks the late run `timed-out`. An agent that never settles gets
+  that whole window and then the fleet gives it up: task Failed, notified,
+  and its workspace closed so nothing keeps working on a closed task (what
+  it held uncommitted is said on the record, the task and the notification).
+
 - **`task note` says what it wrote.** A note that landed printed nothing, so
   an agent read its own successful writes as failures and kept rephrasing them.
   It now prints `<id> noted` the way `done`, `fail` and `block` confirm theirs;
