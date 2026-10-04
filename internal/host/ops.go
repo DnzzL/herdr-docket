@@ -149,13 +149,62 @@ func (herdrOps) WorktreeDiscard(repo, branch string) error {
 	return err
 }
 
-// WorktreeRetire is TASK-68's red placeholder: the seam test defines what it
-// owes; the implementation follows in the next commit.
+// WorktreeRetire is the lighter teardown an author run's Close owes
+// (TASK-68): the registration and checkout go once the tree is clean, and
+// the branch goes only when every commit it holds is already pushed — the
+// agent's own push wrote the remote-tracking refs into the shared .git, so
+// the question is answered offline (the fleet never fetches). A dirty tree
+// keeps everything: uncommitted work is never destroyed by a teardown
+// (TASK-23), it stays registered for a human to look at.
 func (herdrOps) WorktreeRetire(repo, branch string) error {
-	return fmt.Errorf("WorktreeRetire not implemented: %s@%s", repo, branch)
+	if path, err := worktreePath(repo, branch); err == nil {
+		dirty, err := worktreeDirty(path)
+		if err != nil {
+			return err
+		}
+		if dirty {
+			return nil
+		}
+		if _, err := gitOutput(repo, "worktree", "remove", path); err != nil {
+			return err
+		}
+	}
+	// The registration is gone — or was never there. Deleting a branch that
+	// is still checked out somewhere fails in git, so a path that went wrong
+	// above can never cost the branch.
+	pushed, err := branchPushed(repo, branch)
+	if err != nil {
+		return err
+	}
+	if !pushed {
+		return nil
+	}
+	_, err = gitOutput(repo, "branch", "-D", branch)
+	return err
+}
+
+// branchPushed reports whether every commit branch holds is reachable from a
+// remote-tracking ref: zero commits unique to it means the delivery, if any,
+// is on the forge and the local branch is a copy.
+func branchPushed(repo, branch string) (bool, error) {
+	out, err := gitOutput(repo, "rev-list", "--count", branch, "--not", "--remotes")
+	if err != nil {
+		return false, err
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return false, fmt.Errorf("git rev-list reported %q unpushed commits for %q: %w", strings.TrimSpace(out), branch, err)
+	}
+	return n == 0, nil
 }
 
 func (herdrOps) WorktreeDirty(dir string) (bool, error) {
+	return worktreeDirty(dir)
+}
+
+// worktreeDirty is the git read behind WorktreeDirty: whether the worktree
+// at dir holds changes that are not committed.
+func worktreeDirty(dir string) (bool, error) {
 	out, err := gitOutput(dir, "status", "--porcelain")
 	if err != nil {
 		return false, err
