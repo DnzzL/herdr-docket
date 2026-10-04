@@ -422,9 +422,6 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 	if err := putCriteria("task create", src, id, criteria); err != nil {
 		return err
 	}
-	if err != nil {
-		return err
-	}
 	// Say where the task landed honestly: the fleet's word when the fleet
 	// chose it, the queue's own default and an admission it did not choose
 	// otherwise (ADR-0012) — the column a daemon will never read is exactly
