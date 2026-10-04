@@ -14,6 +14,12 @@ import (
 //
 // Open is the only state the fleet reads: a task stays open until a verdict
 // closes it, which is all a binary backend (a Basecamp to-do) can express.
+// Blocked is the one parked state pick reads: true when the task sits in a
+// column that means "waits on a human" — the queue's own blocked word —
+// while still open. Route nothing to it; the run cannot answer the question
+// that parked the work. A backend that cannot say which of its open
+// statuses stands for parked leaves it false, exactly as one leaves Verdict
+// empty.
 // Phase is where it stands in the fleet's words, for display only — written
 // best-effort, never read back; the adapter is what translates its backend's
 // own label into one. Verdict is how a closed task ended, when the backend can
@@ -33,6 +39,7 @@ type Task struct {
 	Notes     string
 	Assignee  string
 	Open      bool
+	Blocked   bool
 	Phase     string
 	Verdict   Verdict
 	Priority  int

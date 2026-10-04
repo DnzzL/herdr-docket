@@ -186,3 +186,34 @@ exit 0
 		t.Fatalf("argv = %q, want no --base at all", string(raw))
 	}
 }
+
+// TASK-63: the popup a human owes carries the request sound, and the only
+// place that fact can live is the invocation itself — pinned here at the
+// process boundary, argv and all, the way the base ref is.
+func TestNotifySendsTitleBodyAndSoundVerbatim(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	path := filepath.Join(t.TempDir(), "herdr")
+	script := `#!/bin/sh
+printf '%s\n' "$@" > ` + argsFile + `
+exit 0
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", path)
+
+	var c Client
+	if err := c.Notify("merge needed — o/r#7", "main.go is a CODEOWNERS path (*.go)", "request"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	want := []string{"notification", "show", "merge needed — o/r#7",
+		"--body", "main.go is a CODEOWNERS path (*.go)", "--sound", "request"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("argv = %q, want %q", got, want)
+	}
+}

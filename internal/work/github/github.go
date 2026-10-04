@@ -35,6 +35,10 @@ const verdictPrefix = "Verdict: "
 // stateOpen is GitHub's word for an issue nobody has closed.
 const stateOpen = "OPEN"
 
+// parkedOption is the board column whose name means a human is answering;
+// issue state alone cannot say parked (TASK-53). GitHub's ProjectV2 default.
+const parkedOption = "Blocked"
+
 // Config is the github block of fleet.yaml. Each adapter owns the shape of its
 // own configuration, so this is the one place the board's coordinates are
 // named.
@@ -133,6 +137,12 @@ func New(c Config) (*Source, error) {
 // values beyond the two columns — because points are charged per hundred
 // objects returned, and a comment stream per item would turn a five-second
 // poll from about a point into about a hundred.
+// open is the list read for. An issue left open by a human who parked it in
+// a column named Blocked is not this fleet's work right now: the field's
+// word is read here so pick does not need a github type. A column the board
+// does not have — no Blocked option at all — is not read as one either,
+// and openHere passes it through: pick skip only what the board itself
+// marked, never a column name it saw fit to interpret.
 func (s *Source) List() ([]work.Task, error) {
 	var out struct {
 		Organization *boardHalf `json:"organization"`
@@ -165,6 +175,7 @@ func (s *Source) List() ([]work.Task, error) {
 			Title:     n.Content.Title,
 			Assignee:  n.Agent.Name,
 			Open:      open,
+			Blocked:   open && n.Status.Name == parkedOption,
 			Phase:     s.phase(n.Status.Name, open),
 			Ordinal:   float64(i), // the board's order is the queue's order
 			CreatedAt: n.Content.CreatedAt,

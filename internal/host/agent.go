@@ -143,7 +143,9 @@ func (w agentWork) working(s Session, within time.Duration) bool {
 }
 
 // await blocks until the agent settles, the run is cancelled, or the timeout
-// runs out.
+// runs out — in which case it answers ErrTimedOut, wrapped around whatever
+// herdr last said. The deadline is a mark for the caller to record, not an
+// end: Do passes it on, Settle is it being waited out (ADR 0014).
 //
 // It waits in slices rather than handing herdr the whole timeout at once. A run
 // whose workspace was closed thirteen seconds in used to sit here for the full
@@ -156,9 +158,9 @@ func (w agentWork) await(s Session, timeout time.Duration) error {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			if last != nil {
-				return last
+				return fmt.Errorf("%w after %s: %w", ErrTimedOut, timeout, last)
 			}
-			return fmt.Errorf("the agent was still working after %s", timeout)
+			return fmt.Errorf("%w after %s", ErrTimedOut, timeout)
 		}
 		slice := min(w.knobs.waitSlice, remaining)
 

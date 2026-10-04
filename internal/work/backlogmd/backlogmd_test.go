@@ -98,6 +98,36 @@ func TestListMapsEachStatusToOpenAndPhase(t *testing.T) {
 	}
 }
 
+// Parked, not closed (TASK-53): the queue's own blocked word rides into the
+// port as task.Blocked — even though the same word closes the task in the
+// fleet's verdict read-back — because nothing else tells pick "a human
+// answers this one". Written only where the project named a blocked word:
+// a status the fleet was never told about stays a stranger, and the
+// whitelist above already keeps it out of routing.
+func TestParkedWordCarriesIntoThePortAsBlocked(t *testing.T) {
+	tasks := []task{
+		{ID: "T-1", Title: "parked", Status: "needs human validation"},
+		{ID: "T-2", Title: "claimed", Status: "To Do"},
+		{ID: "T-3", Title: "unheard-of", Status: "wontfix"},
+	}
+	items, err := NewWith("", &fakeClient{tasks: tasks}, Vocabulary{
+		Todo: "To Do", InProgress: "In Progress", Done: "Done",
+		Failed: "wontfix", Blocked: "needs human validation",
+	}, nil).List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("got %d items, want 3", len(items))
+	}
+	wantBlocked := []bool{true, false, false}
+	for i, it := range items {
+		if it.Blocked != wantBlocked[i] {
+			t.Errorf("%s (%s): Blocked = %v, want %v", it.ID, it.Phase, it.Blocked, wantBlocked[i])
+		}
+	}
+}
+
 // The priority words are this adapter's business, and their order is the part
 // that matters: all the core does with a rank is compare it. A word Backlog.md
 // adds later, or no priority at all, is the zero rank — the backend having no

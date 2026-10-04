@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/DnzzL/herdr-docket/internal/changelog"
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/factory"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
@@ -52,6 +53,7 @@ Usage:
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket history [id]     Show recent runs
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
+  herdr-docket changelog        Preview the next release's notes ([release <version>] to cut them)
   herdr-docket install-skill    Teach your coding agent to write fleet tasks
   herdr-docket version          Print the version
 
@@ -88,6 +90,8 @@ func main() {
 		err = historyCmd(os.Args[2:])
 	case "logs":
 		err = logsCmd(os.Args[2:], os.Stdout)
+	case "changelog":
+		err = changelogCmd(os.Args[2:], os.Stdout)
 	case "install-skill":
 		target := ""
 		if len(os.Args) > 2 {
@@ -105,6 +109,36 @@ func main() {
 		fmt.Fprintln(os.Stderr, "herdr-docket:", err)
 		os.Exit(1)
 	}
+}
+
+// changelogCmd shows what the next release will say, or cuts it. A pull
+// request never edits CHANGELOG.md — it writes one file under changelog.d/
+// (ADR 0016) — so the assembled section exists only when somebody releases.
+func changelogCmd(args []string, out io.Writer) error {
+	const path = "CHANGELOG.md"
+	switch {
+	case len(args) == 0:
+		body, err := changelog.Pending(changelog.Dir, path)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(body) == "" {
+			fmt.Fprintf(out, "nothing pending: no entries under %s/\n", changelog.Dir)
+			return nil
+		}
+		fmt.Fprintln(out, body)
+		return nil
+	case args[0] != "release":
+		return fmt.Errorf("changelog: unknown argument %q — `changelog` previews the next release, `changelog release <version>` cuts it", args[0])
+	case len(args) != 2:
+		return errors.New("changelog release: name exactly one version, as in `changelog release v1.2.3`")
+	}
+	section, err := changelog.Release(changelog.Dir, path, args[1], time.Now())
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(out, section)
+	return nil
 }
 
 func initCmd(arg string) error {
@@ -760,6 +794,12 @@ func historyCmd(args []string) error {
 // shows neither.
 func formatHistory(r history.Record) string {
 	line := fmt.Sprintf("%s  %-9s %-10s %s", r.At.Format(time.DateTime), r.Status, r.Task, r.Trigger)
+	// A run that passed its deadline says so on its own line — the delivery
+	// still landed, but it landed late, and a supervisor should not have to
+	// open history.jsonl to learn that (ADR 0014).
+	if r.TimedOut {
+		line += "  timed-out"
+	}
 	if r.DurationSeconds > 0 {
 		line += "  " + (time.Duration(r.DurationSeconds) * time.Second).String()
 	}

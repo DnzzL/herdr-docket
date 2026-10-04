@@ -255,7 +255,8 @@ the queue itself is the checkpoint mechanism.
 
 Herdr already shows what is live: each run is a workspace in the sidebar with
 its agent's status, and `herdr agent list` names them all. The past is
-`herdr-docket history` — how long each run took, its verdict, its branch,
+`herdr-docket history` — how long each run took, a `timed-out` mark when it
+ran past its deadline, its verdict, its branch,
 commits and PR, and for a verifier run `verified PASS p=…` — and
 `herdr-docket logs` is the daemon's own account. A run
 that fails, blocks or is held back from merging raises a Herdr notification.

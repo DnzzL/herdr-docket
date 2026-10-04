@@ -3,13 +3,12 @@ package runner
 import (
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/gate"
 	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -91,9 +90,15 @@ func (r *Runner) gate(src work.Source, t work.Task, author fleet.Agent, url, pat
 	if err != nil {
 		return r.hold(src, t, url, "the task could not be re-read for its labels: "+err.Error())
 	}
+	// The rules that hold are the base branch's, read through the forge: the
+	// author's checkout is the copy that can be stale or absent (TASK-57).
+	owners, err := r.forge.Codeowners(url)
+	if err != nil {
+		return r.hold(src, t, url, "the base branch's CODEOWNERS could not be read: "+err.Error())
+	}
 	merge, reason := gate.Decide(gate.Input{
 		PR: pr, Verdict: gate.Pass, VerdictPatch: patch,
-		Labels: task.Labels, Owners: r.owners(author.Workdir), Auto: auto,
+		Labels: task.Labels, Owners: owners, Auto: auto,
 	})
 	if !merge {
 		return r.hold(src, t, url, reason)
@@ -101,26 +106,31 @@ func (r *Runner) gate(src work.Source, t work.Task, author fleet.Agent, url, pat
 	if err := r.forge.Merge(url, pr.HeadSHA); err != nil {
 		return r.hold(src, t, url, "the merge was refused: "+err.Error())
 	}
+	// The label is a debt; this merge pays it. Whatever an earlier hold left
+	// on the PR, it must not read as owed once the PR is in.
+	if err := r.forge.RemoveLabel(url, mergeNeededLabel); err != nil {
+		log.Printf("%s: unmark %s: %v", t.ID, url, err)
+	}
 	r.note(src, t.ID, fmt.Sprintf("fleet: merged %s — verified PASS on patch %s, CI green.", url, patch))
 	if err := src.Close(t.ID, work.Done); err != nil {
 		log.Printf("%s: close as done: %v", t.ID, err)
 	}
-	if err := r.host.Notify("fleet: merged — "+t.ID, url); err != nil {
+	if err := r.host.Notify("fleet: merged — "+t.ID, url, host.SoundNone); err != nil {
 		log.Printf("%s: notify: %v", t.ID, err)
 	}
 	return nil
 }
 
 // hold parks the task on a human with the one reason the fleet stopped. A
-// hold is an outcome, not a failure of the run: nothing broke.
+// hold is an outcome, not a failure of the run: nothing broke — and what it
+// parks on is a PR only a human can move, so it is mergeNeeded's announcement
+// that raises, not a failure's.
 func (r *Runner) hold(src work.Source, t work.Task, pr, reason string) error {
 	r.note(src, t.ID, fmt.Sprintf("fleet: %s is held for a human — %s.", pr, reason))
 	if err := src.Close(t.ID, work.Blocked); err != nil {
 		log.Printf("%s: close as blocked: %v", t.ID, err)
 	}
-	if err := r.host.Notify("fleet: held — "+t.ID, reason); err != nil {
-		log.Printf("%s: notify: %v", t.ID, err)
-	}
+	r.mergeNeeded(t, pr, reason)
 	return nil
 }
 
@@ -128,16 +138,4 @@ func (r *Runner) note(src work.Source, id, text string) {
 	if err := src.Comment(id, text); err != nil {
 		log.Printf("%s: append note: %v", id, err)
 	}
-}
-
-// codeowners reads the CODEOWNERS patterns of the repo the author works, from
-// the three places GitHub looks (the roster has already expanded ~). No
-// file is no protected path.
-func codeowners(workdir string) []string {
-	for _, rel := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
-		if raw, err := os.ReadFile(filepath.Join(workdir, rel)); err == nil {
-			return gate.ParseCodeowners(string(raw))
-		}
-	}
-	return nil
 }
