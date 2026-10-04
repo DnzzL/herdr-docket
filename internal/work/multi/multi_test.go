@@ -111,11 +111,31 @@ func (s *starterSource) CreateTodo(title, body, assignee string) (string, error)
 	return s.memSource.Create(title, body, assignee)
 }
 
+// criterSource is a sub-source that stores criteria, the way the backlogmd
+// one does.
+type criterSource struct {
+	*memSource
+	criteria map[string][]string
+}
+
+func (c *criterSource) WriteCriteria(id string, criteria []string) error {
+	it, ok := c.items[id]
+	if !ok {
+		return fmt.Errorf("no task %q", id)
+	}
+	it.Criteria = nil
+	for i, text := range criteria {
+		it.Criteria = append(it.Criteria, work.Criterion{Index: i + 1, Text: text})
+	}
+	c.items[id] = it
+	return nil
+}
+
 // A composite over one queue is still a Source: the contract every adapter is
 // held to runs against it exactly as it would against the backend beneath.
 func TestCompositeSatisfiesTheSourceContract(t *testing.T) {
 	worktest.Run(t, func(t *testing.T) work.Source {
-		return New(map[string]work.Source{"q": newMem()})
+		return New(map[string]work.Source{"q": &criterSource{memSource: newMem(), criteria: map[string][]string{}}})
 	})
 }
 
@@ -388,4 +408,37 @@ type fakeBrancher struct {
 func (f *fakeBrancher) BaseBranch(id string) (string, error) {
 	f.got = id
 	return f.base, nil
+}
+
+// A sub-source that cannot store criteria separately must say so itself —
+// the composite may not quietly drop the bar, and it may not invent a
+// verdict about where criteria belong on somebody else's queue. The refusal
+// has to name the queue, because that is what the human has to go fix.
+func TestCriteriaForAQueueThatCannotStoreThemAreRefusedNotDropped(t *testing.T) {
+	plain := newMem() // no WriteCriteria: a Basecamp-shaped queue
+	able := &criterSource{memSource: newMem(), criteria: map[string][]string{}}
+	mustCreate(t, plain, "no place for a bar")
+	mustCreate(t, able.memSource, "a bar fits here")
+	src := New(map[string]work.Source{"plain": plain, "able": able})
+
+	err := src.WriteCriteria("plain/T1", []string{"the bar"})
+	if err == nil {
+		t.Fatal("criteria for a queue with nowhere to put them must be refused, not dropped")
+	}
+	if !strings.Contains(err.Error(), "plain") {
+		t.Errorf("the refusal must name the queue to go fix, got: %v", err)
+	}
+
+	// The capable neighbour is unaffected: one queue's limit is not the
+	// composite's.
+	if err := src.WriteCriteria("able/T1", []string{"the bar"}); err != nil {
+		t.Fatalf("a capable sub must still take criteria: %v", err)
+	}
+	it, err := able.Get("T1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(it.Criteria) != 1 || it.Criteria[0].Text != "the bar" {
+		t.Errorf("criteria did not reach the capable sub: %v", it.Criteria)
+	}
 }

@@ -188,3 +188,18 @@ func (s *Source) CreateIn(name, title, body, assignee string) (string, bool, err
 	}
 	return name + "/" + id, false, nil
 }
+
+// WriteCriteria writes criteria on the queue the id names, through the
+// sub-source's own capability. A sub-source without one says so itself: the
+// composite may not invent a verdict about where criteria belong.
+func (s *Source) WriteCriteria(id string, criteria []string) error {
+	name, rest, err := s.split(id)
+	if err != nil {
+		return err
+	}
+	w, ok := s.subs[name].(work.CriterionWriter)
+	if !ok {
+		return fmt.Errorf("%s: source %q has no place to store acceptance criteria", id, name)
+	}
+	return w.WriteCriteria(rest, criteria)
+}

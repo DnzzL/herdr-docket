@@ -21,6 +21,9 @@ type client interface {
 	SetStatus(id, status string) error
 	SetAssignee(id, agent string) error
 	AppendNote(id, note string) error
+	// SetCriteria replaces the task's acceptance criteria — the write side of
+	// Create's criteria, which here go through the same edit verb.
+	SetCriteria(id string, criteria []string) error
 	// DefaultBranch is the queue's own answer for which ref its worktree runs
 	// branch from. Empty means the repo has none to name — the caller inherits
 	// the checkout's HEAD, which is what preceded this field.
@@ -104,6 +107,12 @@ func (s *Source) Create(title, body, assignee string) (string, error) {
 // the empty word would arrive here only through one that slipped past.
 func (s *Source) CreateTodo(title, body, assignee string) (string, error) {
 	return s.client.Create(title, body, assignee, s.vocab.Todo)
+}
+
+// WriteCriteria replaces a task's acceptance criteria, numbering them from
+// one — the order `--ac` repeats in is the order the prompt reads.
+func (s *Source) WriteCriteria(id string, criteria []string) error {
+	return s.client.SetCriteria(id, criteria)
 }
 
 // Comment appends to the task's notes. Backlog.md has no separate comment

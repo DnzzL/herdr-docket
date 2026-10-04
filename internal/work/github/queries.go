@@ -131,6 +131,13 @@ const addCommentMutation = `mutation AddComment($subject: ID!, $body: String!) {
   addComment(input: {subjectId: $subject, body: $body}) { commentEdge { node { id } } }
 }`
 
+// updateIssueMutation rewrites an issue's body. It is how acceptance
+// criteria are stored: an issue carries its bar as a markdown task list,
+// which is what the adapter's read side parses back out.
+const updateIssueMutation = `mutation UpdateIssue($issue: ID!, $body: String!) {
+  updateIssue(input: {id: $issue, body: $body}) { issue { id } }
+}`
+
 // closeMutation closes the issue and writes the verdict in one document. The
 // mutations in a document run in order, and closing is first: a failure to
 // comment then leaves an issue the fleet has finished with, whose outcome is

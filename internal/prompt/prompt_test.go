@@ -91,8 +91,13 @@ func TestAssembleOmitsEmptySections(t *testing.T) {
 func TestAssembleRoutesTheFollowUpToTheTasksOwnSource(t *testing.T) {
 	got := Assemble(fleet.Agent{Name: "a", Persona: "P"},
 		work.Task{ID: "myapp/TASK-12", Title: "t", Open: true}, "/d", fleet.Words{})
-	if !strings.Contains(got, "task create \"<title>\" -d \"<what and why>\" -a a -s myapp") {
-		t.Fatalf("follow-up create must carry -s myapp:\n%s", got)
+	// Pin the whole command, not fragments of it: this is the one line the
+	// run is told to type, and the fragments passed even when the command
+	// around them changed shape.
+	want := `herdr-docket task create "<title>" -d "<what and why>" \
+      --ac "<one observable claim per flag, repeatable>" -a a -s myapp`
+	if !strings.Contains(got, want) {
+		t.Fatalf("follow-up create must read:\n%s\ngot:\n%s", want, got)
 	}
 }
 

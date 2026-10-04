@@ -26,6 +26,7 @@ type fakeClient struct {
 	stages   []string // statuses set, in order
 	assigned []string // "<id>=<agent>", in order
 	comments []string
+	criteria []string
 }
 
 func (f *fakeClient) List() ([]task, error)        { return f.tasks, f.err }
@@ -48,6 +49,11 @@ func (f *fakeClient) SetAssignee(id, agent string) error {
 
 func (f *fakeClient) AppendNote(id, note string) error {
 	f.comments = append(f.comments, note)
+	return f.err
+}
+
+func (f *fakeClient) SetCriteria(id string, criteria []string) error {
+	f.criteria = criteria
 	return f.err
 }
 
@@ -456,6 +462,18 @@ func (m *memClient) AppendNote(id, note string) error {
 		mt.notes += "\n\n"
 	}
 	mt.notes += note
+	return nil
+}
+
+func (m *memClient) SetCriteria(id string, criteria []string) error {
+	mt, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	mt.criteria = nil
+	for i, text := range criteria {
+		mt.criteria = append(mt.criteria, criterion{Index: i + 1, Text: text})
+	}
 	return nil
 }
 

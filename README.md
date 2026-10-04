@@ -274,7 +274,7 @@ that fails, blocks or is held back from merging raises a Herdr notification.
 | `herdr-docket run TASK-12` | run one task now |
 | `herdr-docket task list` | the queue as the agent sees it (`--all` includes closed work) |
 | `herdr-docket task view ID` | one task: body, notes, criteria, and who it is routed to |
-| `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several) |
+| `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria) |
 | `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-docket task note ID "…"` | say where things stand without closing |
 | `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence; `--pr URL` delivers a PR to the verifier) |
