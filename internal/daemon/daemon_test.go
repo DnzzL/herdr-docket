@@ -123,7 +123,7 @@ func (fakeHost) Close(host.Session) error { return nil }
 func (fakeHost) Do(host.Session, host.Spec, time.Duration) error {
 	return nil
 }
-func (fakeHost) Notify(string, string) error { return nil }
+func (fakeHost) Notify(string, string, string) error { return nil }
 
 // withFleet swaps the daemon's reads for a fixed fleet: one root-mode agent,
 // a fleet dir that need not exist, and a source per tick taken off the queue.

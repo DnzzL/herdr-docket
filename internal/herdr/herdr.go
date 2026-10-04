@@ -268,11 +268,15 @@ func (Client) AgentWait(target string, timeout time.Duration) error {
 // Notify raises Herdr's own desktop notification. It is how a run that ended
 // failed reaches a human the daemon could not otherwise address: the fleet
 // reports through the host rather than owning a channel of its own. Reports
-// only — nothing here decides anything.
-func (Client) Notify(title, body string) error {
+// only — nothing here decides anything. sound travels verbatim to `--sound`
+// (herdr's none, done or request); empty leaves the flag off entirely.
+func (Client) Notify(title, body, sound string) error {
 	args := []string{"notification", "show", title}
 	if body != "" {
 		args = append(args, "--body", body)
+	}
+	if sound != "" {
+		args = append(args, "--sound", sound)
 	}
 	return run(nil, args...)
 }

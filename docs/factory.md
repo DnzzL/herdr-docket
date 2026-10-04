@@ -117,8 +117,11 @@ sources:
    matches the repo's `CODEOWNERS`, and the queue says `merge: auto`. The
    merge is a squash pinned to the head commit the gate looked at.
 5. **Anything else is a hold**: the task goes to your blocked column with the
-   one reason the gate stopped, and Herdr raises a notification. A merge is
-   notified too.
+   one reason the gate stopped, and Herdr raises one popup — `merge needed —
+   <repo>#<number>`, the reason as its body, the `request` sound — while the
+   PR itself is labelled `merge-needed`, created in your repo the first time
+   it is needed, so what you owe is findable later. The gate clears that
+   label as it merges. A merge is notified too.
 
 `CODEOWNERS` is the list of what a human merges — every rule in it counts, so
 a catch-all `* @you` line means the fleet merges nothing. A repo with no CI

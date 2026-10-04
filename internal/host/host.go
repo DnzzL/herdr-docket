@@ -97,8 +97,19 @@ type Host interface {
 	// Notify raises Herdr's own desktop notification: the one way a run's
 	// report reaches a human who was not watching. Best-effort by contract —
 	// a caller logs a refusal and moves on, never re-decides what happened.
-	Notify(title, body string) error
+	// sound names the audio the popup plays, herdr's own words (SoundNone
+	// for silence); which sound a stop deserves is policy, so the caller
+	// says it and this port only carries it (ADR 0014).
+	Notify(title, body, sound string) error
 }
+
+// The notification sounds herdr accepts, spelled the way its CLI spells
+// them, so a caller never has to know the flag's vocabulary beyond this
+// package.
+const (
+	SoundNone    = "none"
+	SoundRequest = "request"
+)
 
 // ErrCancelled means the run's workspace was closed while it was working.
 // Closing it is the gesture for calling a run off, so the run is reported
@@ -242,7 +253,9 @@ func (h *live) Close(s Session) error {
 }
 
 // Notify raises Herdr's own desktop notification, verbatim on to the ops.
-func (h *live) Notify(title, body string) error { return h.ops.Notify(title, body) }
+func (h *live) Notify(title, body, sound string) error {
+	return h.ops.Notify(title, body, sound)
+}
 
 // work is one way of getting a task's work done in a session. One adapter
 // satisfies it today — an agent taking a prompt — and the seam stays because

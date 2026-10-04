@@ -16,12 +16,14 @@ copies no queue state ([CONTRIBUTING.md](../../CONTRIBUTING.md)). Rejected
 alternative: a `herdr-docket notify` verb every caller could forget.
 
 **It travels behind the host port.** The runner gains `host.Notify(title,
-body)` and nothing else: it does not know the CLI invocation, the sound, or
-the position, and it never learns that a notification can be refused — the
+body)` and nothing else: it does not know the CLI invocation or the position,
+and it never learns that a notification can be refused — the
 refusal is logged and the run's verdict already stands. A caller that
 re-decides anything on a notification's failure is mis-specified. The fake
 hosts record what was asked for, so "a failed run asked exactly once" is a
-test, not a review.
+test, not a review. (Amended by ADR 0014: the sound did join the call —
+which sound a stop deserves is policy, so the runner names it and the port
+still owns the invocation.)
 
 **Only failed runs speak.** Done is the fleet working as designed — a board
 watched by a person with the fleet open; a notification on every success

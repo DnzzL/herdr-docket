@@ -36,10 +36,10 @@ type fakeHost struct {
 }
 
 // notify is one desktop notification the fleet asked for.
-type notify struct{ title, body string }
+type notify struct{ title, body, sound string }
 
-func (f *fakeHost) Notify(title, body string) error {
-	f.notifies = append(f.notifies, notify{title, body})
+func (f *fakeHost) Notify(title, body, sound string) error {
+	f.notifies = append(f.notifies, notify{title, body, sound})
 	return nil
 }
 
@@ -322,15 +322,65 @@ func TestHostFailureMarksTheTaskFailedWithTheReason(t *testing.T) {
 }
 
 func TestAFailedRunReachesAHumanNotWatching(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	b := newBoard("TASK-1")
 	h := &fakeHost{doErr: errors.New("agent never started")}
-	_ = run(t, h, b)
+	forge := &fakeForge{}
+	r := New(h, fleet.Settings{Dir: "/fleet"})
+	r.forge = forge
+	_ = r.Run(b, work.Task{ID: "TASK-1", Title: "T", Open: true},
+		fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual")
 	if len(h.notifies) != 1 {
 		t.Fatalf("a failed run must ask for exactly one notification, saw %v", h.notifies)
 	}
 	n := h.notifies[0]
 	if !strings.Contains(n.title, "TASK-1") || !strings.Contains(n.body, "agent never started") {
 		t.Fatalf("notification = %q / %q, want the task and the reason", n.title, n.body)
+	}
+	// TASK-63 #3: with no pull request out there is no merge to owe — the
+	// popup stays the run's own, silent, and the PR marking never happens.
+	if n.sound != host.SoundNone {
+		t.Errorf("sound = %q, want %q — the run failed, nothing is being asked for", n.sound, host.SoundNone)
+	}
+	if len(forge.labels) != 0 {
+		t.Errorf("labels = %v, want none: a failed run with no PR marks nothing", forge.labels)
+	}
+}
+
+// TASK-63 #4 (third case): a run that failed with a pull request still out
+// leaves work only a human can move — GitHub will never ping them, because
+// the fleet opens PRs under their own account. The stop announces the merge
+// it owes, by PR rather than by task, and marks the PR so it can be found.
+func TestAFailedRunWithAPRAnnouncesTheMergeTheHumanOwes(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	b := newBoard("TASK-1")
+	h := &fakeHost{
+		doErr: errors.New("agent never started"),
+		after: func() {
+			if err := history.SetPullRequest("TASK-1", prURL); err != nil {
+				t.Error(err)
+			}
+		},
+	}
+	forge := &fakeForge{}
+	r := New(h, fleet.Settings{Dir: "/fleet"})
+	r.forge = forge
+	if err := r.Run(b, work.Task{ID: "TASK-1", Title: "T", Open: true},
+		fleet.Agent{Name: "a", Workdir: "/w", Workspace: "root", Kind: "claude", TimeoutMinutes: 1, Persona: "P"}, "manual"); err == nil {
+		t.Fatal("want the failed run's error")
+	}
+	if len(h.notifies) != 1 {
+		t.Fatalf("one stop, one popup, saw %v", h.notifies)
+	}
+	n := h.notifies[0]
+	if n.title != "merge needed — o/r#7" || n.sound != host.SoundRequest {
+		t.Errorf("popup = %+v, want 'merge needed — o/r#7' in the request sound", n)
+	}
+	if !strings.Contains(n.body, "agent never started") {
+		t.Errorf("body = %q, want the reason the run stopped", n.body)
+	}
+	if len(forge.labels) != 1 || forge.labels[0] != "merge-needed" {
+		t.Errorf("labels = %v, want the PR marked merge-needed", forge.labels)
 	}
 }
 

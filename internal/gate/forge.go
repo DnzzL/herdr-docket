@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"strings"
 )
@@ -16,6 +17,28 @@ type Forge interface {
 	// commit the gate decided on.
 	Merge(url, headSHA string) error
 	Comment(url, body string) error
+	// AddLabel applies label to the PR, creating it in the repo first if the
+	// repo does not have it yet.
+	AddLabel(url, label string) error
+	// RemoveLabel takes label off the PR. A PR that does not carry it is
+	// already the state the caller wanted, not an error.
+	RemoveLabel(url, label string) error
+}
+
+// RepoRef splits a pull-request URL into the repository that hosts it
+// ("owner/repo") and the number the PR is known by ("7") — the two halves
+// every caller needs to name one: the gh CLI wants the repo, and
+// owner/repo#7 is how a human reads it.
+func RepoRef(prURL string) (repo, number string, err error) {
+	u, err := url.Parse(prURL)
+	if err != nil {
+		return "", "", err
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) != 4 || parts[2] != "pull" || parts[0] == "" || parts[1] == "" || parts[3] == "" {
+		return "", "", fmt.Errorf("%q does not name a pull request", prURL)
+	}
+	return parts[0] + "/" + parts[1], parts[3], nil
 }
 
 // GH is the Forge behind the gh CLI, with whatever account it is signed in as.
@@ -55,6 +78,45 @@ func (GH) Merge(url, headSHA string) error {
 func (GH) Comment(url, body string) error {
 	_, err := gh("pr", "comment", url, "--body", body)
 	return err
+}
+
+func (GH) AddLabel(url, label string) error {
+	repo, _, err := RepoRef(url)
+	if err != nil {
+		return err
+	}
+	// Creating is best effort: the label existing already makes this fail,
+	// which is the outcome wanted, and a label the repo really lacks is
+	// caught below, where `pr edit` refuses to apply what does not exist.
+	_, _ = gh("label", "create", label, "--repo", repo)
+	_, err = gh("pr", "edit", url, "--add-label", label)
+	return err
+}
+
+// RemoveLabel reads the PR's labels first rather than removing blind: a repo
+// that never needed the label does not have it, and gh refuses to remove a
+// label it has never heard of — a refusal that would log on every clean merge
+// for a state that is already the one wanted.
+func (GH) RemoveLabel(url, label string) error {
+	var view struct {
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	}
+	out, err := gh("pr", "view", url, "--json", "labels")
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(out, &view); err != nil {
+		return fmt.Errorf("gh pr view %s: %w", url, err)
+	}
+	for _, l := range view.Labels {
+		if strings.EqualFold(l.Name, label) {
+			_, err = gh("pr", "edit", url, "--remove-label", label)
+			return err
+		}
+	}
+	return nil
 }
 
 // patchID is `git patch-id --stable` over the PR's diff: the same change
