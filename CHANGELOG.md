@@ -4,6 +4,16 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A daily digest lists every PR waiting on your merge.** The merge-needed
+  popup dies with the terminal — eleven DishNow PRs piled up unnoticed on
+  2026-10-04. The factory ships a fourth schedule, `merge-digest`: once a day
+  it reads every queue's repo for open pull requests labelled `merge-needed`
+  and keeps exactly one issue per repo titled `Merges waiting` — PR link,
+  task id, reason, waiting since — rewritten each run and closed when
+  nothing waits. It decides nothing; it only lists. Fresh installs get it
+  from `init --factory`; a loop installed earlier pastes it in from
+  docs/factory.md, where the installer gap is recorded as a known gap.
+
 - **A run that passes its timeout keeps its delivery.** The deadline used
   to close the task Failed and walk away from a still-working agent: its PR
   or verdict arrived after the fleet stopped listening, and nothing verified
@@ -61,6 +71,15 @@ What changed for someone using the plugin. Dates are release dates.
 - **The factory has no pm.** Intake blocks what it cannot verify, with the one
   question for you; lookback files its structural fixes to `dev`.
   `init --factory` writes five personas, not six.
+- **A task parked on a human no longer gets a run.** Blocked is open: a task
+  sitting in the queue's blocked column with an agent free was picked the
+  moment that agent came free, and the run's whole effect was one more read
+  of the wall the task is parked against — observed as a reviewer run on a
+  task parked waiting for a human since the day before. A queue marks its
+  own parked column, and the daemon now leaves those tasks alone no matter
+  who they are assigned to: the human the work waits on is the only one who
+  can answer it, and everything the fleet would say is already in the
+  column's word.
 
 ## v0.8.0 — 2026-10-02
 

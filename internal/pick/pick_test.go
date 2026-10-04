@@ -135,9 +135,12 @@ func TestUnavailableAgentGetsNoWorkAndIsNotCalledUnknown(t *testing.T) {
 		t.Fatalf("busy agent must not run work, got %v", res.Task.ID)
 	}
 	if len(res.Unknown) != 0 {
-		t.Fatalf("busy agent must not be reported unknown: %v", res.Unknown)
+		t.Fatalf("the busy agent must not be reported unknown: %v", res.Unknown)
 	}
 
+	// TASK-53: the same hold on the default-agent path — an unassigned task
+	// the default agent would claim is not picked while parked, whatever the
+	// default's state.
 	if res := Next([]work.Task{open("T-2", 0, "")}, busy, defaults("reviewer")); res.Task != nil || len(res.Unknown) != 0 {
 		t.Fatalf("busy default agent must not steal or be reported unknown: %+v", res)
 	}
@@ -251,5 +254,31 @@ func TestBeforeMatchesTheOrderNextPicks(t *testing.T) {
 	sort.SliceStable(sorted, func(i, j int) bool { return Before(sorted[i], sorted[j]) })
 	if sorted[0].ID != Next(items, agents("a"), defaults("")).Task.ID {
 		t.Fatalf("board order %v disagrees with the scheduler", sorted[0].ID)
+	}
+}
+
+// TASK-53: Blocked is open — it is parked, not ended — so a task sitting in
+// a human's column with an agent free has been getting runs whose whole
+// effect is one more read of the wall it is parked on. Blocked means waits
+// on a human, and pick must not route it: a run cannot answer the question
+// that parked the work, only the human who parked it can.
+func TestBlockedIsNotPicked(t *testing.T) {
+	blocked := work.Task{ID: "T-1", Title: "T-1", Open: true, Blocked: true, Phase: "Blocked", Assignee: "a"}
+	free := work.Task{ID: "T-2", Title: "T-2", Open: true, Priority: 1, Assignee: "a"}
+
+	res := Next([]work.Task{blocked, free}, agents("a"), defaults(""))
+	if res.Task == nil || res.Task.ID != "T-2" {
+		t.Fatalf("the parked task must stay parked while another open task exists: %+v", res)
+	}
+	// An agent's readiness is not the pick's business, and a blocked task is
+	// not Unknown work either: its assignee exists, a human is answering.
+	if len(res.Unknown) != 0 {
+		t.Fatalf("a parked task must not be reported as unroutable: %v", res.Unknown)
+	}
+
+	// The human's answer might never come. Blocked everything is no pick and
+	// no comment — the queue has already said what it is waiting for.
+	if res := Next([]work.Task{blocked}, agents("a"), defaults("a")); res.Task != nil || len(res.Unknown) != 0 {
+		t.Fatalf("blocked as the only work must leave the tick bare: %+v", res)
 	}
 }
