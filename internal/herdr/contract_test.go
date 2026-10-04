@@ -63,29 +63,48 @@ func TestTheClientReadsTheCodeOutOfARealHerdrError(t *testing.T) {
 	}
 }
 
-// An unknown agent target is what herdr answers with whenever the fleet
-// addresses an agent that never registered — and, as observed against this
-// herdr, also one whose workspace was closed under it, the very shape the
-// fleet's CodeAgentGone recovery was written for. The fleet branches on none
-// of these, so this is not a behavioural contract; it pins the fact so the
-// next fix to the vanished-agent path starts from what herdr says, not what
-// the fleet guesses herdr says.
-func TestHerdrAnswersUnknownAgentTargetsWithAgentNotFound(t *testing.T) {
+// A vanished agent is what herdr answers agent_not_found to — for every shape
+// the fleet's vanished-agent recovery was written for. Probed against 0.9.1,
+// one shape per line:
+//
+//   - a target that never registered,
+//   - a registered agent whose workspace was closed under it (the exact
+//     shape CodeAgentGone existed for),
+//   - a registered agent whose process exited on its own in a live
+//     workspace, and
+//   - an agent that did not survive its own boot (one-shot, no readiness).
+//
+// All four answer agent_not_found; agent_not_running — CodeAgentGone's old
+// value, still present in the binary — was not reachable through any of
+// them, so the recovery branches on nothing herdr emits. The contract was
+// renegotiated in TICKET-48's change: CodeAgentGone now pins the code herdr
+// actually sends, and this test holds both halves of that agreement — the
+// code arrives, and the codes that mean other things do not answer for it.
+func TestHerdrAnswersAVanishedAgentWithAgentNotFound(t *testing.T) {
 	requireHerdr(t)
 
 	var c Client
 	target := fmt.Sprintf("contract-missing-%d", time.Now().UnixNano())
 	_, statusErr := c.AgentStatus(target)
-	if !HasCode(statusErr, "agent_not_found") {
-		t.Fatalf("agent get of an unregistered target: %v, want the agent_not_found envelope read intact", statusErr)
+	if !HasCode(statusErr, CodeAgentGone) {
+		t.Fatalf("agent get of a vanished agent: %v, want the %s envelope read intact", statusErr, CodeAgentGone)
 	}
-	// The constants the fleet does branch on must NOT answer for this shape,
-	// or the vanished-agent recovery would fire for a target that was never
-	// the fleet's to wait on.
-	for _, not := range []string{CodeAgentNotReady, CodeAgentGone, CodeStalled, CodePaneBusy} {
+	var apiErr *APIError
+	if !errors.As(statusErr, &apiErr) || apiErr.Code != CodeAgentGone || apiErr.Message == "" {
+		t.Fatalf("expected a real herdr envelope with the code and a message, got %#v", apiErr)
+	}
+	// The constants that mean other things must NOT answer for this shape,
+	// or the wrong recovery fires for it.
+	for _, not := range []string{CodeAgentNotReady, CodeStalled, CodePaneBusy, CodeWorkspaceGone} {
 		if HasCode(statusErr, not) {
-			t.Errorf("the agent_not_found envelope must not read as %s", not)
+			t.Errorf("the %s envelope must not read as %s", CodeAgentGone, not)
 		}
+	}
+	// wait and prompt answer the same way: the await slice maps the wait
+	// answer to ErrCancelled, and a bare prompt must not be retried as if
+	// the agent were still there to receive it.
+	if err := c.AgentWait(target, time.Second); !HasCode(err, CodeAgentGone) {
+		t.Errorf("agent wait of a vanished agent: %v, want %s", err, CodeAgentGone)
 	}
 }
 
@@ -151,7 +170,4 @@ func paneInteractive(t *testing.T, c Client, paneID string) error {
 //     client-side shape (TestAnErrorCodeIsReadFromWhicheverStreamCarriesIt).
 //   - agent_not_ready: exists only in the seconds an agent is booting; the
 //     honest forcing needs a live agent whose readiness herdr hedges on.
-//   - agent_not_running: pinned ABSENT instead, by
-//     TestHerdrAnswersUnknownAgentTargetsWithAgentNotFound — this herdr
-//     answers agent_not_found wherever it was expected.
 //
