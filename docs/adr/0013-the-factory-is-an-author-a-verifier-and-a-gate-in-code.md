@@ -26,7 +26,10 @@ pstack's `shipping.md`). A queue opts in with `merge: auto`; the default is
 protection would make GitHub enforce CODEOWNERS natively, but it is absent
 on private repos on the free plan and `reviewDecision` says nothing without
 it — the gate would silently pass critical work. Reading `CODEOWNERS`
-directly works on every plan.
+directly works on every plan, and the rules that hold are the base
+branch's: the gate fetches the file from the forge at the ref the PR
+targets, not from any checkout on disk, whose copy can be stale or missing
+(TASK-57).
 
 **Rejected:** the verifier merging after its own PASS — the gated party would
 hold the gate. Agent-driven handoffs kept as they are — every handoff is a

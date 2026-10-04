@@ -3,8 +3,6 @@ package runner
 import (
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
@@ -92,9 +90,15 @@ func (r *Runner) gate(src work.Source, t work.Task, author fleet.Agent, url, pat
 	if err != nil {
 		return r.hold(src, t, url, "the task could not be re-read for its labels: "+err.Error())
 	}
+	// The rules that hold are the base branch's, read through the forge: the
+	// author's checkout is the copy that can be stale or absent (TASK-57).
+	owners, err := r.forge.Codeowners(url)
+	if err != nil {
+		return r.hold(src, t, url, "the base branch's CODEOWNERS could not be read: "+err.Error())
+	}
 	merge, reason := gate.Decide(gate.Input{
 		PR: pr, Verdict: gate.Pass, VerdictPatch: patch,
-		Labels: task.Labels, Owners: r.owners(author.Workdir), Auto: auto,
+		Labels: task.Labels, Owners: owners, Auto: auto,
 	})
 	if !merge {
 		return r.hold(src, t, url, reason)
@@ -134,16 +138,4 @@ func (r *Runner) note(src work.Source, id, text string) {
 	if err := src.Comment(id, text); err != nil {
 		log.Printf("%s: append note: %v", id, err)
 	}
-}
-
-// codeowners reads the CODEOWNERS patterns of the repo the author works, from
-// the three places GitHub looks (the roster has already expanded ~). No
-// file is no protected path.
-func codeowners(workdir string) []string {
-	for _, rel := range []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"} {
-		if raw, err := os.ReadFile(filepath.Join(workdir, rel)); err == nil {
-			return gate.ParseCodeowners(string(raw))
-		}
-	}
-	return nil
 }

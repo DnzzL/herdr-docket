@@ -82,8 +82,9 @@ func (f *fakeForge) Comment(url, body string) error {
 
 // Labels are the runner's end of the forge's work, not this verb's; the
 // methods exist so the fake still answers for the whole port.
-func (f *fakeForge) AddLabel(string, string) error    { return nil }
-func (f *fakeForge) RemoveLabel(string, string) error { return nil }
+func (f *fakeForge) AddLabel(string, string) error       { return nil }
+func (f *fakeForge) RemoveLabel(string, string) error    { return nil }
+func (f *fakeForge) Codeowners(string) ([]string, error) { return nil, nil }
 
 // runTaskPiped runs a task verb in a queue whose pipeline names a verifier.
 func runTaskPiped(t *testing.T, src work.Source, forge gate.Forge, args ...string) (string, error) {
