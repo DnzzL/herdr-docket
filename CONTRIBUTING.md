@@ -55,8 +55,14 @@ delete them by hand for a clean slate.
   ordered, so the backend does. See `docs/adr/0001`.
 - **A backend passes `worktest.Run` or it isn't a backend.** Nothing above an
   adapter learns which one answered.
-- Every user-visible change gets a `CHANGELOG.md` entry describing what it means
-  for someone using the plugin, not what was refactored.
+- **Every user-visible change writes one file under `changelog.d/`**, named
+  after the task the run carries (`changelog.d/TASK-62.md`), holding the
+  bullet as it should read: what the change means for someone using the
+  plugin, not what was refactored. Never edit `CHANGELOG.md` in a pull
+  request — one shared section means every open pull request conflicts, and a
+  conflict here costs a re-verification ([ADR 0016](docs/adr/0016-a-pull-request-writes-a-changelog-file-not-a-changelog-section.md)).
+  `herdr-docket changelog` previews the next release; `herdr-docket changelog
+  release vX.Y.Z` cuts it.
 - **The README is the landing page; `docs/` is the manual.** A visitor should be
   able to install the plugin and watch a first run without leaving the README.
   Everything past that — every agent field, every backend, the worked examples —
