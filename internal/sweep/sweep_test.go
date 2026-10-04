@@ -52,6 +52,13 @@ func run(id, branch string, status history.Status, verdict string) history.Recor
 	return history.Record{RunID: id, Task: id, Branch: branch, Status: status, Verdict: verdict}
 }
 
+// dirFor is where herdr checks a branch out: the branch with its slashes
+// flattened. The directory is what names the run when the branch inside has
+// been renamed since.
+func dirFor(branch string) string {
+	return "/w/" + strings.ReplaceAll(branch, "/", "-")
+}
+
 // The fleet's rule for the pre-TASK-68 pile, pinned here: a registration is
 // retired only for a run that ended done with nothing parked and whose
 // workspace is closed. In flight, resume points, open workspaces and
@@ -61,12 +68,12 @@ func TestSweepRetiresOnlyWhatHistoryAndWorkspacesClear(t *testing.T) {
 	branches := struct {
 		done, noVerdict, blocked, failed, running, renamed string
 	}{
-		done:     "fleet/docket-task-1-done-20261001-0101",
+		done:      "fleet/docket-task-1-done-20261001-0101",
 		noVerdict: "fleet/docket-task-2-quiet-20261001-0202",
-		blocked:  "fleet/docket-task-3-blocked-20261001-0303",
-		failed:   "fleet/docket-task-4-failed-20261001-0404",
-		running:  "fleet/docket-task-5-running-20261001-0505",
-		renamed:  "fleet/docket-task-6-renamed-20261001-0606",
+		blocked:   "fleet/docket-task-3-blocked-20261001-0303",
+		failed:    "fleet/docket-task-4-failed-20261001-0404",
+		running:   "fleet/docket-task-5-running-20261001-0505",
+		renamed:   "fleet/docket-task-6-renamed-20261001-0606",
 	}
 	runs := []history.Record{
 		run("docket/TASK-1-1", branches.done, history.StatusDone, "done"),
@@ -79,14 +86,14 @@ func TestSweepRetiresOnlyWhatHistoryAndWorkspacesClear(t *testing.T) {
 	lister := &fakeLister{lists: map[string][]herdr.Worktree{repo: {
 		// The human's own checkout: never a run's leftover, never touched.
 		{Branch: "main", Path: repo, IsLinkedWorktree: false},
-		linked(branches.done, "/w/"+branches.done),
-		linked(branches.noVerdict, "/w/"+branches.noVerdict),
-		linked(branches.blocked, "/w/"+branches.blocked),
-		linked(branches.failed, "/w/"+branches.failed),
-		linked(branches.running, "/w/"+branches.running),
+		linked(branches.done, dirFor(branches.done)),
+		linked(branches.noVerdict, dirFor(branches.noVerdict)),
+		linked(branches.blocked, dirFor(branches.blocked)),
+		linked(branches.failed, dirFor(branches.failed)),
+		linked(branches.running, dirFor(branches.running)),
 		// The agent renamed the branch inside — the directory still names the
 		// run — and the workspace was left open: kept for the open workspace.
-		linkedOpen("task22/rebase", "/w/"+branches.renamed, "w8P"),
+		linkedOpen("task22/rebase", dirFor(branches.renamed), "w8P"),
 		// Nothing in history claims these; the evidence does not settle them.
 		linked("pr41-fix", "/tmp/pr41"),
 		linked("", "/tmp/wt-main"),
@@ -125,10 +132,10 @@ func TestSweepRetiresOnlyWhatHistoryAndWorkspacesClear(t *testing.T) {
 			t.Errorf("report missing keep line %q:\n%s", keep, out)
 		}
 	}
-	if strings.Contains(out, "main —") {
+	if strings.Contains(out, "  keep    main —") || strings.Contains(out, "  retired main\n") {
 		t.Errorf("the primary checkout must not be reported as a registration:\n%s", out)
 	}
-	if !strings.Contains(out, "2 retired, 7 kept, 0 failed") {
+	if !strings.Contains(out, "2 retired, 6 kept, 0 failed") {
 		t.Errorf("summary missing or wrong:\n%s", out)
 	}
 }
@@ -140,7 +147,7 @@ func TestSweepDryRunPlansAndTouchesNothing(t *testing.T) {
 	const branch = "fleet/docket-task-1-done-20261001-0101"
 	runs := []history.Record{run("docket/TASK-1-1", branch, history.StatusDone, "done")}
 	lister := &fakeLister{lists: map[string][]herdr.Worktree{repo: {
-		linked(branch, "/w/"+branch),
+		linked(branch, dirFor(branch)),
 	}}}
 	retired := 0
 	retire := func(r, b string) error { retired++; return nil }
@@ -169,7 +176,7 @@ func TestSweepKeepsWhatTheRetireCouldNotPrune(t *testing.T) {
 	const branch = "fleet/docket-task-1-dirty-20261001-0101"
 	runs := []history.Record{run("docket/TASK-1-1", branch, history.StatusDone, "done")}
 	lister := &fakeLister{lists: map[string][]herdr.Worktree{repo: {
-		linked(branch, "/w/"+branch),
+		linked(branch, dirFor(branch)),
 	}}}
 	retire := func(r, b string) error { return nil } // dirty: nothing removed
 
@@ -198,8 +205,8 @@ func TestSweepReportsARetireErrorAndKeepsGoing(t *testing.T) {
 		run("docket/TASK-2-2", good, history.StatusDone, "done"),
 	}
 	lister := &fakeLister{lists: map[string][]herdr.Worktree{repo: {
-		linked(bad, "/w/"+bad),
-		linked(good, "/w/"+good),
+		linked(bad, dirFor(bad)),
+		linked(good, dirFor(good)),
 	}}}
 	retire := func(r, b string) error {
 		if b == bad {
@@ -234,7 +241,7 @@ func TestSweepReportsARepoItCannotListAndSweepsTheRest(t *testing.T) {
 	runs := []history.Record{run("docket/TASK-1-1", branch, history.StatusDone, "done")}
 	lister := &fakeLister{
 		lists: map[string][]herdr.Worktree{
-			fine: {linked(branch, "/w/"+branch)},
+			fine: {linked(branch, dirFor(branch))},
 		},
 		errs: map[string]error{broken: errors.New("herdr: no such repo")},
 	}
@@ -264,7 +271,7 @@ func TestSweepMatchesTheRunByWorktreeDirectoryWhenTheBranchWasRenamed(t *testing
 	const provBranch = "fleet/docket-task-22-20261001-1814"
 	runs := []history.Record{run("docket/TASK-22-1", provBranch, history.StatusDone, "done")}
 	lister := &fakeLister{lists: map[string][]herdr.Worktree{repo: {
-		linked("task22/rebase", "/w/"+provBranch),
+		linked("task22/rebase", dirFor(provBranch)),
 	}}}
 	var retired []string
 	retire := func(r, b string) error {
