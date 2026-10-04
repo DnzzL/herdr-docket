@@ -4,6 +4,16 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A daily digest lists every PR waiting on your merge.** The merge-needed
+  popup dies with the terminal — eleven DishNow PRs piled up unnoticed on
+  2026-10-04. The factory ships a fourth schedule, `merge-digest`: once a day
+  it reads every queue's repo for open pull requests labelled `merge-needed`
+  and keeps exactly one issue per repo titled `Merges waiting` — PR link,
+  task id, reason, waiting since — rewritten each run and closed when
+  nothing waits. It decides nothing; it only lists. Fresh installs get it
+  from `init --factory`; a loop installed earlier pastes it in from
+  docs/factory.md, where the installer gap is recorded as a known gap.
+
 - **A run whose workspace was closed mid-flight reports cancelled again.** The
   vanished-agent recovery branched on `agent_not_running` — a code herdr 0.9.x
   never sends to `agent get` / `wait` / `prompt`. Every vanished shape it does
@@ -29,6 +39,14 @@ What changed for someone using the plugin. Dates are release dates.
   `assign` as the two ways a run can end, deferring the choice to the task and
   the persona instead of scoring the verdict as the only ending. A task left
   open and unassigned stays explicitly named as the failure it is.
+
+- **A verify run cannot end in prose either.** That ordering lived only in the
+  worker's ending section; the verifier's own required section stated none, so
+  a verifier could reach its verdict, write it in chat and stop — the run
+  *settled without reporting a verdict*, and the pull request hung. The
+  verifier's section now says its verdict command is the run's last tool call
+  too: execute it, then summarise.
+
 - **A queue can verify and merge on its own.** Name a `verifier:` on a queue
   and a PR delivered with `task done --pr` stays open, goes to that agent,
   comes back to its author on a FAIL (twice at most), and on a PASS reaches a
@@ -51,6 +69,15 @@ What changed for someone using the plugin. Dates are release dates.
 - **The factory has no pm.** Intake blocks what it cannot verify, with the one
   question for you; lookback files its structural fixes to `dev`.
   `init --factory` writes five personas, not six.
+- **A task parked on a human no longer gets a run.** Blocked is open: a task
+  sitting in the queue's blocked column with an agent free was picked the
+  moment that agent came free, and the run's whole effect was one more read
+  of the wall the task is parked against — observed as a reviewer run on a
+  task parked waiting for a human since the day before. A queue marks its
+  own parked column, and the daemon now leaves those tasks alone no matter
+  who they are assigned to: the human the work waits on is the only one who
+  can answer it, and everything the fleet would say is already in the
+  column's word.
 
 ## v0.8.0 — 2026-10-02
 

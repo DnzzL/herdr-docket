@@ -27,18 +27,22 @@ service, an account, or a second daemon.
 | Verdict on every delivered PR | [Example 4, `reviewer`](examples.md#4-a-reviewer-that-verifies-the-devs-prs), named as the queue's `verifier` | each delivery, sequenced by the fleet |
 | Nudge work that ended short | [Example 6, `stall`](examples.md#6-a-stall-sweep-that-nudges-work-that-ended-short) | daily |
 | Find what keeps coming back | [Example 7, `lookback`](examples.md#7-a-lookback-that-finds-what-keeps-coming-back) | weekly |
+| List every pull request waiting on your merge | no persona — [the merge digest](#the-wiring) only lists | daily |
 
 The schedule never does the work. An automation's whole job is to put one task
 on the queue — `herdr-docket task create … -a intake` — and the daemon runs it
 on the persona like any other task, with `FLEET.md` and roles
-intact. Automations decide *when*; the fleet decides *what* and *who*. That is
+intact. The one carve-out is the merge digest below: a schedule that only lists
+owes no *what* or *who*, so it reads and writes its own issue. Automations
+decide *when*; the fleet decides *what* and *who*. That is
 [the composition the README promises](../README.md#what-it-isnt), and this
 page is where it gets a cron.
 
 ## The wiring
 
 One `automations.yaml` for the whole loop. The prompts are deliberately thin —
-they file tasks and nothing else:
+the three that drive a persona file tasks and nothing else, and the fourth only
+lists:
 
 ```yaml
 automations:
@@ -73,12 +77,73 @@ automations:
       herdr-docket task create "Lookback: what keeps coming back?" -a lookback \
         -d "Last 30 days against the 30 before. One follow-up per pattern,
         assigned to dev, evidence on each."
+
+  - name: merge-digest
+    cron: "30 7 * * *"
+    repo: ~/fleet
+    workspace: root
+    model: haiku
+    prompt: |
+      Daily merge digest — one issue per repo listing every open pull request
+      labelled merge-needed. It decides nothing; it only lists: exactly one
+      open issue titled "Merges waiting" per repo, rewritten each run, closed
+      when the repo has nothing waiting.
+
+      Queue repos: for every "dir:" under "sources:" in the fleet.yaml inside
+      the dir printed by herdr plugin config-dir dnzzl.herdr-docket (a source
+      with no "dir:" is the fleet's own queue at the top-level "dir:"), take
+      git -C <dir> remote get-url origin and strip any
+      git@github.com:/https://github.com/ prefix and .git suffix. An
+      owner/repo answer is a repo to read — each repo once, even when two
+      queues share it. No remote, or not github.com: that queue has no pull
+      requests — say so and skip it. A kind: github source names its repo in
+      the "repo:" of its "github:" block instead.
+
+      Per repo: gh pr list --repo <owner/repo> --state open --label
+      merge-needed --limit 1000 --json number,url. An empty list is the
+      normal answer; a gh error is not — report it and move on. No waiting
+      PRs: close that repo's open "Merges waiting" issue if there is one
+      (gh issue close <n> --comment "nothing waiting — no pull request is
+      labelled merge-needed"), then say so and move to the next repo.
+
+      Per waiting PR, four facts — read them, never guess them. Link: from
+      the list. Task id: grep -rl the url under <dir>/backlog/tasks/ and take
+      the frontmatter id: of the file that also carries "is held for a
+      human", under the source name fleet.yaml gives that dir; if no file
+      mentions the url, the last "task" beside it in
+      ~/.local/state/herdr/plugins/dnzzl.herdr-docket/history.jsonl; if
+      neither, "not recorded". Reason: the text after the dash on that
+      "is held for a human —" line; no such line, "not recorded". Waiting
+      since: the last created_at of a merge-needed label event in gh api
+      repos/<owner/repo>/issues/<n>/timeline --paginate --jq
+      '.[]|select(.event=="labeled" and .label.name=="merge-needed")|.created_at'
+      (piped through tail -1); no event, "unknown".
+
+      A repo with waiting PRs keeps exactly one open "Merges waiting" issue:
+      gh issue create --repo <owner/repo> --title "Merges waiting" --body-file -
+      when none is open, gh issue edit <n> --repo <owner/repo> --body-file -
+      on the one already open, and a second open one is closed as superseded
+      (gh issue close <m> --comment "superseded — one digest issue per repo").
+      The body: one bullet per PR — link, task id, reason, waiting since —
+      under a line saying it is rewritten daily and lists only.
+
+      End with one line per repo: what you listed, what you closed.
 ```
 
 `repo:` is the fleet dir, because that is the checkout these tasks read;
 `workspace: root` for the same reason the PM's example gives — the queue is the
 files. `model:` is the video's lesson in one line: the pattern-matching goes to
 the expensive model, the pollers to the cheap one.
+
+**The fourth entry reads instead of filing.** `merge-digest` is the one
+schedule that does its own work in the run, and the sentence that licenses it
+lives in its prompt: the digest decides nothing — it only lists. Each morning
+it walks every queue's repo, reads the open pull requests labelled
+`merge-needed`, and keeps exactly one issue per repo titled `Merges waiting` —
+one bullet per pull request: link, task id, reason, waiting since — rewriting
+the issue in place each run and closing it when the repo has nothing waiting.
+It touches no task, no label and no pull request: a human away from the
+terminal reads one issue instead of a popup that vanished.
 
 Two knobs the loop leans on, both already built:
 
@@ -286,3 +351,8 @@ the shape):
   TASK-57 moves the read to the PR's base branch).
 - `unknown` — `gh pr view` lists at most 100 changed files; a larger PR is
   checked against `CODEOWNERS` on those only.
+- `fragile` — `init --factory` writes the schedules only to a config with no
+  `intake` entry yet, so a fleet that installed the loop before `merge-digest`
+  existed does not receive it from a re-run: paste it in from
+  [the wiring](#the-wiring) above. Teaching the installer to append the
+  entries it is missing is filed as a follow-up.
