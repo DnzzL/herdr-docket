@@ -159,6 +159,25 @@ func waitClosed(t *testing.T, s *memSource, id string) {
 	t.Fatalf("%s: no run closed the task", id)
 }
 
+// waitEnded waits for the run to let go of the task lock, not just for the
+// task to be closed: reconcile closes it mid-attempt, and the run keeps
+// working (the failure history, the cleanup) until Runner.Run returns. A tick
+// that starts inside that window skips the task as already running
+// (daemon.go, runs.Running), so no goroutine ever starts and the queue the
+// second tick meant to write to never closes. Production never notices —
+// ticks are seconds apart and the next one picks the task up — so it is the
+// harness that must wait for the run, not the daemon.
+func waitEnded(t *testing.T, runs *runner.Runner, id string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for runs.Running(id) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if runs.Running(id) {
+		t.Fatalf("%s: run never released the task lock", id)
+	}
+}
+
 // The daemon once held one Source for the Runner and built another per tick,
 // so pick read the new queue while claim/Comment/Close wrote to the old one.
 // One source per evaluation is the fix: a tick's writes land on the queue it
@@ -180,6 +199,10 @@ func TestEachTickWritesToTheQueueItReadFrom(t *testing.T) {
 		t.Fatal("the first tick must not write to the queue it never read from")
 	}
 
+	// The run that closed the first queue still holds the task lock until it
+	// returns; evaluate again only once it is gone, or the in-flight check
+	// silently drops the task and the second queue never sees a run.
+	waitEnded(t, runs, "TASK-1")
 	evaluate(runs, reported)
 	waitClosed(t, second, "TASK-1")
 }
