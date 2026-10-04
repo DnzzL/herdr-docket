@@ -41,6 +41,12 @@ type ops interface {
 	// delivery. The tree is disposable by contract, so the removal is forced,
 	// and the branch can only go once the worktree that held it is gone.
 	WorktreeDiscard(repo, branch string) error
+	// WorktreeRetire is the lighter teardown an author's run owes (TASK-68):
+	// the registration and checkout are pruned when the tree is clean, and
+	// the branch is deleted only when every commit it holds is already pushed
+	// — an unpushed branch is the delivery's only copy. A dirty tree keeps
+	// everything: uncommitted work is never destroyed by a teardown.
+	WorktreeRetire(repo, branch string) error
 	// WorktreeDirty reports whether the worktree at dir holds changes that
 	// are not committed.
 	WorktreeDirty(dir string) (bool, error)
@@ -141,6 +147,12 @@ func (herdrOps) WorktreeDiscard(repo, branch string) error {
 	}
 	_, err := gitOutput(repo, "branch", "-D", branch)
 	return err
+}
+
+// WorktreeRetire is TASK-68's red placeholder: the seam test defines what it
+// owes; the implementation follows in the next commit.
+func (herdrOps) WorktreeRetire(repo, branch string) error {
+	return fmt.Errorf("WorktreeRetire not implemented: %s@%s", repo, branch)
 }
 
 func (herdrOps) WorktreeDirty(dir string) (bool, error) {
