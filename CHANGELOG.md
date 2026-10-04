@@ -4,6 +4,13 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **Re-running `init --factory` gives a loop the entries it is missing.**
+  Install used to skip any config that already carried `intake`, so a fleet
+  installed before `merge-digest` shipped never received it — and every
+  future entry would have shipped the same way. The installer now checks
+  each entry by name and appends only the ones the config lacks, leaving
+  what is already there untouched.
+
 - **A daily digest lists every PR waiting on your merge.** The merge-needed
   popup dies with the terminal — eleven DishNow PRs piled up unnoticed on
   2026-10-04. The factory ships a fourth schedule, `merge-digest`: once a day
@@ -11,8 +18,8 @@ What changed for someone using the plugin. Dates are release dates.
   and keeps exactly one issue per repo titled `Merges waiting` — PR link,
   task id, reason, waiting since — rewritten each run and closed when
   nothing waits. It decides nothing; it only lists. Fresh installs get it
-  from `init --factory`; a loop installed earlier pastes it in from
-  docs/factory.md, where the installer gap is recorded as a known gap.
+  from `init --factory`; a loop installed earlier gets it from a re-run of
+  the same command.
 
 - **A run whose workspace was closed mid-flight reports cancelled again.** The
   vanished-agent recovery branched on `agent_not_running` — a code herdr 0.9.x
