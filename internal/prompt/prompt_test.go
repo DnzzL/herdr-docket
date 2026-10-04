@@ -365,6 +365,24 @@ func TestTheVerdictCommandIsTheLastToolCallOfAVerifyRun(t *testing.T) {
 	}
 }
 
+// TASK-65: the verifier is told where its run stands — a worktree
+// provisioned at the PR's head — so it never fetches, clones or cuts one of
+// its own before judging, and never touches the project's checkout instead.
+func TestTheVerifierIsToldItsRunIsProvisionedAtThePRHead(t *testing.T) {
+	got := verify(fleet.Agent{Name: "rev", Persona: "R"},
+		work.Task{ID: "TASK-3", Title: "T"}, "https://github.com/o/r/pull/7", "", "/fleet")
+	for _, want := range []string{
+		"own worktree",
+		"checked out at that pull request's head commit",
+		"no fetching and no checkout to do first",
+		"removed when you settle",
+	} {
+		if !contains(got, want) {
+			t.Errorf("verifier prompt lacks %q:\n%s", want, got)
+		}
+	}
+}
+
 // In a queue with a verifier, a worker's PR is a delivery, not a close: the
 // prompt says the task stays open and never teaches the agent to merge or to
 // hand the task on itself.
