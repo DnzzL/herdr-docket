@@ -4,6 +4,71 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A daily digest lists every PR waiting on your merge.** The merge-needed
+  popup dies with the terminal — eleven DishNow PRs piled up unnoticed on
+  2026-10-04. The factory ships a fourth schedule, `merge-digest`: once a day
+  it reads every queue's repo for open pull requests labelled `merge-needed`
+  and keeps exactly one issue per repo titled `Merges waiting` — PR link,
+  task id, reason, waiting since — rewritten each run and closed when
+  nothing waits. It decides nothing; it only lists. Fresh installs get it
+  from `init --factory`; a loop installed earlier pastes it in from
+  docs/factory.md, where the installer gap is recorded as a known gap.
+
+- **A run whose workspace was closed mid-flight reports cancelled again.** The
+  vanished-agent recovery branched on `agent_not_running` — a code herdr 0.9.x
+  never sends to `agent get` / `wait` / `prompt`. Every vanished shape it does
+  send is `agent_not_found` (workspace closed under the agent, agent exited on
+  its own, target never registered — four shapes probed against 0.9.0 and
+  0.9.1), so the recovery matched nothing and a called-off run sat pinned on a
+  dead pane until its timeout instead of ending within one wait slice as a
+  blocked, human-decides task. The constant now reads what herdr sends, and
+  the contract suite holds the real binary to that pin.
+
+- **A run that passes its timeout keeps its delivery.** The deadline used
+  to close the task Failed and walk away from a still-working agent: its PR
+  or verdict arrived after the fleet stopped listening, and nothing verified
+  or gated it (five DishNow PRs with no verifier; one run recorded both
+  failed and PASS). The run now records `timed_out`, keeps its agent and
+  listens — a delivery that lands within twice the run's timeout runs the
+  verifier and the gate exactly like an on-time one, and `herdr-docket
+  history` marks the late run `timed-out`. An agent that never settles gets
+  that whole window and then the fleet gives it up: task Failed, notified,
+  and its workspace closed so nothing keeps working on a closed task (what
+  it held uncommitted is said on the record, the task and the notification).
+
+- **A merge the human owes announces itself.** Every stop that leaves a pull
+  request only a human can move — a gate hold (`critical`, a CODEOWNERS path,
+  `merge: never`, a refused merge), a verifier's second FAIL, or a failed run
+  that left a PR open — now raises one popup titled `merge needed —
+  <repo>#<number>` with the reason as its body and the `request` sound, and
+  labels the PR `merge-needed` (created in the repo when first needed) so
+  what is owed can be found later. A failed run with no PR keeps its
+  `run failed` popup and marks nothing, and the label comes off when the gate
+  merges.
+
+- **`task note` says what it wrote.** A note that landed printed nothing, so
+  an agent read its own successful writes as failures and kept rephrasing them.
+  It now prints `<id> noted` the way `done`, `fail` and `block` confirm theirs;
+  a refused note still prints only the error.
+
+- **The ending command runs before the farewell.** The prompt asked every run
+  to close its task, and runs refused: the agent wrote "Now closing per merge
+  policy" in chat and stopped — the command never executed, `reconcile`
+  recorded *settled without reporting a verdict*, and a good run landed in the
+  human's column filed failed (five-plus on 2026-09-25 alone). The prompt now
+  states the ordering outright — the closing or handoff command is the run's
+  last tool call, then the summary — and presents `done|fail|block` and
+  `assign` as the two ways a run can end, deferring the choice to the task and
+  the persona instead of scoring the verdict as the only ending. A task left
+  open and unassigned stays explicitly named as the failure it is.
+
+- **A verify run cannot end in prose either.** That ordering lived only in the
+  worker's ending section; the verifier's own required section stated none, so
+  a verifier could reach its verdict, write it in chat and stop — the run
+  *settled without reporting a verdict*, and the pull request hung. The
+  verifier's section now says its verdict command is the run's last tool call
+  too: execute it, then summarise.
+
 - **A queue can verify and merge on its own.** Name a `verifier:` on a queue
   and a PR delivered with `task done --pr` stays open, goes to that agent,
   comes back to its author on a FAIL (twice at most), and on a PASS reaches a
@@ -12,14 +77,6 @@ What changed for someone using the plugin. Dates are release dates.
   held for you with the reason, and notified. `task verdict ID PASS|FAIL --pr
   URL` is the verifier's one command. A queue without `verifier:` works as
   before.
-- **The gate reads CODEOWNERS from the PR's base branch.** The merge gate
-  used to read the file from the author agent's checkout on disk: a
-  checkout behind the base protected what its stale copy said, and one on a
-  branch without the file protected nothing. Now the gate fetches
-  CODEOWNERS from the forge at the ref the PR targets (`.github/`, root,
-  `docs/` — GitHub's own order); no file on the base still means no
-  protected path, and a forge that cannot answer holds the task rather
-  than merging unguarded.
 - **History shows a verifier run's verdict** — `verified PASS p=9ad5c1e2` on the
   run that carried it, so supervising the merge gate no longer means reading
   history.jsonl.
@@ -34,6 +91,15 @@ What changed for someone using the plugin. Dates are release dates.
 - **The factory has no pm.** Intake blocks what it cannot verify, with the one
   question for you; lookback files its structural fixes to `dev`.
   `init --factory` writes five personas, not six.
+- **A task parked on a human no longer gets a run.** Blocked is open: a task
+  sitting in the queue's blocked column with an agent free was picked the
+  moment that agent came free, and the run's whole effect was one more read
+  of the wall the task is parked against — observed as a reviewer run on a
+  task parked waiting for a human since the day before. A queue marks its
+  own parked column, and the daemon now leaves those tasks alone no matter
+  who they are assigned to: the human the work waits on is the only one who
+  can answer it, and everything the fleet would say is already in the
+  column's word.
 
 ## v0.8.0 — 2026-10-02
 

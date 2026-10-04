@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/DnzzL/herdr-docket/internal/changelog"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
@@ -205,5 +207,98 @@ func TestHistoryLineNamesTheCommitTheRunCutFrom(t *testing.T) {
 	r.BaseCommit = ""
 	if strings.Contains(formatHistory(r), "cut ") {
 		t.Fatal("a run with no base commit on file must not invent one")
+	}
+}
+
+// TASK-62: history.jsonl marks the timeout, but a supervising human reads
+// the CLI — a delivery that arrived past its deadline must be visible there,
+// on the closing record the reader shows.
+func TestHistoryLineMarksATimedOutRun(t *testing.T) {
+	r := history.Record{
+		At: time.Now(), Status: history.StatusDone, Task: "TASK-1", Trigger: "poll",
+		DurationSeconds: 90, Verdict: "done", TimedOut: true,
+	}
+	if line := formatHistory(r); !strings.Contains(line, "timed-out") {
+		t.Fatalf("history line %q missing the timed-out mark", line)
+	}
+	r.TimedOut = false
+	if line := formatHistory(r); strings.Contains(line, "timed-out") {
+		t.Fatalf("an on-time run must not be marked late: %q", line)
+	}
+}
+
+// changelogRepo lays out a repo root with a changelog.d/ and a CHANGELOG.md
+// and makes it the working directory, the way the command is run.
+func changelogRepo(t *testing.T, frags map[string]string) {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, changelog.Dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range frags {
+		if err := os.WriteFile(filepath.Join(root, changelog.Dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const existing = "# Changelog\n\nWhat changed.\n\n## v0.8.0 — 2026-10-02\n\n- **Shipped.**\n"
+	if err := os.WriteFile(filepath.Join(root, "CHANGELOG.md"), []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+}
+
+func TestChangelogPreviewsWhatTheNextReleaseWillSayAndWritesNothing(t *testing.T) {
+	changelogRepo(t, map[string]string{"TASK-62.md": "- **An entry.**"})
+	var out strings.Builder
+	if err := changelogCmd(nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "An entry") {
+		t.Errorf("preview lost the entry: %q", out.String())
+	}
+	raw, _ := os.ReadFile("CHANGELOG.md")
+	if strings.Contains(string(raw), "An entry") {
+		t.Error("a preview must not write to CHANGELOG.md")
+	}
+	if _, err := os.Stat(filepath.Join(changelog.Dir, "TASK-62.md")); err != nil {
+		t.Error("a preview must not consume the fragments")
+	}
+}
+
+func TestChangelogSaysSoWhenNothingIsPending(t *testing.T) {
+	changelogRepo(t, nil)
+	var out strings.Builder
+	if err := changelogCmd(nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "nothing pending") {
+		t.Errorf("want a plain answer, got %q", out.String())
+	}
+}
+
+func TestChangelogReleaseCutsTheSectionAndConsumesTheFragments(t *testing.T) {
+	changelogRepo(t, map[string]string{"TASK-62.md": "- **An entry.**"})
+	var out strings.Builder
+	if err := changelogCmd([]string{"release", "v0.9.0"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile("CHANGELOG.md")
+	if !strings.Contains(string(raw), "An entry") || !strings.Contains(string(raw), "## v0.9.0 — ") {
+		t.Errorf("the section did not land:\n%s", raw)
+	}
+	if _, err := os.Stat(filepath.Join(changelog.Dir, "TASK-62.md")); !os.IsNotExist(err) {
+		t.Error("the released fragment should be gone")
+	}
+}
+
+func TestChangelogRefusesAnArgumentItDoesNotKnow(t *testing.T) {
+	changelogRepo(t, map[string]string{"TASK-62.md": "- **An entry.**"})
+	for _, args := range [][]string{{"cut", "v0.9.0"}, {"release"}, {"release", "v0.9.0", "extra"}} {
+		if err := changelogCmd(args, io.Discard); err == nil {
+			t.Errorf("%v was accepted", args)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(changelog.Dir, "TASK-62.md")); err != nil {
+		t.Error("a refused command must leave the fragments alone")
 	}
 }

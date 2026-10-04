@@ -11,7 +11,7 @@ model: claude-sonnet-5        # optional — passed to the agent as --model
 workdir: ~/Projects/myapp     # required — where the work happens
 workspace: worktree           # worktree (default): fresh branch per run
                               # root: work directly on the checkout
-timeout_minutes: 60           # optional — the run's time budget (default 60)
+timeout_minutes: 60           # optional — the run's deadline in minutes (default 60)
 agent: claude                 # optional — any kind `herdr agent start` supports
 disabled: false               # optional — true parks the agent: no new runs
 ---
@@ -32,7 +32,7 @@ Every field:
 | `agent_args` | Anything else the runtime takes, passed through untouched and *after* `--model` and `--mcp-config`. |
 | `mcp_config` | Emits `--mcp-config`, which is Claude Code's flag — leave it empty on any other runtime. |
 | `role` | Shared method: `roles/<role>.md`, prepended after `FLEET.md`. |
-| `timeout_minutes` | One run's time budget (default 60). |
+| `timeout_minutes` | The run's deadline (default 60). Past it the run is recorded `timed_out` and keeps its agent for twice that long to settle; never settling fails the task, notifies, and ends the agent ([ADR 0014](adr/0014-the-timeout-records-a-late-run-it-does-not-drop-the-delivery.md)). |
 | `disabled` | `true` keeps the persona and takes the agent out of scheduling. |
 
 `workspace: worktree` gives every run a disposable branch (`fleet/task-12-…`) —

@@ -80,6 +80,10 @@ func (f *fakeForge) Comment(url, body string) error {
 	return nil
 }
 
+// Labels are the runner's end of the forge's work, not this verb's; the
+// methods exist so the fake still answers for the whole port.
+func (f *fakeForge) AddLabel(string, string) error       { return nil }
+func (f *fakeForge) RemoveLabel(string, string) error    { return nil }
 func (f *fakeForge) Codeowners(string) ([]string, error) { return nil, nil }
 
 // runTaskPiped runs a task verb in a queue whose pipeline names a verifier.
@@ -332,6 +336,30 @@ func TestTaskNoteAppendsToTheItem(t *testing.T) {
 	}
 	if len(src.verdicts) != 0 {
 		t.Fatalf("note must not close the task, got %v", src.verdicts)
+	}
+}
+
+// A note the agent cannot see succeed is a note it will retry, rephrase and
+// doubt (TASK-57 spent a turn reading its own silent writes as failures), so
+// the verb confirms the write the way done/fail/block confirm theirs — and a
+// failure still prints nothing but the error.
+func TestTaskNoteSaysItWrote(t *testing.T) {
+	src := &fakeSource{}
+	got, err := runTask(t, src, "note", "TASK-2", "half done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "TASK-2 noted") {
+		t.Fatalf("note must confirm the write, got %q", got)
+	}
+
+	failing := &fakeSource{err: errors.New("the queue refused")}
+	got, err = runTask(t, failing, "note", "TASK-2", "half done")
+	if err == nil {
+		t.Fatal("a refused note must error")
+	}
+	if got != "" {
+		t.Fatalf("a failed note prints the error and nothing else, got %q", got)
 	}
 }
 

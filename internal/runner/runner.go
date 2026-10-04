@@ -274,7 +274,17 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 	}
 	rec.record(history.StatusRunning, session, "")
 
-	err = r.host.Do(session, spec, time.Duration(a.TimeoutMinutes)*time.Minute)
+	timeout := time.Duration(a.TimeoutMinutes) * time.Minute
+	err = r.host.Do(session, spec, timeout)
+	if errors.Is(err, host.ErrTimedOut) {
+		// The clock ran out with the agent still working. The deadline is a
+		// mark, not a drop: record it — a delivery from here on is late and
+		// the log must be able to say so — then keep the agent and listen one
+		// bounded window more (ADR 0014).
+		rec.timedOut = true
+		rec.record(history.StatusTimedOut, session, "")
+		err = r.host.Settle(session, lateWindow(a))
+	}
 	// Read what the run produced while its workspace still exists: a
 	// worktree-mode session has a branch, and the facts about it only survive
 	// until cleanup tears the worktree down. A root-mode session has no
@@ -301,10 +311,37 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 			out.delivered = out.pr != ""
 		}
 	}
+	// The agent never settled: the fleet gives it up. The agent goes before
+	// the report — nothing may keep working on a task the fleet is closing —
+	// so the note the task is about to get can tell the truth about where its
+	// workspace ended (ADR 0014). What the worktree held rides on the record
+	// and in the notification: destroyed and said, never silently.
+	gaveUp := errors.Is(err, host.ErrTimedOut)
+	if gaveUp {
+		place := fmt.Sprintf("workspace %s (pane %s)", session.WorkspaceID, session.PaneID)
+		if session.TabID != "" {
+			place = fmt.Sprintf("tab on workspace %s (pane %s)", session.WorkspaceID, session.PaneID)
+		}
+		ending := fmt.Sprintf("the run's %s was closed so nothing keeps working on a closed task", place)
+		if closeErr := r.host.Close(session); closeErr != nil {
+			log.Printf("close %s to end the agent: %v", place, closeErr)
+			ending = fmt.Sprintf("the run's %s could not be closed: %v — close it by hand", place, closeErr)
+		}
+		if d.Dirty {
+			ending += ", and it held uncommitted changes nobody committed"
+		}
+		err = fmt.Errorf("%s: the agent never settled — %s past its timeout, %s", t.ID, lateWindow(a), ending)
+	}
 	final, handedOn, reported := r.reconcile(src, t.ID, a.Name, err, out.delivered)
 	out.delivered = out.delivered && handedOn
-	final, keep := r.guardDelivery(src, t.ID, session, final, handedOn, d, session.Branch != "" && errInspect != nil)
-	r.cleanup(src, t.ID, session, final, handedOn, keep)
+	// The guard exists to keep a workspace a run left behind. A give-up
+	// closed its own on purpose and said why on the task and in the
+	// notification, so there is nothing left to keep — or to doubt.
+	keep := false
+	if !gaveUp {
+		final, keep = r.guardDelivery(src, t.ID, session, final, handedOn, d, session.Branch != "" && errInspect != nil)
+	}
+	r.cleanup(src, t.ID, session, final, handedOn, keep, gaveUp)
 	// Uncommitted is the fact the guard acted on: a worktree about to be torn
 	// down holding changes nobody committed. It rides on the record whatever
 	// the run ends as, because it is what the record qualifies.
@@ -340,8 +377,57 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 }
 
 func (r *Runner) notifyFailed(t work.Task, reason string) {
-	if err := r.host.Notify("fleet: run failed — "+t.ID, reason); err != nil {
+	// A failure on top of a pull request the task still has out is the
+	// harder stop: the PR stays open and only a human can move it. It says
+	// so; without one there is no handover, and the failure is the whole
+	// message.
+	pr, err := history.TaskPullRequest(t.ID)
+	if err != nil {
+		log.Printf("%s: read the task's pull request: %v", t.ID, err)
+	}
+	if pr != "" {
+		r.mergeNeeded(t, pr, reason)
+		return
+	}
+	if err := r.host.Notify("fleet: run failed — "+t.ID, reason, host.SoundNone); err != nil {
 		log.Printf("%s: notify: %v", t.ID, err)
+	}
+}
+
+// lateWindow is how long a run keeps listening after its deadline before it
+// gives the agent up: twice the run's own timeout. The deadline marks the
+// run, it does not drop the delivery (ADR 0014) — and one more window of the
+// same length would have missed every late delivery the fleet has actually
+// seen (TASK-145 settled 99 minutes past its 90-minute deadline). Twice that
+// bounds a hung agent at three times its timeout: failed, notified, and
+// ended, so nothing works on a task the fleet has closed.
+func lateWindow(a fleet.Agent) time.Duration {
+	return 2 * time.Duration(a.TimeoutMinutes) * time.Minute
+}
+
+// mergeNeededLabel marks a PR the fleet stopped on so the merge it owes can
+// be found again later — the forge never notifies anyone about the fleet's
+// own actions, so the label is the durable half of the announcement.
+const mergeNeededLabel = "merge-needed"
+
+// mergeNeeded announces the one stop a human alone can move: the PR stays
+// open and only they can take it further. GitHub cannot — the fleet opens
+// PRs under the human's own account, and GitHub never notifies you of your
+// own actions — so the stop speaks here: one popup, the reason as its body,
+// the request sound, and the PR labelled merge-needed (created in the repo
+// if missing). Both asks are best-effort the way every notification is (ADR
+// 0010): the note on the task and the board's Blocked column are the report;
+// this is the voice over it.
+func (r *Runner) mergeNeeded(t work.Task, pr, reason string) {
+	ref := pr
+	if repo, number, err := gate.RepoRef(pr); err == nil {
+		ref = repo + "#" + number
+	}
+	if err := r.host.Notify("merge needed — "+ref, reason, host.SoundRequest); err != nil {
+		log.Printf("%s: notify: %v", t.ID, err)
+	}
+	if err := r.forge.AddLabel(pr, mergeNeededLabel); err != nil {
+		log.Printf("%s: label %s merge-needed: %v", t.ID, pr, err)
 	}
 }
 
@@ -461,9 +547,11 @@ func (r *Runner) guardDelivery(src work.Source, taskID string, s host.Session, f
 // place to resume: the board's enter-jump lands there, and the note names it
 // for anyone reading the ticket instead of the board. keep is the guard's
 // answer: a workspace it kept has already said why on the task, so it is left
-// alone here rather than described twice.
-func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn, keep bool) {
-	if s.WorkspaceID == "" || keep {
+// alone here rather than described twice. ended says the workspace is already
+// gone — closed to end an agent that never settled — and the failure note
+// said why; this owes it silence, not a second account.
+func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn, keep, ended bool) {
+	if ended || s.WorkspaceID == "" || keep {
 		return
 	}
 	if final == work.Done || handedOn {
@@ -488,6 +576,10 @@ type recorder struct {
 	// verification and patch are what `task verdict` stamped mid-run, carried
 	// onto the closing record like the pull request.
 	verification, patch string
+	// timedOut is set the moment the run passes its deadline: every record
+	// from then on carries it, the closing one included, so a reader that
+	// collapses a run to its latest record still sees it went late.
+	timedOut bool
 }
 
 func (r recorder) record(status history.Status, s host.Session, errText string) {
@@ -521,7 +613,7 @@ func (r recorder) appendWith(status history.Status, s host.Session, verdict stri
 		At: time.Now(), WorkspaceID: s.WorkspaceID, PaneID: s.PaneID, TabID: s.TabID, Branch: s.Branch, BaseCommit: s.BaseCommit,
 		DurationSeconds: seconds, Verdict: verdict, Error: errText,
 		Commits: d.Commits, Uncommitted: unverified, PullRequest: pullRequest,
-		Verification: r.verification, PatchID: r.patch,
+		Verification: r.verification, PatchID: r.patch, TimedOut: r.timedOut,
 	})
 	if err != nil {
 		log.Printf("history append failed: %v", err)
