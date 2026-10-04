@@ -4,6 +4,16 @@ What changed for someone using the plugin. Dates are release dates.
 
 ## Unreleased
 
+- **A daily digest lists every PR waiting on your merge.** The merge-needed
+  popup dies with the terminal — eleven DishNow PRs piled up unnoticed on
+  2026-10-04. The factory ships a fourth schedule, `merge-digest`: once a day
+  it reads every queue's repo for open pull requests labelled `merge-needed`
+  and keeps exactly one issue per repo titled `Merges waiting` — PR link,
+  task id, reason, waiting since — rewritten each run and closed when
+  nothing waits. It decides nothing; it only lists. Fresh installs get it
+  from `init --factory`; a loop installed earlier pastes it in from
+  docs/factory.md, where the installer gap is recorded as a known gap.
+
 - **`task note` says what it wrote.** A note that landed printed nothing, so
   an agent read its own successful writes as failures and kept rephrasing them.
   It now prints `<id> noted` the way `done`, `fail` and `block` confirm theirs;
