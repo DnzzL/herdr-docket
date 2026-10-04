@@ -295,3 +295,75 @@ func TestStartWaitsOutAnAgentStillInitialising(t *testing.T) {
 		t.Fatal("prompt was never submitted")
 	}
 }
+
+// ── the deadline, and what listens past it ─────────────────────────
+
+// TASK-62: the deadline answers ErrTimedOut — the one signal the runner
+// keys the whole late-delivery behaviour on — with herdr's own last word
+// still attached, so the record and the notification keep saying what the
+// machine actually reported.
+func TestAwaitReportsTheDeadlineAsTimedOut(t *testing.T) {
+	ops := &fakeOps{agentWait: func(string, time.Duration) error {
+		return apiErr("agent wait", "timeout")
+	}}
+	w := agentWorkWith(ops, Spec{})
+	w.knobs.waitSlice = time.Millisecond
+
+	err := w.await(Session{PaneID: "p"}, 2*time.Millisecond)
+	if !errors.Is(err, ErrTimedOut) {
+		t.Fatalf("got %v, want ErrTimedOut", err)
+	}
+	if !herdr.HasCode(err, "timeout") {
+		t.Fatalf("got %v, want herdr's last word kept", err)
+	}
+}
+
+// Settle is the same wait as Do's, minus everything that comes before it:
+// no agent start, no prompt — the prompt is already in front of the agent,
+// and re-submitting it is exactly what a run resuming must not do.
+func TestSettleListensWithoutStartingOrPromptingAnything(t *testing.T) {
+	calls := 0
+	ops := &fakeOps{agentWait: func(string, time.Duration) error {
+		calls++
+		if calls < 2 {
+			return apiErr("agent wait", "timeout") // still working in the first slices
+		}
+		return nil
+	}}
+	h := &live{ops: ops, knobs: fast()}
+
+	if err := h.Settle(Session{PaneID: "p"}, time.Hour); err != nil {
+		t.Fatalf("the agent settled inside the window: %v", err)
+	}
+	if ops.starts != 0 || ops.submits != 0 || ops.pending != 0 {
+		t.Errorf("starts=%d submits=%d pending=%d, want none — Settle only waits",
+			ops.starts, ops.submits, ops.pending)
+	}
+}
+
+// TASK-62 (#3): a window that passes with the agent still working reports
+// ErrTimedOut again — that is the runner's cue to give the agent up.
+func TestSettleReportsTheWindowPassingAsTimedOut(t *testing.T) {
+	ops := &fakeOps{agentWait: func(string, time.Duration) error {
+		return apiErr("agent wait", "timeout")
+	}}
+	h := &live{ops: ops, knobs: fast()}
+
+	err := h.Settle(Session{PaneID: "p"}, 2*time.Millisecond)
+	if !errors.Is(err, ErrTimedOut) {
+		t.Fatalf("got %v, want ErrTimedOut", err)
+	}
+}
+
+// A pane closed while the run listens past its deadline is still a human
+// calling the run off: ErrCancelled, exactly as Do answers it.
+func TestSettleReportsAGoneAgentAsCancelled(t *testing.T) {
+	ops := &fakeOps{agentWait: func(string, time.Duration) error {
+		return apiErr("agent wait", herdr.CodeAgentGone)
+	}}
+	h := &live{ops: ops, knobs: fast()}
+
+	if err := h.Settle(Session{PaneID: "p"}, time.Hour); !errors.Is(err, ErrCancelled) {
+		t.Fatalf("got %v, want ErrCancelled", err)
+	}
+}

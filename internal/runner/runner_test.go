@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/gate"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
@@ -22,6 +23,18 @@ type fakeHost struct {
 	doErr        error
 	closes       int
 	spec         host.Spec
+	// do, when set, replaces Do's body: a test scripts what happens at the
+	// deadline — the agent still working, the task still open — instead of
+	// declaring one answer for every call of the run.
+	do func(a host.Spec) error
+	// settle replaces what the agent does while the run keeps listening past
+	// its deadline; without it the fake settles at once, the agent finishing
+	// its work inside the extra window.
+	settle  func() error
+	settles int
+	// window is the extra listening time the runner asked for, asserted by the
+	// tests that pin how long a late agent gets.
+	window time.Duration
 	// session is what Provision answered, kept so a test can assert the run's
 	// record names the branch the provision actually created.
 	session    host.Session
@@ -66,10 +79,22 @@ func (f *fakeHost) Inspect(host.Session) (host.Delivery, error) {
 func (f *fakeHost) Close(host.Session) error { f.closes++; return nil }
 func (f *fakeHost) Do(s host.Session, a host.Spec, timeout time.Duration) error {
 	f.spec = a
+	if f.do != nil {
+		return f.do(a)
+	}
 	if f.after != nil {
 		f.after()
 	}
 	return f.doErr
+}
+
+func (f *fakeHost) Settle(_ host.Session, window time.Duration) error {
+	f.settles++
+	f.window = window
+	if f.settle != nil {
+		return f.settle()
+	}
+	return nil
 }
 
 // fakeBoard is a queue in memory: enough for the runner to read a task back,
@@ -766,5 +791,168 @@ func TestAQueueWithoutAnAnswerInheritsButStillRecordsTheCutCommit(t *testing.T) 
 	}
 	if runs[0].BaseCommit != "c0074fe" {
 		t.Fatalf("record BaseCommit = %q, want c0074fe", runs[0].BaseCommit)
+	}
+}
+
+// TASK-62 (#1 #4 #5): the deadline marks a run, it does not drop it. The
+// worker's clock runs out with the agent still working — the fake host
+// settles it after the deadline, through the runner's seam — and the PR it
+// stamps on the way out goes to the verifier exactly as an on-time one.
+// The log carries the timeout: a `timed_out` record at the deadline, and
+// timed_out on the closing record the reader collapses to, so history.jsonl
+// tells the late worker from the on-time verifier beside it.
+func TestARunThatPassesItsDeadlineAndSettlesLateStillReachesTheVerifier(t *testing.T) {
+	p := newPipeline(t, "auto", gate.Pass)
+	calls := 0
+	p.host.do = func(host.Spec) error {
+		calls++
+		if calls == 1 {
+			// The worker's clock runs out with the agent still working: the
+			// task must still be open — nothing may have closed it yet.
+			if !p.board.open("TASK-1") {
+				t.Error("the deadline must not close the task; the run is still listening")
+			}
+			return fmt.Errorf("waiting for the agent: %w", host.ErrTimedOut)
+		}
+		p.host.after() // the verifier runs on time
+		return nil
+	}
+	p.host.settle = func() error {
+		p.host.after() // the worker finishes after the deadline: its PR is stamped here
+		return nil
+	}
+	if err := p.run(); err != nil {
+		t.Fatalf("a late delivery must run its pipeline like an on-time one: %v", err)
+	}
+	if len(p.forge.merged) != 1 || p.forge.merged[0] != prURL+"@h1" {
+		t.Fatalf("merged = %v, want the late PR verified and merged", p.forge.merged)
+	}
+	if p.verifierRuns != 1 {
+		t.Fatalf("verifier runs = %d, want 1", p.verifierRuns)
+	}
+	if p.host.settles != 1 || p.host.window != 2*time.Minute {
+		t.Fatalf("settles = %d, window = %s: want one listen of twice the run's one-minute timeout",
+			p.host.settles, p.host.window)
+	}
+	runs, err := history.Runs("TASK-1", 0)
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("history = %+v, %v: want the worker's run and the verifier's", runs, err)
+	}
+	// Newest first: the on-time verifier, then the late worker.
+	onTime, late := runs[0], runs[1]
+	if late.Trigger != history.TriggerManual || late.Status != history.StatusDone || !late.TimedOut {
+		t.Errorf("late worker run = %+v, want done carrying timed_out", late)
+	}
+	if onTime.Trigger != history.TriggerVerify || onTime.TimedOut {
+		t.Errorf("verifier run = %+v, want the on-time run unmarked", onTime)
+	}
+	// The deadline itself is an event in the file, not only a flag: the
+	// closing record alone would not say when the run went late.
+	raw, rerr := os.ReadFile(filepath.Join(hostpath.StateDir(), "history.jsonl"))
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if !strings.Contains(string(raw), `"status":"timed_out"`) {
+		t.Errorf("history.jsonl has no timed_out record:\n%s", raw)
+	}
+}
+
+// TASK-62 (#2): the pipeline's own stage gets the same second chance — a
+// verify run past its deadline that records PASS afterwards still reaches
+// the gate, exactly like an on-time verdict.
+func TestAVerifyRunThatPassesItsDeadlineAndVerifiesLateStillReachesTheGate(t *testing.T) {
+	p := newPipeline(t, "auto", gate.Pass)
+	calls := 0
+	p.host.do = func(host.Spec) error {
+		calls++
+		if calls == 1 {
+			p.host.after() // the worker delivers on time
+			return nil
+		}
+		return fmt.Errorf("waiting for the agent: %w", host.ErrTimedOut) // the verifier is late
+	}
+	p.host.settle = func() error {
+		// The verifier records its verdict after the deadline.
+		if err := history.SetVerification("TASK-1", gate.Pass, "p1"); err != nil {
+			t.Errorf("set verification: %v", err)
+		}
+		return nil
+	}
+	if err := p.run(); err != nil {
+		t.Fatalf("a late verdict must reach the gate: %v", err)
+	}
+	if len(p.forge.merged) != 1 || p.forge.merged[0] != prURL+"@h1" {
+		t.Fatalf("merged = %v, want the gate to merge on the late PASS", p.forge.merged)
+	}
+	runs, err := history.Runs("TASK-1", 0)
+	if err != nil || len(runs) != 2 {
+		t.Fatalf("history = %+v, %v: want the worker's run and the verifier's", runs, err)
+	}
+	verify, worker := runs[0], runs[1]
+	if verify.Trigger != history.TriggerVerify || verify.Status != history.StatusDone || !verify.TimedOut {
+		t.Errorf("verify run = %+v, want done carrying timed_out", verify)
+	}
+	if worker.TimedOut {
+		t.Errorf("worker run = %+v, want the on-time delivery unmarked", worker)
+	}
+}
+
+// TASK-62 (#3): an agent that never settles is the run's true failure. The
+// task ends Failed, a human is told, and the workspace — the agent's whole
+// existence — is closed, so nothing keeps working on a task the fleet has
+// closed. The fleet listens once and gives up: no endless waiting, no second
+// window. The timeout rides on the closing record either way (#4).
+func TestARunWhoseAgentNeverSettlesEndsFailedNotifiesAndEndsTheAgent(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{
+		do: func(host.Spec) error {
+			return fmt.Errorf("waiting for the agent: %w", host.ErrTimedOut)
+		},
+		settle: func() error {
+			return fmt.Errorf("the agent was still working after 2m0s: %w", host.ErrTimedOut)
+		},
+	}
+	err := run(t, h, b)
+	if err == nil || !strings.Contains(err.Error(), "never settled") {
+		t.Fatalf("err = %v, want the run to end failed saying the agent never settled", err)
+	}
+	if b.open("TASK-1") || b.verdict("TASK-1") != work.Failed {
+		t.Fatalf("task = %+v, want closed failed", b.items["TASK-1"])
+	}
+	if h.closes != 1 {
+		t.Fatalf("closes = %d, want the workspace closed — the agent must not outlive the task", h.closes)
+	}
+	if h.settles != 1 {
+		t.Fatalf("settles = %d, want exactly one late window: listen once, then give up", h.settles)
+	}
+	if len(h.notifies) != 1 || !strings.Contains(h.notifies[0].body, "never settled") {
+		t.Fatalf("notifies = %v, want one notification saying the agent never settled", h.notifies)
+	}
+	if !hasNoteContaining(b, "closed so nothing keeps working") {
+		t.Errorf("notes = %v, want the task told why its workspace was closed", b.notes)
+	}
+	runs, rerr := history.Runs("TASK-1", 1)
+	if rerr != nil || len(runs) != 1 {
+		t.Fatalf("history = %+v, %v", runs, rerr)
+	}
+	if runs[0].Status != history.StatusFailed || !runs[0].TimedOut {
+		t.Errorf("closing record = %+v, want failed carrying timed_out", runs[0])
+	}
+}
+
+// TASK-62: the late window ends the way every window ends — a human closing
+// the workspace is a decision, not a failure, wherever it happens.
+func TestAnAgentThatVanishesInTheLateWindowGoesBlockedNotFailed(t *testing.T) {
+	b := newBoard("TASK-1")
+	h := &fakeHost{
+		do:     func(host.Spec) error { return fmt.Errorf("waiting for the agent: %w", host.ErrTimedOut) },
+		settle: func() error { return host.ErrCancelled },
+	}
+	_ = run(t, h, b)
+	if b.verdict("TASK-1") != work.Blocked {
+		t.Fatalf("verdict = %q, want blocked — a human called it off", b.verdict("TASK-1"))
+	}
+	if len(h.notifies) != 0 {
+		t.Fatalf("a cancelled run stays quiet, notifies = %v", h.notifies)
 	}
 }
