@@ -10,6 +10,7 @@ package host
 // removes it again.
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,5 +101,107 @@ func TestLiveVerifyProvisionAndClose(t *testing.T) {
 	}
 	if refs := run("for-each-ref", "--format=%(refname)", "refs/heads"); strings.Contains(refs, s.Branch) {
 		t.Errorf("branch outlived the run: %s", refs)
+	}
+}
+
+// Live probe for TASK-68, the author's path, against the real herdr:
+//
+//	LIVE_HERDR=1 go test ./internal/host/ -run TestLiveAuthorWorktreeProvisionAndClose -v
+//
+// A worktree-mode provision on a scratch repo with a bare origin, the push
+// an agent makes before its PR, then Close: the registration must leave
+// `git worktree list` and the pushed branch must go with it — while a
+// second, unpushed run keeps its branch as the delivery's only copy.
+func TestLiveAuthorWorktreeProvisionAndClose(t *testing.T) {
+	if os.Getenv("LIVE_HERDR") == "" {
+		t.Skip("set LIVE_HERDR=1 to probe the real herdr")
+	}
+	repo := filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "init", "-q", "-b", "main")
+	runGit(t, repo, "config", "user.email", "fleet@example.com")
+	runGit(t, repo, "config", "user.name", "fleet")
+	write(t, filepath.Join(repo, "base.txt"), "base\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-q", "-m", "first")
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	runGit(t, t.TempDir(), "init", "-q", "--bare", origin)
+	runGit(t, repo, "remote", "add", "origin", origin)
+
+	gitErr := func(root string, args ...string) error {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git %v: %v (%s)", args, err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	registered := func(branch string) bool {
+		out, err := exec.Command("git", "-C", repo, "worktree", "list", "--porcelain").CombinedOutput()
+		if err != nil {
+			t.Fatalf("git worktree list: %v (%s)", err, out)
+		}
+		return strings.Contains(string(out), "refs/heads/"+branch)
+	}
+	hasLocal := func(branch string) bool {
+		return gitErr(repo, "rev-parse", "--verify", "refs/heads/"+branch) == nil
+	}
+	hasRemote := func(branch string) bool {
+		return gitErr(repo, "ls-remote", "--exit-code", "origin", branch) == nil
+	}
+
+	h := New()
+	s, err := h.Provision(Spec{Name: "TASK-68 live probe pushed", Repo: repo, Workspace: WorkspaceWorktree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = h.Close(s)
+		}
+	}()
+	if s.Branch == "" || s.TabID != "" || !registered(s.Branch) {
+		t.Fatalf("session = %+v, want a worktree of its own registered on %v", s, s.Branch != "")
+	}
+	// The delivery half: the agent pushes the run's branch before its PR.
+	runGit(t, repo, "push", "-q", "-u", "origin", s.Branch)
+
+	if err := h.Close(s); err != nil {
+		t.Fatalf("Close = %v", err)
+	}
+	closed = true
+	if registered(s.Branch) {
+		t.Errorf("worktree still registered after Close: %s", s.Branch)
+	}
+	if hasLocal(s.Branch) {
+		t.Errorf("pushed branch %s outlived the run locally", s.Branch)
+	}
+	if !hasRemote(s.Branch) {
+		t.Errorf("pushed branch %s must still be on the origin — the retire never touches the remote", s.Branch)
+	}
+
+	// The other half: an unpushed run's branch is its only copy.
+	s2, err := h.Provision(Spec{Name: "TASK-68 live probe unpushed", Repo: repo, Workspace: WorkspaceWorktree})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed2 := false
+	defer func() {
+		if !closed2 {
+			_ = h.Close(s2)
+		}
+	}()
+	if err := h.Close(s2); err != nil {
+		t.Fatalf("Close = %v", err)
+	}
+	closed2 = true
+	if registered(s2.Branch) {
+		t.Errorf("worktree still registered after Close: %s", s2.Branch)
+	}
+	if !hasLocal(s2.Branch) {
+		t.Errorf("unpushed branch %s was deleted — that would lose the delivery", s2.Branch)
 	}
 }

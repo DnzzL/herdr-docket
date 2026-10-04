@@ -890,6 +890,21 @@ func TestWorktreeRetirePrunesTheRegistrationAndDeletesOnlyWhatIsSafe(t *testing.
 		t.Error("a branch with an unpushed commit must survive")
 	}
 
+	// A branch never pushed under its own name keeps it even when its tip
+	// sits on the remote behind another ref (the live probe caught exactly
+	// this): what the retire deletes is the branch the push actually made.
+	must("push", "-q", "origin", "fleet/unpushed")
+	register("fleet/twin")
+	if err := ops.WorktreeRetire(dir, "fleet/twin"); err != nil {
+		t.Fatal(err)
+	}
+	if registered("fleet/twin") {
+		t.Error("the worktree registration must be pruned")
+	}
+	if !hasBranch("fleet/twin") {
+		t.Error("a branch with no remote ref of its own must survive")
+	}
+
 	// A dirty tree keeps everything: uncommitted work is never destroyed by
 	// a teardown, registration and branch included.
 	dirty := register("fleet/dirty")

@@ -43,9 +43,10 @@ type ops interface {
 	WorktreeDiscard(repo, branch string) error
 	// WorktreeRetire is the lighter teardown an author's run owes (TASK-68):
 	// the registration and checkout are pruned when the tree is clean, and
-	// the branch is deleted only when every commit it holds is already pushed
-	// — an unpushed branch is the delivery's only copy. A dirty tree keeps
-	// everything: uncommitted work is never destroyed by a teardown.
+	// the branch is deleted only when a remote holds the same tip — the
+	// delivery lives there then. An unpushed branch is the delivery's only
+	// copy; a dirty tree keeps everything: uncommitted work is never
+	// destroyed by a teardown.
 	WorktreeRetire(repo, branch string) error
 	// WorktreeDirty reports whether the worktree at dir holds changes that
 	// are not committed.
@@ -151,9 +152,9 @@ func (herdrOps) WorktreeDiscard(repo, branch string) error {
 
 // WorktreeRetire is the lighter teardown an author run's Close owes
 // (TASK-68): the registration and checkout go once the tree is clean, and
-// the branch goes only when every commit it holds is already pushed — the
-// agent's own push wrote the remote-tracking refs into the shared .git, so
-// the question is answered offline (the fleet never fetches). A dirty tree
+// the branch goes only when a remote holds its exact tip — the agent's own
+// push wrote refs/remotes/<remote>/<branch> into the shared .git, so the
+// question is answered offline (the fleet never fetches). A dirty tree
 // keeps everything: uncommitted work is never destroyed by a teardown
 // (TASK-23), it stays registered for a human to look at.
 func (herdrOps) WorktreeRetire(repo, branch string) error {
@@ -183,19 +184,30 @@ func (herdrOps) WorktreeRetire(repo, branch string) error {
 	return err
 }
 
-// branchPushed reports whether every commit branch holds is reachable from a
-// remote-tracking ref: zero commits unique to it means the delivery, if any,
-// is on the forge and the local branch is a copy.
+// branchPushed reports whether branch exists on a remote with its exact tip:
+// the agent's own push wrote refs/remotes/<remote>/<branch> into the shared
+// .git, so the answer comes from refs the push itself updated — the fleet
+// never fetches. A matching tip means the whole chain the branch holds is on
+// that remote, and a commit added locally moves the tip, which keeps the
+// branch (and its delivery) here.
 func branchPushed(repo, branch string) (bool, error) {
-	out, err := gitOutput(repo, "rev-list", "--count", branch, "--not", "--remotes")
+	remotes, err := gitOutput(repo, "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/")
 	if err != nil {
 		return false, err
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(out))
+	tip, err := gitOutput(repo, "rev-parse", branch)
 	if err != nil {
-		return false, fmt.Errorf("git rev-list reported %q unpushed commits for %q: %w", strings.TrimSpace(out), branch, err)
+		return false, err
 	}
-	return n == 0, nil
+	tip = strings.TrimSpace(tip)
+	suffix := "/" + branch
+	for _, line := range strings.Split(remotes, "\n") {
+		oid, ref, ok := strings.Cut(line, " ")
+		if ok && oid == tip && strings.HasSuffix(ref, suffix) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (herdrOps) WorktreeDirty(dir string) (bool, error) {
