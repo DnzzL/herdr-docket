@@ -59,6 +59,15 @@ What changed for someone using the plugin. Dates are release dates.
 - **The factory has no pm.** Intake blocks what it cannot verify, with the one
   question for you; lookback files its structural fixes to `dev`.
   `init --factory` writes five personas, not six.
+- **A task parked on a human no longer gets a run.** Blocked is open: a task
+  sitting in the queue's blocked column with an agent free was picked the
+  moment that agent came free, and the run's whole effect was one more read
+  of the wall the task is parked against — observed as a reviewer run on a
+  task parked waiting for a human since the day before. A queue marks its
+  own parked column, and the daemon now leaves those tasks alone no matter
+  who they are assigned to: the human the work waits on is the only one who
+  can answer it, and everything the fleet would say is already in the
+  column's word.
 
 ## v0.8.0 — 2026-10-02
 

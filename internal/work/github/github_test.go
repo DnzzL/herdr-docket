@@ -117,6 +117,35 @@ func TestListShowsAClosedTaskOnlyByItsColumn(t *testing.T) {
 
 // The column describes and the issue's state decides: a task somebody moved
 // into Done without closing it is still work the fleet will run.
+//
+// TASK-53's exception, on the same principle from the other side: a column a
+// human parked work in — the board's Blocked — is read even though the issue
+// is open. Pick skips it through the field; the port's promise is that a
+// github queue marks it and one that never named the column marks nothing.
+func TestAnOpenTaskParkedInTheBlockedColumnIsMarkedBlocked(t *testing.T) {
+	f := newFakeBoard()
+	f.provisionAgent("dev", "reviewer")
+	f.fields = []*fakeField{f.newField("Status", "Todo", "In Progress", "Blocked", "Done")}
+	parked := f.add("parked", "dev")
+	f.setStatus(parked, "Blocked")
+	plain := f.add("plain", "dev")
+
+	items, err := f.source(t).List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	byID := map[string]work.Task{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	if got := byID[strconv.Itoa(parked)]; !got.Open || !got.Blocked {
+		t.Errorf("parked = open=%v blocked=%v, want open and blocked", got.Open, got.Blocked)
+	}
+	if got := byID[strconv.Itoa(plain)]; !got.Open || got.Blocked {
+		t.Errorf("plain = open=%v blocked=%v, want open and not blocked", got.Open, got.Blocked)
+	}
+}
+
 func TestAnOpenTaskInAFinishedColumnIsStillOpen(t *testing.T) {
 	f := newFakeBoard()
 	f.provisionAgent("dev")
