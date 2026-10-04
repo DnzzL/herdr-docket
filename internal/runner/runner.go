@@ -379,7 +379,19 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 }
 
 func (r *Runner) notifyFailed(t work.Task, reason string) {
-	if err := r.host.Notify("fleet: run failed — "+t.ID, reason); err != nil {
+	// A failure on top of a pull request the task still has out is the
+	// harder stop: the PR stays open and only a human can move it. It says
+	// so; without one there is no handover, and the failure is the whole
+	// message.
+	pr, err := history.TaskPullRequest(t.ID)
+	if err != nil {
+		log.Printf("%s: read the task's pull request: %v", t.ID, err)
+	}
+	if pr != "" {
+		r.mergeNeeded(t, pr, reason)
+		return
+	}
+	if err := r.host.Notify("fleet: run failed — "+t.ID, reason, host.SoundNone); err != nil {
 		log.Printf("%s: notify: %v", t.ID, err)
 	}
 }
@@ -393,6 +405,32 @@ func (r *Runner) notifyFailed(t work.Task, reason string) {
 // ended, so nothing works on a task the fleet has closed.
 func lateWindow(a fleet.Agent) time.Duration {
 	return 2 * time.Duration(a.TimeoutMinutes) * time.Minute
+}
+
+// mergeNeededLabel marks a PR the fleet stopped on so the merge it owes can
+// be found again later — the forge never notifies anyone about the fleet's
+// own actions, so the label is the durable half of the announcement.
+const mergeNeededLabel = "merge-needed"
+
+// mergeNeeded announces the one stop a human alone can move: the PR stays
+// open and only they can take it further. GitHub cannot — the fleet opens
+// PRs under the human's own account, and GitHub never notifies you of your
+// own actions — so the stop speaks here: one popup, the reason as its body,
+// the request sound, and the PR labelled merge-needed (created in the repo
+// if missing). Both asks are best-effort the way every notification is (ADR
+// 0010): the note on the task and the board's Blocked column are the report;
+// this is the voice over it.
+func (r *Runner) mergeNeeded(t work.Task, pr, reason string) {
+	ref := pr
+	if repo, number, err := gate.RepoRef(pr); err == nil {
+		ref = repo + "#" + number
+	}
+	if err := r.host.Notify("merge needed — "+ref, reason, host.SoundRequest); err != nil {
+		log.Printf("%s: notify: %v", t.ID, err)
+	}
+	if err := r.forge.AddLabel(pr, mergeNeededLabel); err != nil {
+		log.Printf("%s: label %s merge-needed: %v", t.ID, pr, err)
+	}
 }
 
 // claim shows the task as being worked on, where the backend can say so. The

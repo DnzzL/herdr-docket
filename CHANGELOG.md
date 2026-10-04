@@ -36,6 +36,16 @@ What changed for someone using the plugin. Dates are release dates.
   and its workspace closed so nothing keeps working on a closed task (what
   it held uncommitted is said on the record, the task and the notification).
 
+- **A merge the human owes announces itself.** Every stop that leaves a pull
+  request only a human can move — a gate hold (`critical`, a CODEOWNERS path,
+  `merge: never`, a refused merge), a verifier's second FAIL, or a failed run
+  that left a PR open — now raises one popup titled `merge needed —
+  <repo>#<number>` with the reason as its body and the `request` sound, and
+  labels the PR `merge-needed` (created in the repo when first needed) so
+  what is owed can be found later. A failed run with no PR keeps its
+  `run failed` popup and marks nothing, and the label comes off when the gate
+  merges.
+
 - **`task note` says what it wrote.** A note that landed printed nothing, so
   an agent read its own successful writes as failures and kept rephrasing them.
   It now prints `<id> noted` the way `done`, `fail` and `block` confirm theirs;

@@ -54,7 +54,8 @@ type ops interface {
 
 	// Notify raises Herdr's desktop notification: a report to a human about
 	// something that already happened, never a step of the work itself.
-	Notify(title, body string) error
+	// sound is herdr's own word for the audio (empty for none).
+	Notify(title, body, sound string) error
 }
 
 // herdrOps is the production ops. The Herdr calls come from the embedded

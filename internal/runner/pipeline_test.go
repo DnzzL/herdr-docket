@@ -8,6 +8,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/gate"
 	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -19,6 +20,10 @@ type fakeForge struct {
 	states []gate.PR
 	reads  int
 	merged []string
+	// labels is the PR's own state, the label operations applied in order —
+	// so "a merged PR never carries merge-needed" is read off the PR, not off
+	// the calls that happened to touch it.
+	labels []string
 }
 
 func (f *fakeForge) PR(string) (gate.PR, error) {
@@ -31,6 +36,20 @@ func (f *fakeForge) Merge(url, head string) error {
 	return nil
 }
 func (f *fakeForge) Comment(string, string) error { return nil }
+func (f *fakeForge) AddLabel(_ string, label string) error {
+	f.labels = append(f.labels, label)
+	return nil
+}
+func (f *fakeForge) RemoveLabel(_ string, label string) error {
+	kept := f.labels[:0]
+	for _, l := range f.labels {
+		if l != label {
+			kept = append(kept, l)
+		}
+	}
+	f.labels = kept
+	return nil
+}
 
 func greenPR() gate.PR {
 	return gate.PR{HeadSHA: "h1", PatchID: "p1", Checks: gate.ChecksPass, Files: []string{"main.go"}, State: "OPEN"}
@@ -111,6 +130,26 @@ func TestAPassOnAGreenPRMergesAndClosesDone(t *testing.T) {
 	if !hasNoteContaining(p.board, "merged") || len(p.host.notifies) != 1 {
 		t.Fatalf("notes %v, notifies %v: a merge is said on the task and to a human", p.board.notes, p.host.notifies)
 	}
+	if len(p.forge.labels) != 0 {
+		t.Errorf("labels = %v: the gate never marks what it merges itself", p.forge.labels)
+	}
+}
+
+// TASK-63 #2 (second half): a label from an earlier hold is a debt the merge
+// pays. Whatever the PR carried when the gate got to it, it must not carry
+// afterwards — a merged PR never reads as owed.
+func TestTheGateClearsTheLabelOffAPRItMerges(t *testing.T) {
+	p := newPipeline(t, "auto", gate.Pass)
+	p.forge.labels = []string{"merge-needed"} // left on by a hold before this run
+	if err := p.run(); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.forge.merged) != 1 {
+		t.Fatalf("merged = %v, want the PR merged", p.forge.merged)
+	}
+	if len(p.forge.labels) != 0 {
+		t.Errorf("labels = %v, want the merged PR carrying nothing", p.forge.labels)
+	}
 }
 
 // A FAIL sends the worker back with the verifier's notes and its own PR; the
@@ -140,8 +179,18 @@ func TestTwoFailsBlockTheTaskForAHuman(t *testing.T) {
 	if p.workerRuns != 2 || p.verifierRuns != 2 {
 		t.Fatalf("worker %d, verifier %d: two rounds, no third", p.workerRuns, p.verifierRuns)
 	}
-	if len(p.host.notifies) == 0 {
-		t.Fatal("a held task must reach a human")
+	if len(p.host.notifies) != 1 {
+		t.Fatalf("two rounds and a hold, one popup, saw %v", p.host.notifies)
+	}
+	n := p.host.notifies[0]
+	if n.title != "merge needed — o/r#7" || n.sound != host.SoundRequest {
+		t.Errorf("popup = %+v, want 'merge needed — o/r#7' in the request sound", n)
+	}
+	if !strings.Contains(n.body, "2 times") {
+		t.Errorf("body = %q, want the reason it stopped", n.body)
+	}
+	if len(p.forge.labels) != 1 || p.forge.labels[0] != "merge-needed" {
+		t.Errorf("labels = %v, want the PR marked merge-needed", p.forge.labels)
 	}
 }
 
@@ -169,6 +218,22 @@ func TestACodeownersPathIsHeld(t *testing.T) {
 	}
 	if len(p.forge.merged) != 0 || !hasNoteContaining(p.board, "main.go") {
 		t.Fatalf("merged %v, notes %v", p.forge.merged, p.board.notes)
+	}
+	// TASK-63 #4 (first case): this stop is the human's — one popup naming
+	// the PR they owe, in the sound that says "act", and the PR marked so it
+	// can be found again later.
+	if len(p.host.notifies) != 1 {
+		t.Fatalf("one hold, one popup, saw %v", p.host.notifies)
+	}
+	n := p.host.notifies[0]
+	if n.title != "merge needed — o/r#7" || n.sound != host.SoundRequest {
+		t.Errorf("popup = %+v, want 'merge needed — o/r#7' in the request sound", n)
+	}
+	if !strings.Contains(n.body, "CODEOWNERS") {
+		t.Errorf("body = %q, want the reason it stopped", n.body)
+	}
+	if len(p.forge.labels) != 1 || p.forge.labels[0] != "merge-needed" {
+		t.Errorf("labels = %v, want the PR marked merge-needed", p.forge.labels)
 	}
 }
 

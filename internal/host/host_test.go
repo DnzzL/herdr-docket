@@ -527,8 +527,8 @@ func TestAWorktreeRunIsNotBorrowed(t *testing.T) {
 	}
 }
 
-func (f *fakeOps) Notify(title, body string) error {
-	f.notifies = append(f.notifies, title+"\x1f"+body)
+func (f *fakeOps) Notify(title, body, sound string) error {
+	f.notifies = append(f.notifies, title+"\x1f"+body+"\x1f"+sound)
 	return nil
 }
 

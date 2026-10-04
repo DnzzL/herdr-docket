@@ -130,6 +130,21 @@ func SetPullRequest(task, url string) error {
 	return Append(*r)
 }
 
+// TaskPullRequest returns the pull request most recently stamped on the
+// task, or "". PullRequestFor answers what one run delivered; this answers
+// what the task still has out — a verifier run failing on the author's PR
+// records no PR of its own, and the PR an earlier run opened stays open
+// whatever the runs after it record.
+func TaskPullRequest(task string) (string, error) {
+	var pr string
+	err := each(func(r Record) {
+		if r.Task == task && r.PullRequest != "" {
+			pr = r.PullRequest
+		}
+	})
+	return pr, err
+}
+
 // PullRequestFor returns the pull request recorded on a run, or "". It is how
 // the closing record carries forward what the CLI stamped mid-run: the reader
 // collapses to the latest record per run, so a closer that did not re-read it
