@@ -26,6 +26,7 @@ source:
 | `default_agent` | Who picks up a task with no assignee. Unset: nobody — unassigned work is left alone. |
 | `source` | One queue. |
 | `sources` | Several, as a map of name → the same block `source:` takes. Each name becomes the id prefix on that queue's tasks. |
+| `max_runs` | How many runs the daemon keeps in flight at once, all queues together — every run is a coding agent on this machine. Unset or `0`: no cap. `herdr-docket run` is yours and does not count. |
 
 `source:` and `sources:` are mutually exclusive: one fleet works one arrangement
 of queues. Setting both is an error, and the fleet will not pick one for you.
@@ -39,6 +40,7 @@ And the block both of them take:
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
 | `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](factory.md#the-pipeline)). Unset: no pipeline, a run ends on the agent's own verdict. |
 | `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
+| `max_runs` | This queue's cap, under the fleet's: a repo whose test suite cannot run twice at once says `1`. Unset or `0`: no cap. A run's verifier and rework stages count as the one run. |
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |
 | `statuses` | The project's own status words — [a project you already have](#work-a-project-you-already-have). |
 | `basecamp` | `account_id` and `lists` — [a hosted queue](#a-hosted-queue-basecamp). |

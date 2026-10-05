@@ -281,9 +281,10 @@ before you raise the dial:
 - **A rebase of an agent's PR is yours.** It rewrites what a run wrote under
   the fleet's identity; a verifier that refuses to do it alone is right.
 - **Parallel runs share one machine.** Several worktrees running a heavy
-  test suite at once collide on ports and memory and time out. Tell agents in
-  the repo's `AGENTS.md` when e2e applies and which specs, leave the full
-  suite to CI, and serialize what must not overlap.
+  test suite at once collide on ports and memory and time out. Cap them with
+  `max_runs` ([fleet.yaml](queues.md#the-file-all-of-it-goes-in)), tell agents
+  in the repo's `AGENTS.md` when e2e applies and which specs, and leave the
+  full suite to CI.
 - **The binary is what runs.** A fleet working on its own plugin merges on
   the forge; until `bin/` is rebuilt, the daemon still runs yesterday's code.
 
@@ -305,9 +306,10 @@ before you raise the dial:
   a merge lands on GitHub, not in `bin/`: without
   [`scripts/deploy.sh`](../CONTRIBUTING.md#working-on-it) on a timer a merged
   fix never reaches the daemon.
-- `fragile` — parallel runs share one machine. A repo whose e2e harness binds
-  fixed ports, or eats the box's memory, makes concurrent runs collide and
-  time out; the fix is the repo's (a lock around its e2e, and an `AGENTS.md`
-  rule for when e2e applies), not the fleet's.
+- `fragile` — `max_runs` counts the daemon's runs only: a `herdr-docket run`
+  by hand, or a second daemon on another machine, is outside the cap.
+- `fragile` — a run whose daemon died leaves a record that never closes;
+  `runs` marks it `stale?` and `stop` / `pause --now` leave it alone, so its
+  workspace, if it is still open, is closed by hand.
 - `unknown` — `gh pr view` lists at most 100 changed files; a larger PR is
   checked against `CODEOWNERS` on those only.

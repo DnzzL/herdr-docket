@@ -42,7 +42,10 @@ type Runner struct {
 	settings fleet.Settings
 	fleetDir string
 	busy     map[string]*os.File
-	mu       sync.Mutex
+	// tasks is the task ids this process is running, by id: the lock keys
+	// are sanitized and cannot be read back.
+	tasks map[string]bool
+	mu    sync.Mutex
 	// The pipeline's reach beyond the host (ADR 0013), swappable in tests:
 	// the forge the gate reads and merges through, the clock it waits on,
 	// the roster the verifier is found in.
@@ -57,7 +60,7 @@ type Runner struct {
 // between ticks.
 func New(h host.Host, settings fleet.Settings) *Runner {
 	return &Runner{
-		host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{},
+		host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{}, tasks: map[string]bool{},
 		forge: gate.GH{}, sleep: time.Sleep, agents: func() map[string]fleet.Agent {
 			a, _ := fleet.LoadAgents(settings.Dir)
 			return a
@@ -73,6 +76,18 @@ func (r *Runner) Running(taskID string) bool {
 	defer r.mu.Unlock()
 	_, held := r.busy[taskKey(taskID)]
 	return held
+}
+
+// InFlight is the task ids this process is running, whole pipelines
+// included — what a run cap counts.
+func (r *Runner) InFlight() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.tasks))
+	for id := range r.tasks {
+		out = append(out, id)
+	}
+	return out
 }
 
 func taskKey(id string) string { return "taskid-" + sanitize(id) }
@@ -207,6 +222,14 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		return fmt.Errorf("%s: a run is already in flight for %s", t.ID, key)
 	}
 	defer r.release(tk)
+	r.mu.Lock()
+	r.tasks[t.ID] = true
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		delete(r.tasks, t.ID)
+		r.mu.Unlock()
+	}()
 	res, err := r.attempt(src, t, a, trigger, "")
 	r.release(key)
 	if err != nil || !res.delivered {

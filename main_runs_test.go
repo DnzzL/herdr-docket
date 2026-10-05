@@ -93,3 +93,46 @@ func TestRunsMarksARecordPastItsTimeoutStale(t *testing.T) {
 		t.Fatalf("old: %q", old)
 	}
 }
+
+// A record past its run's timeout is one nothing closed: its workspace id may
+// since name somebody else's workspace. Stop refuses it rather than closing
+// whatever answers to that id now.
+func TestStopRefusesAStaleRecord(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	appendAll(t, history.Record{RunID: "r1", Task: "TASK-1", Status: history.StatusRunning, At: time.Now().Add(-100 * time.Hour), WorkspaceID: "w1F"})
+	c := &closer{}
+	err := stopRun(c, "TASK-1", &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "stale") || len(c.closed) != 0 {
+		t.Fatalf("err %v, closed %+v", err, c.closed)
+	}
+}
+
+func TestPauseNowSkipsStaleRecords(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	appendAll(t,
+		history.Record{RunID: "r1", Task: "TASK-1", Status: history.StatusRunning, At: time.Now(), WorkspaceID: "ws1"},
+		history.Record{RunID: "r2", Task: "TASK-2", Status: history.StatusRunning, At: time.Now().Add(-100 * time.Hour), WorkspaceID: "w1F"},
+	)
+	c := &closer{}
+	var out bytes.Buffer
+	if err := pauseCmd(c, []string{"--now"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.closed) != 1 || c.closed[0].WorkspaceID != "ws1" {
+		t.Fatalf("closed %+v", c.closed)
+	}
+	if !strings.Contains(out.String(), "TASK-2") {
+		t.Fatalf("pause --now must name the stale record it left: %q", out.String())
+	}
+}
+
+// A timed-out run is still listened for — the late window is twice the
+// timeout (ADR 0014) — so it is stale only past that.
+func TestATimedOutRunIsStaleOnlyPastItsLateWindow(t *testing.T) {
+	now := time.Now()
+	late := history.Record{Status: history.StatusTimedOut, At: now.Add(-50 * time.Minute)}
+	gone := history.Record{Status: history.StatusTimedOut, At: now.Add(-70 * time.Minute)}
+	if stale(late, 30, now) || !stale(gone, 30, now) {
+		t.Fatalf("late %v, gone %v", stale(late, 30, now), stale(gone, 30, now))
+	}
+}

@@ -39,6 +39,9 @@ type SourceConfig struct {
 	// Merge is "auto" when the fleet may merge a verified PR on its own;
 	// anything else stops at a PASS and leaves the merge to a human.
 	Merge string `yaml:"merge"`
+	// MaxRuns caps this queue's runs in flight, under the fleet's own cap: a
+	// repo whose test suite cannot run twice at once says 1. 0 = no cap.
+	MaxRuns int `yaml:"max_runs"`
 	// Statuses is the project's own status words. Empty means the project
 	// speaks the fleet's, which is true of one the fleet laid down itself.
 	Statuses backlogmd.Vocabulary `yaml:"statuses"`

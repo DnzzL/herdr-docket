@@ -220,8 +220,34 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 			log.Printf("%s: append note: %v", t.ID, err)
 		}
 	}
+	// The caps count what is already in flight plus what this tick starts:
+	// a run registers itself inside its goroutine, after this loop has moved on.
+	inFlight := map[string]int{}
+	total := 0
+	for _, id := range runs.InFlight() {
+		inFlight[work.SourceOf(id)]++
+		total++
+	}
 	for res.Task != nil {
 		t, agent := *res.Task, res.Agent
+		if settings.MaxRuns > 0 && total >= settings.MaxRuns {
+			break
+		}
+		queue := work.SourceOf(t.ID)
+		if max := settings.MaxRunsFor(t.ID); max > 0 && inFlight[queue] >= max {
+			// This queue is full for the tick; the others are not.
+			remaining := tasks[:0:0]
+			for _, x := range tasks {
+				if work.SourceOf(x.ID) != queue {
+					remaining = append(remaining, x)
+				}
+			}
+			tasks = remaining
+			res = pick.Next(tasks, agents, settings.Defaults())
+			continue
+		}
+		inFlight[queue]++
+		total++
 		log.Printf("%s: starting (%s, agent %s)", t.ID, t.Title, agent.Name)
 		go func() {
 			if err := runs.Run(src, t, agent, history.TriggerPoll); err != nil {
