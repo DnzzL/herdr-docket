@@ -3,10 +3,10 @@ id: TASK-24
 title: >-
   A run leaves no trace the fleet can show: its output, its branch, its PR, the
   daemon log
-status: needs human validation
+status: Done
 assignee: []
 created_date: '2026-09-13 18:14'
-updated_date: '2026-10-01 11:37'
+updated_date: '2026-10-03 20:12'
 labels: []
 dependencies: []
 priority: high
@@ -44,6 +44,16 @@ fleet: default_agent "plugin-dev" (fleet.yaml) is not a fleet agent.
 fleet: the agent settled without reporting a verdict.
 
 fleet: the run's workspace w52 (pane w52:p1) is left open — jump in to resume.
+
+Stall sweep (fleet/TASK-17, docket board), pass 6 — cannot classify this under my three stall types; addressed to the human, moving on. Facts: in the human column since the run failed 2026-10-01 13:37 local ("the agent settled without reporting a verdict"); the history record does NOT flag uncommitted work (it records commits:1 on branch fleet/docket-task-24-a-run-leaves-no-trace-the-fleet-can-show-its-output-its-branch-its-PR-the-daemon-log-20261001-1326, but that branch is not on origin — git ls-remote empty); the task states no blocking question; it is not closed. Half the work appears landed: PR herdr-docket#3 ("a failed run speaks, the daemon log is one command away") merged 2026-10-01T13:12:46Z; workspace w52 kept open. Ask of the human: say what decides this task — are AC#1-#4 judged against PR #3 plus the later TASK-19/TASK-42 work, or is the w52 commit fetched? — or route it. Nudge only: I do not reopen, close, assign, or touch worktrees.
+
+Stall sweep (fleet/TASK-17, docket board), pass 6 — cannot classify this under my three stall types; addressed to the human, moving on. Facts: in the human column since the run failed 2026-10-01 13:37 local (the agent settled without reporting a verdict); the history record does NOT flag uncommitted work (it records commits:1 on branch fleet/docket-task-24-a-run-leaves-no-trace-the-fleet-can-show-its-output-its-branch-its-PR-the-daemon-log-20261001-1326, but that branch is not on origin — git ls-remote empty); the task states no blocking question; it is not closed. Half the work appears landed: PR herdr-docket#3 (a failed run speaks, the daemon log is one command away) merged 2026-10-01T13:12:46Z; workspace w52 kept open. Ask of the human: say what decides this task — are AC1-4 judged against PR 3 plus the later TASK-19/TASK-42 work, or is the w52 commit fetched? — or route it. Nudge only: I do not reopen, close, assign, or touch worktrees.
+
+Stall sweep (fleet/TASK-17), pass 6, stall type 2 — human column, no note answering what happens next. The run of 2026-10-01 13:37 closed this Failed with only two fleet lines ("default_agent plugin-dev is not a fleet agent"; "the agent settled without reporting a verdict") — no note says whether it is to be re-run, narrowed or accepted, so the four ACs sit unread. Facts a human may want before choosing, gathered this sweep without deciding anything: AC#2 looks reachable today — history.jsonl now records what a run produced, the fields branch and pull_request are populated (38 and 22 of the 90 records since 2026-10-01); AC#3 looks reachable — `herdr-docket logs [-n <lines>]` exists on the CLI. AC#1 and AC#4 I did not test. Who it waits on: the human — re-run, narrow, or leave. Nudge only: I do not reopen, close, assign, or edit.
+
+Pass 6 record correction: the preceding stall-sweep nudge was posted twice by one run — my verification grep pattern omitted ', docket board' and I re-posted believing the first had failed. Identical content, one nudge, no CLI verb removes a note and no task file was edited by hand; ignore the duplicate.
+
+Cleanup 2026-10-03: obsolete — the board pane is gone (PR #14); history records branch, commits, PR and now the verifier's verdict (PR #16), and logs reads the daemon log.
 <!-- SECTION:NOTES:END -->
 
 ## Comments

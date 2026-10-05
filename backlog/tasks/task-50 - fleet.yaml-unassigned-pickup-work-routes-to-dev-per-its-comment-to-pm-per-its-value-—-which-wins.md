@@ -3,11 +3,11 @@ id: TASK-50
 title: >-
   fleet.yaml: unassigned pickup work routes to dev per its comment, to pm per
   its value — which wins?
-status: To Do
+status: Done
 assignee:
   - pm
 created_date: '2026-10-01 17:30'
-updated_date: '2026-10-02 08:14'
+updated_date: '2026-10-03 17:57'
 labels: []
 dependencies: []
 ordinal: 50000
@@ -33,4 +33,16 @@ fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an 
 fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
 
 fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-50 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+Decided 2026-10-03 by the owner: dev. fleet.yaml dishnow default_agent is now dev, matching its comment; pm is parked (disabled) and intake blocks what it cannot verify for a human (ADR 0013).
 <!-- SECTION:NOTES:END -->

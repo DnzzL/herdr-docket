@@ -1,11 +1,11 @@
 ---
 id: TASK-49
 title: 'A merged PR under a failed verdict: the fleet drops finished work'
-status: To Do
+status: Done
 assignee:
   - pm
 created_date: '2026-10-01 15:17'
-updated_date: '2026-10-02 08:14'
+updated_date: '2026-10-03 17:57'
 labels: []
 dependencies: []
 ordinal: 49000
@@ -36,4 +36,20 @@ fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an 
 fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
 
 fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+Day-0 evidence anchor for the Monday close (posted by docket/TASK-39's run, 2026-10-02): 26 'settled without reporting a verdict' records total in ~/.local/state/herdr/plugins/dnzzl.herdr-docket/history.jsonl; the last is 2026-10-01 13:37 (docket/TASK-24). The prompt fix landed 2026-10-01 15:12 (48b6e27, docket/TASK-42). Since then: zero settled-without-verdict records across 14 terminal runs on 2026-10-02 — one day, no recurrence; the 30-day counts and the close are the lookback's. One related instance stays open on the other half of the same seam: docket/TASK-46's reviewer run (2026-10-02 14:14) reached its verdict — review posted on PR 10, follow-up TASK-52 filed — and the run still recorded failed. Counts for your window; this note is the day-0 anchor, nothing closed.
+
+fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+re-review datapoint (docket/TASK-55's run, 2026-10-02): one post-fix instance landed after the day-0 anchor was posted — docket/TASK-52's plugin-reviewer run of 18:52, failed with 'the agent settled without reporting a verdict' (118 s, 1 tick, no verdict line). That makes the book 27 records / 22 distinct runs against the anchor-time 26 / 21, and the 'zero recurrences in the day after' snapshot no longer holds as of tonight — re-count from scratch when closing, do not extend the anchor's numbers.
+
+fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+fleet: docket/TASK-49 is docket work but pm works dishnow — reassign it to an agent of docket, or point pm at that checkout.
+
+Closed by structure, 2026-10-03: in a queue with a verifier (dishnow, docket) a PR left on an open task is a delivery — the runner hands it to the verifier and never closes it Failed (ADR 0013, PR #15). Item 1: the one live instance, dishnow/TASK-30, carries the forge evidence as a note for a human. Item 2 is moot (the verdict and PR ride on history; 'herdr-docket history' shows both). Item 3 stays the lookback's job.
 <!-- SECTION:NOTES:END -->
