@@ -33,7 +33,14 @@ type Spec struct {
 	// whatever the repo's own checkout has checked out — which is exactly the
 	// accident the queue's default-branch answer exists to replace, so a
 	// caller that knows which branch its work starts from names it.
-	Base      string
+	Base string
+	// Head pins a run to one commit — the pull request's head a verifier
+	// judges. A pinned run is provisioned in its own worktree cut at that
+	// commit, whatever Workspace says: the bytes being judged are the PR's,
+	// never the project's own checkout, and no tab on a human's workspace is
+	// reachable. The commit must already be in the repo — a head the checkout
+	// cannot resolve fails the provision rather than fetching into it.
+	Head      string
 	Workspace WorkspaceMode
 	Agent     string // agent kind as understood by `herdr agent start --kind`
 	Model     string
@@ -70,6 +77,11 @@ type Session struct {
 	// before the agent can move anything — so a run that inherited a human's
 	// unmerged work is visible in the record, not only on the forge.
 	BaseCommit string
+	// Verify marks a session cut at Spec.Head: a verifier's judging space.
+	// Its report is the verdict in the queue, never anything left in the
+	// tree, so Close discards its worktree and branch however the run ended —
+	// and nothing reads it for a delivery to guard (there is none to lose).
+	Verify bool
 }
 
 // Delivery is what a run's worktree produced, read from git rather than from
@@ -176,9 +188,23 @@ func (h *live) Provision(a Spec) (Session, error) {
 	label := "fleet: " + a.Name
 	var workspaceID, paneID, branch, tabID string
 	var baseCommit string
+	var verify bool
 	var err error
-	switch a.Workspace {
-	case WorkspaceWorktree:
+	switch {
+	case a.Head != "":
+		// A pinned run (TASK-65): a verifier judges the PR's head commit, so
+		// the worktree is cut from that commit and the mode the agent named
+		// never reaches the switch below — root would have opened a tab on the
+		// project's own checkout, which is the isolation this exists to take
+		// out of the agent's hands.
+		branch = fmt.Sprintf("fleet/%s-%s", slug(a.Name), time.Now().Format("20060102-1504"))
+		baseCommit, err = h.ops.CommitAt(a.Repo, a.Head)
+		if err != nil {
+			return Session{}, err
+		}
+		workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, a.Head, label)
+		verify = true
+	case a.Workspace == WorkspaceWorktree:
 		branch = fmt.Sprintf("fleet/%s-%s", slug(a.Name), time.Now().Format("20060102-1504"))
 		// The cut commit is read before the workspace is even created — before
 		// anything can move — from the ref the branch will be cut from (the
@@ -195,7 +221,7 @@ func (h *live) Provision(a Spec) (Session, error) {
 			return Session{}, err
 		}
 		workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, a.Base, label)
-	case WorkspaceRoot:
+	case a.Workspace == WorkspaceRoot:
 		// A root run works the project's own checkout, which is usually
 		// already open in a workspace. Borrow it as a tab rather than stacking
 		// another workspace beside it: same directory, same thing on screen,
@@ -211,7 +237,7 @@ func (h *live) Provision(a Spec) (Session, error) {
 	default:
 		err = fmt.Errorf("unknown workspace mode %q", a.Workspace)
 	}
-	return Session{WorkspaceID: workspaceID, PaneID: paneID, Branch: branch, Repo: a.Repo, TabID: tabID, BaseCommit: baseCommit}, err
+	return Session{WorkspaceID: workspaceID, PaneID: paneID, Branch: branch, Repo: a.Repo, TabID: tabID, BaseCommit: baseCommit, Verify: verify}, err
 }
 
 // Do runs the automation's work in the session and reports whether it worked.
@@ -269,7 +295,17 @@ func (h *live) Close(s Session) error {
 	}
 	err := h.ops.WorkspaceClose(s.WorkspaceID)
 	if errors.Is(err, herdr.ErrGone) || h.ops.HasCode(err, herdr.CodeWorkspaceGone) {
-		return nil
+		err = nil
+	}
+	// A verify run's worktree and branch are discarded with it, even when the
+	// workspace was already gone (a run called off by closing it): what the
+	// run judged is recorded in the queue, and nothing it created may stay
+	// registered in the human's repo. An author's branch is a delivery and is
+	// never touched here.
+	if s.Verify && s.Branch != "" {
+		if derr := h.ops.WorktreeDiscard(s.Repo, s.Branch); derr != nil && err == nil {
+			err = derr
+		}
 	}
 	return err
 }

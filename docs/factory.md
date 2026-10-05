@@ -171,7 +171,9 @@ sources:
 
 1. **The author delivers.** `task done --pr <url>` records the PR on the run
    and leaves the task open.
-2. **The verifier judges**, in a run of its own, and records exactly one
+2. **The verifier judges**, in a run of its own: a worktree the fleet
+   provisions at the PR's head commit and removes when the run settles —
+   never a tab on the checkout you work in. It records exactly one
    `task verdict <id> PASS|FAIL --pr <url>`. The CLI pins the verdict to the
    PR's `git patch-id` and says it on the PR as `docket-verdict: …`.
 3. **A FAIL goes back to the author** with the verifier's note as its brief

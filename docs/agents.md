@@ -44,6 +44,11 @@ history`), so a pull request carrying anything past that is visible without
 opening the forge. `root` is for agents whose job *is* the working copy:
 backlog grooming, docs, anything that must see uncommitted state.
 
+A verifier's runs override both: whatever `workspace` its agent names, a run
+that judges a pull request is cut in a fresh worktree at the PR's head
+commit — the fleet fetches nothing and borrows no tab on the primary checkout
+— and the worktree and its branch are removed when the run settles.
+
 The choice matters most for personas that must *write* to a project's own
 `backlog/`: a checkbox ticked inside a disposable worktree is gone with the
 worktree. Do the reading in a scratch worktree, the recording in the repo root,

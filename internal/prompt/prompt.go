@@ -113,6 +113,10 @@ yourself, on the real surface: replay the verification the task states, run
 it, read the result. The author's description, its checkboxes and green CI
 are claims, not evidence. A criterion you could not check is not met.
 
+This run works in its own worktree, provisioned by the fleet and checked out
+at that pull request's head commit — no fetching and no checkout to do first
+— and the worktree is removed when you settle.
+
 ## When you are done — required
 
 Record exactly one verdict on that pull request, with the evidence — what

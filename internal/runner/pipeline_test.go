@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,9 +32,14 @@ type fakeForge struct {
 	// the gate came for it.
 	owners     []string
 	ownerAsked int
+	// err, when set, is what PR answers with — a forge that cannot be read.
+	err error
 }
 
 func (f *fakeForge) PR(string) (gate.PR, error) {
+	if f.err != nil {
+		return gate.PR{}, f.err
+	}
 	s := f.states[min(f.reads, len(f.states)-1)]
 	f.reads++
 	return s, nil
@@ -317,7 +323,10 @@ func TestPendingChecksAreWaitedOn(t *testing.T) {
 	p := newPipeline(t, "auto", gate.Pass)
 	pending := greenPR()
 	pending.Checks = gate.ChecksPending
-	p.forge.states = []gate.PR{pending, pending, greenPR()}
+	// The verifier now reads the PR once more before judging — to pin its run
+	// to the head commit (TASK-65) — so the script carries one more pending
+	// state before the green one: the gate still waits out exactly two polls.
+	p.forge.states = []gate.PR{pending, pending, pending, greenPR()}
 	if err := p.run(); err != nil {
 		t.Fatal(err)
 	}
@@ -345,6 +354,65 @@ func TestAVerifierWithoutAVerdictFailsTheTask(t *testing.T) {
 	_ = p.run()
 	if len(p.forge.merged) != 0 || p.board.verdict("TASK-1") != work.Failed {
 		t.Fatalf("merged %v, verdict %q", p.forge.merged, p.board.verdict("TASK-1"))
+	}
+}
+
+// TASK-65, AC #1: a verify run is pinned to the PR's head commit — the
+// forge's answer rides on the spec, and only on the verifier's spec: the
+// author's run branches as it always did. Nothing about the verify
+// worktree is read for a delivery to guard either — its verdict in the
+// queue is the report, and the tree is judged space.
+func TestAVerifyRunIsProvisionedAtThePRHeadAndNeverInspected(t *testing.T) {
+	p := newPipeline(t, "", gate.Pass)
+	if err := p.run(); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.host.specs) != 2 {
+		t.Fatalf("provisions = %d, want the author's and the verifier's", len(p.host.specs))
+	}
+	if p.host.specs[0].Head != "" {
+		t.Errorf("author run pinned to %q, want it cut from its base as it always was", p.host.specs[0].Head)
+	}
+	if p.host.specs[1].Head != "h1" {
+		t.Errorf("verify run pinned to %q, want the PR head h1", p.host.specs[1].Head)
+	}
+	if p.host.session.Branch == "" || !p.host.session.Verify {
+		t.Errorf("session = %+v, want a worktree of its own marked as the verify run's", p.host.session)
+	}
+	if p.host.verifyInspects != 0 {
+		t.Errorf("inspected the verify worktree %d times, want never: there is no delivery in it to guard", p.host.verifyInspects)
+	}
+}
+
+// AC #2: the verify worktree is discarded however the run ended. A run that
+// settles without a verdict has no workspace to resume — the next verifier
+// gets a fresh one — and nothing it created may outlive it.
+func TestAVerifyWorktreeIsTornDownEvenWhenTheRunEndsWithoutAVerdict(t *testing.T) {
+	p := newPipeline(t, "auto", "")
+	_ = p.run()
+	if p.host.verifyCloses != 1 {
+		t.Fatalf("verify closes = %d, want its worktree closed and discarded", p.host.verifyCloses)
+	}
+	if hasNoteContaining(p.board, "left open") {
+		t.Errorf("a verify run leaves nothing to jump into: notes %v", p.board.notes)
+	}
+}
+
+// A forge that cannot be read fails the verify run where it stands, saying
+// why on the task: the fleet never pins a run to a head it was not given,
+// and never falls back to the mode that opens a tab on the primary checkout.
+func TestAVerifyRunThatCannotReadThePRHeadFailsSayingWhy(t *testing.T) {
+	p := newPipeline(t, "auto", gate.Pass)
+	p.forge.err = errors.New("gh: HTTP 500")
+	err := p.run()
+	if err == nil || !strings.Contains(err.Error(), "the pull request could not be read") {
+		t.Fatalf("run error = %v, want the forge failure named", err)
+	}
+	if len(p.host.specs) != 1 {
+		t.Fatalf("provisions = %d, want only the author's — the verifier must not start on a guessed head", len(p.host.specs))
+	}
+	if p.board.verdict("TASK-1") != work.Failed || !hasNoteContaining(p.board, "could not be read") {
+		t.Fatalf("verdict %q, notes %v: the task must say why the run failed", p.board.verdict("TASK-1"), p.board.notes)
 	}
 }
 

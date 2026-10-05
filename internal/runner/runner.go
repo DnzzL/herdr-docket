@@ -263,7 +263,27 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 		MCPConfig: a.MCPConfig,
 		AgentArgs: a.AgentArgs,
 	}
-	session, err := r.host.Provision(spec)
+	// A verify run is pinned to the PR's head commit (TASK-65): the forge is
+	// asked for it here, and the host cuts the run's own worktree at that
+	// commit — the agent fetches and checks out nothing, and no tab on the
+	// project's primary checkout is reachable. A head that cannot be read is
+	// a run that cannot start: the fleet fails it with the reason rather than
+	// judging some other commit or falling back onto the checkout.
+	var session host.Session
+	if verifying {
+		pulled, ferr := r.forge.PR(pr)
+		switch {
+		case ferr != nil:
+			err = fmt.Errorf("the pull request could not be read: %w", ferr)
+		case pulled.HeadSHA == "":
+			err = errors.New("the pull request names no head commit")
+		default:
+			spec.Head = pulled.HeadSHA
+		}
+	}
+	if err == nil {
+		session, err = r.host.Provision(spec)
+	}
 	if err != nil {
 		v, _, _ := r.reconcile(src, t.ID, a.Name, err, false)
 		// No run happened past provisioning, so there is no delivery to
@@ -288,9 +308,11 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 	// Read what the run produced while its workspace still exists: a
 	// worktree-mode session has a branch, and the facts about it only survive
 	// until cleanup tears the worktree down. A root-mode session has no
-	// branch and is never asked.
+	// branch and is never asked, and neither is a verify session (TASK-65):
+	// its report is the verdict in the queue, and the artifacts of a judge's
+	// test run in the worktree would read as a delivery nobody committed.
 	var d host.Delivery
-	if session.Branch != "" {
+	if session.Branch != "" && !session.Verify {
 		d, errInspect = r.host.Inspect(session)
 		if errInspect != nil {
 			log.Printf("inspect delivery of %s: %v", t.ID, errInspect)
@@ -507,7 +529,9 @@ func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error, 
 //
 // An unverifiable delivery keeps the workspace and changes nothing: blindness
 // is not evidence. Root-mode runs never reach here — they have no branch, and
-// their edits are the repo's own state by design.
+// their edits are the repo's own state by design — and verify sessions never
+// carry anything in: they are never Inspect'ed, so there is no finding here
+// but the zero one.
 func (r *Runner) guardDelivery(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn bool, d host.Delivery, unverifiable bool) (work.Verdict, bool) {
 	if s.WorkspaceID == "" || s.Branch == "" || (final != work.Done && !handedOn) {
 		return final, false
@@ -552,6 +576,16 @@ func (r *Runner) guardDelivery(src work.Source, taskID string, s host.Session, f
 // said why; this owes it silence, not a second account.
 func (r *Runner) cleanup(src work.Source, taskID string, s host.Session, final work.Verdict, handedOn, keep, ended bool) {
 	if ended || s.WorkspaceID == "" || keep {
+		return
+	}
+	// A verify run's worktree is judged space (TASK-65): nothing in it a
+	// human resumes, and nothing in it the record does not already carry —
+	// so it is discarded however the run ended, with no "jump in to resume"
+	// note left pointing at a checkout that is about to be gone.
+	if s.Verify {
+		if err := r.host.Close(s); err != nil {
+			log.Printf("%s: close the verify worktree: %v", taskID, err)
+		}
 		return
 	}
 	if final == work.Done || handedOn {

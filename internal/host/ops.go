@@ -36,6 +36,11 @@ type ops interface {
 	// WorktreePath finds the directory a git worktree for branch checks out
 	// of repo, or errors when no worktree holds the branch.
 	WorktreePath(repo, branch string) (string, error)
+	// WorktreeDiscard throws away a run's own worktree and the branch it was
+	// cut on — the teardown of a verify session (TASK-65), never an author's
+	// delivery. The tree is disposable by contract, so the removal is forced,
+	// and the branch can only go once the worktree that held it is gone.
+	WorktreeDiscard(repo, branch string) error
 	// WorktreeDirty reports whether the worktree at dir holds changes that
 	// are not committed.
 	WorktreeDirty(dir string) (bool, error)
@@ -94,7 +99,9 @@ func gitOutput(repo string, args ...string) (string, error) {
 	return string(out), nil
 }
 
-func (herdrOps) WorktreePath(repo, branch string) (string, error) {
+// worktreePath is the git read behind WorktreePath: the directory a worktree
+// holding branch checks out of, or a refusal naming the repo and the branch.
+func worktreePath(repo, branch string) (string, error) {
 	out, err := gitOutput(repo, "worktree", "list", "--porcelain")
 	if err != nil {
 		return "", err
@@ -113,6 +120,27 @@ func (herdrOps) WorktreePath(repo, branch string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no worktree of %s holds branch %q", repo, branch)
+}
+
+func (herdrOps) WorktreePath(repo, branch string) (string, error) {
+	return worktreePath(repo, branch)
+}
+
+// WorktreeDiscard is the write side of the git ops — the one the fleet owns:
+// a verify run's worktree and branch are created by the host and destroyed by
+// it, so nothing the run made is left registered in the human's repo (TASK-65,
+// AC #2). A worktree that is already gone (herdr removed it, or the workspace
+// was closed under the run) still loses its branch; a worktree that still
+// exists is removed first, since git refuses to delete a branch checked out
+// somewhere.
+func (herdrOps) WorktreeDiscard(repo, branch string) error {
+	if path, err := worktreePath(repo, branch); err == nil {
+		if _, err := gitOutput(repo, "worktree", "remove", "--force", path); err != nil {
+			return err
+		}
+	}
+	_, err := gitOutput(repo, "branch", "-D", branch)
+	return err
 }
 
 func (herdrOps) WorktreeDirty(dir string) (bool, error) {

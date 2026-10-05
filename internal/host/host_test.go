@@ -2,7 +2,9 @@ package host
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +36,10 @@ type fakeOps struct {
 	worktreePath   func(repo, branch string) (string, error)
 	worktreeDirty  func(dir string) (bool, error)
 	commitsAhead   func(repo, branch string) (int, error)
+	// worktreeDiscard is the teardown of a verify worktree: path and branch
+	// recorded so a test can assert exactly what was thrown away.
+	worktreeDiscard func(repo, branch string) error
+	discards        []string
 
 	closes int
 
@@ -78,6 +84,14 @@ func (f *fakeOps) CommitsAhead(repo, branch string) (int, error) {
 		return 0, nil
 	}
 	return f.commitsAhead(repo, branch)
+}
+
+func (f *fakeOps) WorktreeDiscard(repo, branch string) error {
+	f.discards = append(f.discards, repo+"@"+branch)
+	if f.worktreeDiscard == nil {
+		return nil
+	}
+	return f.worktreeDiscard(repo, branch)
 }
 
 func (f *fakeOps) WorkspaceCreate(cwd, label string) (string, string, error) {
@@ -360,6 +374,100 @@ func TestProvisionRefusesAWorkspaceModeItDoesNotKnow(t *testing.T) {
 	}
 }
 
+// TASK-65: a run pinned to one commit — a verifier standing on a PR's head —
+// is provisioned in its own worktree cut at that commit, whatever workspace
+// mode the agent names. The pin overrides the mode outright: even a root-mode
+// verifier must never open a tab on the primary checkout, and the commit it
+// stands on is the forge's answer, read before anything is cut.
+func TestAVerifyRunIsPinnedToThePRHeadAndNeverBorrowsATab(t *testing.T) {
+	var gotRef, gotBase, gotBranch string
+	ops := &fakeOps{
+		primary: "w15", // the project's checkout is open — the tab a root run would borrow
+		commitAt: func(repo, ref string) (string, error) {
+			gotRef = ref
+			return "9c0ffee", nil
+		},
+		worktreeCreate: func(repo, branch, base, label string) (string, string, error) {
+			gotBase, gotBranch = base, branch
+			return "w7", "w7:p1", nil
+		},
+	}
+	h := &live{ops: ops, knobs: fast()}
+
+	s, err := h.Provision(Spec{
+		Name: "TASK-1 fix", Repo: "/w/app", Workspace: WorkspaceRoot,
+		Head: "0fba11c",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ops.tabs != 0 || s.TabID != "" {
+		t.Errorf("a pinned run must never borrow a tab on the primary checkout: tabs=%d session=%+v", ops.tabs, s)
+	}
+	if gotBase != "0fba11c" || gotRef != "0fba11c" {
+		t.Errorf("cut at base %q read from %q, want the PR head both ways", gotBase, gotRef)
+	}
+	if s.BaseCommit != "9c0ffee" {
+		t.Errorf("session BaseCommit = %q, want the commit the run was cut at", s.BaseCommit)
+	}
+	if s.Branch == "" || s.Branch != gotBranch {
+		t.Errorf("session branch = %q, want the branch provisioned (%q)", s.Branch, gotBranch)
+	}
+	if !s.Verify {
+		t.Errorf("session = %+v, want it marked as a verify run's", s)
+	}
+}
+
+// The pin is only honest if the commit is really in the repo: a head the
+// checkout cannot resolve fails the provision instead of starting a run on
+// whatever the branch happens to point at.
+func TestProvisionRefusesAPRHeadTheRepoDoesNotHave(t *testing.T) {
+	ops := &fakeOps{commitAt: func(repo, ref string) (string, error) {
+		return "", errors.New("unknown revision 0fba11c")
+	}}
+	h := &live{ops: ops, knobs: fast()}
+	if _, err := h.Provision(Spec{Name: "n", Repo: "/x", Workspace: WorkspaceRoot, Head: "0fba11c"}); err == nil {
+		t.Fatal("want an error when the PR head is not in the repo")
+	}
+	if ops.tabs != 0 {
+		t.Errorf("even a failed provision must not borrow a tab: tabs=%d", ops.tabs)
+	}
+}
+
+// Close of a verify session is the removal half of TASK-65: the workspace is
+// closed and its worktree and branch are discarded, even when the workspace
+// is already gone (a run called off by closing it). Nothing the run created
+// may outlive it — and a non-verify worktree run, whose branch is a delivery,
+// must keep all three.
+func TestCloseDiscardsAVerifyWorktreeAndItsBranch(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		closeErr  error
+		session   Session
+		wantDisca bool
+	}{
+		{"a settled run", nil, Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-1", Verify: true}, true},
+		{"a run whose workspace is already gone", herdr.ErrGone, Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-1", Verify: true}, true},
+		{"an author worktree, whose branch is the delivery", nil, Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-2"}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := &fakeOps{workspaceClose: func(string) error { return tc.closeErr }}
+			h := &live{ops: ops, knobs: fast()}
+
+			if err := h.Close(tc.session); err != nil {
+				t.Fatalf("Close = %v", err)
+			}
+			if tc.wantDisca {
+				if len(ops.discards) != 1 || ops.discards[0] != "/x@"+tc.session.Branch {
+					t.Errorf("discards = %v, want %s's worktree and branch thrown away", ops.discards, tc.session.Branch)
+				}
+			} else if len(ops.discards) != 0 {
+				t.Errorf("discards = %v, want none: an author's branch must outlive its run", ops.discards)
+			}
+		})
+	}
+}
+
 func TestDoPicksTheAgentAdapterWhenThereIsAPrompt(t *testing.T) {
 	ops := &fakeOps{}
 	h := &live{ops: ops, knobs: fast()}
@@ -560,5 +668,56 @@ func TestCommitAtReadsARealRepo(t *testing.T) {
 	}
 	if _, err := ops.CommitAt(dir, "refs/heads/nope"); err == nil {
 		t.Fatal("a ref that does not exist must be a refusal")
+	}
+}
+
+// The production discard behind a verify run's Close, on a real repo: the
+// worktree and the branch are both gone afterwards — the registration, the
+// checkout directory and refs/heads — and a worktree that is already gone
+// still loses its branch. AC #2 in one assertion: nothing the run created
+// outlives it.
+func TestWorktreeDiscardLeavesNoBranchOrWorktreeBehind(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) (string, error) {
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	must := func(args ...string) string {
+		out, err := run(args...)
+		if err != nil {
+			t.Fatalf("git %s: %v (%s)", args, err, out)
+		}
+		return out
+	}
+	must("init", "-q", "-b", "main")
+	must("config", "user.email", "fleet@example.com")
+	must("config", "user.name", "fleet")
+	must("commit", "--allow-empty", "-qm", "first")
+	wt := filepath.Join(t.TempDir(), "verify")
+	must("worktree", "add", "-q", "-b", "fleet/task-1-1", wt, "HEAD")
+
+	var ops herdrOps
+	if err := ops.WorktreeDiscard(dir, "fleet/task-1-1"); err != nil {
+		t.Fatal(err)
+	}
+	list := must("worktree", "list", "--porcelain")
+	if strings.Contains(list, wt) {
+		t.Errorf("worktree still registered:\n%s", list)
+	}
+	if _, err := run("rev-parse", "--verify", "refs/heads/fleet/task-1-1"); err == nil {
+		t.Error("the run's branch must be deleted with its worktree")
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("checkout dir still on disk: %v", err)
+	}
+
+	// Cancelled runs reach Close with the workspace already gone — the branch
+	// is still there to discard.
+	must("branch", "fleet/task-1-2")
+	if err := ops.WorktreeDiscard(dir, "fleet/task-1-2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run("rev-parse", "--verify", "refs/heads/fleet/task-1-2"); err == nil {
+		t.Error("a branch whose worktree is already gone must still be deleted")
 	}
 }

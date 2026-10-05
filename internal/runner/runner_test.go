@@ -23,6 +23,10 @@ type fakeHost struct {
 	doErr        error
 	closes       int
 	spec         host.Spec
+	// specs is every spec a run was provisioned with, in order — one per
+	// stage of a pipeline, so a test can tell the author's spec from the
+	// verifier's.
+	specs []host.Spec
 	// do, when set, replaces Do's body: a test scripts what happens at the
 	// deadline — the agent still working, the task still open — instead of
 	// declaring one answer for every call of the run.
@@ -41,6 +45,11 @@ type fakeHost struct {
 	delivery   host.Delivery
 	inspectErr error
 	inspects   int
+	// verifyInspects and verifyCloses count the calls a verify session (a run
+	// pinned to a PR head, TASK-65) received: the author's own run inspects
+	// and closes too, and the policy under test is per-session.
+	verifyInspects int
+	verifyCloses   int
 	// after lets the fake board change the task mid-run, the way a real agent
 	// reports back through the fleet CLI.
 	after func()
@@ -58,25 +67,38 @@ func (f *fakeHost) Notify(title, body, sound string) error {
 
 func (f *fakeHost) Provision(a host.Spec) (host.Session, error) {
 	f.spec = a
+	f.specs = append(f.specs, a)
 	s := host.Session{WorkspaceID: "ws", PaneID: "p", Repo: a.Repo, BaseCommit: "c0074fe"}
-	if a.Workspace == host.WorkspaceWorktree {
-		// The branch is derived the way production derives it — slug of the
-		// spec's name plus the cut timestamp — not constructed as an
-		// arbitrary string. A fake that hand-builds a value the real code
-		// derives is the boundary the suite agreed to pretend about
-		// (TASK-26): a session naming "fleet/a-1" would pass every record
-		// assertion below whether or not Provision names branches from the
-		// spec fields the runner actually hands it (TASK-38).
+	// Mirrors production: a spec pinned to a commit is cut into a worktree on
+	// a branch of its own whatever mode it names (the host derives it), and
+	// the session carries the verify mark Close tears it down by (TASK-65).
+	// The branch is derived the way production derives it — slug of the spec's
+	// name plus the cut timestamp — not constructed as an arbitrary string: a
+	// fake that hand-builds a value the real code derives is the boundary the
+	// suite agreed to pretend about (TASK-26, TASK-38).
+	if a.Workspace == host.WorkspaceWorktree || a.Head != "" {
 		s.Branch = fmt.Sprintf("fleet/%s-%s", host.Slug(a.Name), time.Now().Format("20060102-1504"))
+	}
+	if a.Head != "" {
+		s.Verify = true
 	}
 	f.session = s
 	return s, f.provisionErr
 }
-func (f *fakeHost) Inspect(host.Session) (host.Delivery, error) {
+func (f *fakeHost) Inspect(s host.Session) (host.Delivery, error) {
 	f.inspects++
+	if s.Verify {
+		f.verifyInspects++
+	}
 	return f.delivery, f.inspectErr
 }
-func (f *fakeHost) Close(host.Session) error { f.closes++; return nil }
+func (f *fakeHost) Close(s host.Session) error {
+	f.closes++
+	if s.Verify {
+		f.verifyCloses++
+	}
+	return nil
+}
 func (f *fakeHost) Do(s host.Session, a host.Spec, timeout time.Duration) error {
 	f.spec = a
 	if f.do != nil {
