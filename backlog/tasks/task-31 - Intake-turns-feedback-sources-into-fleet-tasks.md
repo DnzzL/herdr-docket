@@ -1,10 +1,10 @@
 ---
 id: TASK-31
 title: Intake turns feedback sources into fleet tasks
-status: needs human validation
+status: Done
 assignee: []
 created_date: '2026-09-21 19:12'
-updated_date: '2026-10-01 17:44'
+updated_date: '2026-10-03 20:12'
 labels: []
 dependencies: []
 ordinal: 31000
@@ -48,4 +48,14 @@ Residual: the phantom-Sentry line stays in the entry and persona until fleet/TAS
 Verdict: AC#1 and AC#3 met with evidence on main (d735a53 — persona in docs/examples.md §5 has the verification-path rule and the pm-route rule in the body; the dry way in is stated and was actually exercised: the 09-25 report-only run on dishnow/TASK-106 was read and the gate approved, dial then removed). AC#2 is half-met only: the entry exists (intake, cron "15 8,16 * * *", dial off) and the demo run ran and routed to humans through the queue (fleet/TASK-9 and docket/TASK-50 filed by the run, each one human question, zero junk), but it filed no dev-verifiable work because the declared sources emit nothing today — gh issues 0, Sentry nonexistent on this runtime — and the gate refused to invent signal (its variance is exactly). THE ONE QUESTION that settles AC#2: where does real source signal for DishNow live — a Sentry MCP config (DSN absent today), feedback filed as GitHub issues on DnzzL/DishNow-v2 (repo has zero, ever), or another emitter intake may poll — and may the entry/persona be pointed at it? Until a source can emit, no intake run can file dev-verifiable work, honestly.
 
 fleet: the run's workspace w5W (pane w5W:p1) is left open — jump in to resume.
+
+Stall sweep (fleet/TASK-17, docket board), pass 6, stall type 2 — human column, no note answering the question the task was blocked on. The run failed 2026-10-01 19:44 leaving THE ONE QUESTION in its verdict: where does real source signal for DishNow live — a Sentry MCP config (DSN absent today), GitHub issues on DnzzL/DishNow-v2 (repo has zero, ever), or another emitter intake may poll — and may the entry/persona be pointed at it? Nothing answers it here. Overlap for the human: fleet/TASK-9 carries the Sentry half of the same question, also unanswered — one answer can settle both. Who it waits on: the human. Nudge only: I do not reopen, close, assign, or edit criteria.
+
+Stall sweep (fleet/TASK-17, docket board), pass 6, stall type 2 — human column, no note answering the question the task was blocked on. The run failed 2026-10-01 19:44 leaving THE ONE QUESTION in its verdict: where does real source signal for DishNow live — a Sentry MCP config (DSN absent today), GitHub issues on DnzzL/DishNow-v2 (repo has zero, ever), or another emitter intake may poll — and may the entry/persona be pointed at it? Nothing answers it here. Overlap for the human: fleet/TASK-9 carries the Sentry half of the same question, also unanswered — one answer can settle both. Who it waits on: the human. Nudge only: I do not reopen, close, assign, or edit criteria.
+
+Stall sweep (fleet/TASK-17), pass 6, stall type 2 — human column, the closing question unanswered. This run closed Failed on 2026-10-01 19:44 leaving "THE ONE QUESTION that settles AC#2: where does real source signal for DishNow live — a Sentry MCP config (DSN absent today), feedback filed as GitHub issues (repo has zero, ever), or another emitter intake may poll — and may the entry/persona be pointed at it?" No note answers it, and its residual ("the phantom-Sentry line stays until fleet/TASK-9's question is answered, so each intake run re-polls it") ties it to fleet/TASK-9, which is parked Blocked on the same human pick. Who it waits on: the human — one answer settles this task and fleet/TASK-9 together. Nudge only: I do not reopen, close, assign, or edit.
+
+Pass 6 record correction: the preceding stall-sweep nudge was posted twice by one run — my verification grep pattern omitted ', docket board' and I re-posted believing the first had failed. Identical content, one nudge, no CLI verb removes a note and no task file was edited by hand; ignore the duplicate.
+
+Cleanup 2026-10-03: shipped — intake exists as a persona plus its automation entry, and init --factory installs it.
 <!-- SECTION:NOTES:END -->

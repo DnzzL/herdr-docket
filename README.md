@@ -10,8 +10,6 @@ agents work the queue in parallel, in workspaces you can watch, join or close.
 [![Release](https://img.shields.io/github/v/release/DnzzL/herdr-docket)](https://github.com/DnzzL/herdr-docket/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![The CLI: create a task with how it is verified, list the queue, pause the fleet](docs/demo.gif)
-
 ```text
  you / intake ──► task ──► author ──► PR ──► verifier ──► gate ──► merged
  (says how it's                ▲               │ FAIL       │
