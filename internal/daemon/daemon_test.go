@@ -405,3 +405,22 @@ func TestATaskThisProcessIsRunningIsNotPickedAgain(t *testing.T) {
 		t.Fatalf("started = %v, want a to take TASK-2 this tick", h.started)
 	}
 }
+
+// A paused fleet starts nothing: the tick does not even read the queue.
+func TestAPausedFleetStartsNoRun(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := runner.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	src := newMemSource(work.Task{ID: "TASK-1", Title: "T", Open: true, Assignee: "a"})
+	withFleet(t, map[string]fleet.Agent{
+		"a": {Name: "a", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1},
+	}, src)
+	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"})
+
+	evaluate(runs, map[string]bool{})
+	time.Sleep(20 * time.Millisecond)
+	if runs.Running("TASK-1") || src.closed("TASK-1") {
+		t.Fatal("a paused fleet must not start a run")
+	}
+}

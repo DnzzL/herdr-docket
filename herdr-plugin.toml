@@ -10,3 +10,9 @@ command = ["sh", "scripts/install.sh"]
 
 [[startup]]
 command = ["./bin/herdr-docket", "daemon"]
+
+[[panes]]
+id = "runs"
+title = "Herdr-Docket: runs"
+placement = "overlay"
+command = ["./bin/herdr-docket", "pane"]

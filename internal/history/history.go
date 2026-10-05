@@ -259,6 +259,24 @@ func Runs(task string, limit int) ([]Record, error) {
 	return out, nil
 }
 
+// InFlight returns the runs whose latest record has not closed them —
+// running, or timed out with the agent still listened for (ADR 0014) —
+// newest first. A run the daemon died under stays in flight here forever:
+// nothing beats, so a reader that cares weighs the record's age.
+func InFlight() ([]Record, error) {
+	runs, err := Runs("", 0)
+	if err != nil {
+		return nil, err
+	}
+	var out []Record
+	for _, r := range runs {
+		if r.Status == StatusRunning || r.Status == StatusTimedOut {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
 // LatestPerTask returns the newest run's latest record for each of ids, in a
 // single pass over the log. It answers exactly what LastRun answers, for many
 // tasks at once: the board draws a record per row and refreshes on a timer, so

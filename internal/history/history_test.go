@@ -241,3 +241,34 @@ func TestTimedOutIsAMarkNotAnEnding(t *testing.T) {
 		t.Fatalf("record = %s, want the timeout on the wire", raw)
 	}
 }
+
+// In flight is a run whose latest record has not closed it: running, or past
+// its deadline with the agent still listened for. Scheduled has no workspace
+// to stop yet, and a closed run is over.
+func TestInFlightIsEveryRunNotYetClosed(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	at := time.Now()
+	for _, r := range []Record{
+		{RunID: "r1", Task: "A", Status: StatusRunning, At: at},
+		{RunID: "r1", Task: "A", Status: StatusDone, At: at},
+		{RunID: "r2", Task: "B", Status: StatusRunning, At: at, WorkspaceID: "ws2"},
+		{RunID: "r3", Task: "C", Status: StatusRunning, At: at},
+		{RunID: "r3", Task: "C", Status: StatusTimedOut, At: at},
+		{RunID: "r4", Task: "D", Status: StatusScheduled, At: at},
+	} {
+		if err := Append(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live, err := InFlight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range live {
+		got = append(got, r.RunID)
+	}
+	if strings.Join(got, ",") != "r3,r2" {
+		t.Fatalf("in flight = %v, want r3,r2 (newest first)", got)
+	}
+}

@@ -56,8 +56,15 @@ func (r *Runner) pipeline(src work.Source, t work.Task, author fleet.Agent, pr s
 }
 
 // stage runs one attempt in the agent's own slot, waiting for it while
-// another run holds it, up to the agent's timeout.
+// another run holds it, up to the agent's timeout, and while the fleet is
+// paused, for as long as it is.
 func (r *Runner) stage(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger, pr string) (outcome, error) {
+	// A paused fleet holds the next stage where it is, task lock and all,
+	// and goes on once resumed. The wait is not the slot's: it has no
+	// deadline, because nothing is wrong — somebody chose to stop spending.
+	for Paused() {
+		r.sleep(slotPoll)
+	}
 	key := LockKey(a)
 	deadline := time.Now().Add(time.Duration(a.TimeoutMinutes) * time.Minute)
 	for {

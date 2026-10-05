@@ -378,3 +378,52 @@ func TestATaskIsRunningForItsWholePipeline(t *testing.T) {
 		t.Fatalf("running during stages = %v, after = %v", seen, p.runner.Running("TASK-1"))
 	}
 }
+
+// A pause saves credits the pipeline would spend on its own: the verifier
+// does not start while the fleet is paused, and starts once it resumes.
+func TestAPausedFleetHoldsTheVerifierUntilResume(t *testing.T) {
+	p := newPipeline(t, "auto", gate.Pass)
+	ranWhilePaused := -1
+	inner := p.host.after
+	p.host.after = func() {
+		inner()
+		if p.workerRuns == 1 && p.verifierRuns == 0 && ranWhilePaused == -1 {
+			if err := SetPaused(true); err != nil {
+				t.Fatal(err)
+			}
+			ranWhilePaused = 0
+		}
+	}
+	p.runner.sleep = func(time.Duration) {
+		p.slept++
+		ranWhilePaused += p.verifierRuns
+		if err := SetPaused(false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := p.run(); err != nil {
+		t.Fatal(err)
+	}
+	if ranWhilePaused != 0 || p.slept == 0 || p.verifierRuns != 1 || len(p.forge.merged) != 1 {
+		t.Fatalf("verifier ran while paused %d, slept %d, verifier %d, merged %v", ranWhilePaused, p.slept, p.verifierRuns, p.forge.merged)
+	}
+}
+
+func TestPauseIsAFlagThatSurvivesTheProcess(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if Paused() {
+		t.Fatal("a fresh state dir is not paused")
+	}
+	if err := SetPaused(true); err != nil || !Paused() {
+		t.Fatalf("pause: %v, paused %v", err, Paused())
+	}
+	if err := SetPaused(true); err != nil {
+		t.Fatalf("pausing twice is not an error: %v", err)
+	}
+	if err := SetPaused(false); err != nil || Paused() {
+		t.Fatalf("resume: %v, paused %v", err, Paused())
+	}
+	if err := SetPaused(false); err != nil {
+		t.Fatalf("resuming twice is not an error: %v", err)
+	}
+}
