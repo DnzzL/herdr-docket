@@ -176,6 +176,55 @@ func TestInstallAppendsTheLoopEntriesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// A config that installed the loop before an entry existed must receive that
+// entry from the next run: the installer used to gate the whole append on
+// `- name: intake`, so a fleet installed before merge-digest shipped never
+// got it — shipped bytes nobody's config receives is the failure mode.
+func TestInstallAppendsOnlyTheEntriesAConfigIsMissing(t *testing.T) {
+	dir := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, cfg, 0))
+
+	// The loop as an earlier install wrote it: everything shipped before
+	// merge-digest existed, behind the owner's own entry.
+	prior := strings.SplitN(entries, "  - name: merge-digest", 2)[0]
+	existing := "automations:\n  - name: nightly\n    cron: \"0 3 * * *\"\n    repo: ~/Projects/myapp\n    prompt: |\n      hello\n\n" + prior + "\n"
+	path := filepath.Join(cfg, "automations.yaml")
+	if err := os.WriteFile(path, []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := Install(dir, &out); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(path)
+	got := string(raw)
+	if b := entryBlock(got, "merge-digest"); b == "" || !strings.Contains(b, "Merges waiting") {
+		t.Errorf("a config that installed the loop before merge-digest existed must receive it from a re-run:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "merge-digest") {
+		t.Errorf("output must say what it appended:\n%s", out.String())
+	}
+	for _, name := range []string{"intake", "stall-sweep", "lookback", "nightly"} {
+		if n := strings.Count(got, "- name: "+name); n != 1 {
+			t.Errorf("%s appears %d times — entries already present must not be appended again:\n%s", name, n, got)
+		}
+	}
+	if !strings.Contains(got, "repo: "+dir) {
+		t.Errorf("the appended entry must point at the fleet it was installed into:\n%s", got)
+	}
+
+	// Idempotent: once every entry is named, the same command writes nothing.
+	if err := Install(dir, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(path)
+	if string(raw) != got {
+		t.Errorf("second run changed the file:\nbefore:\n%s\nafter:\n%s", got, raw)
+	}
+}
+
 // A plugin present but never configured gets a fresh file — the loop's four
 // entries in a valid file, not an error.
 func TestInstallCreatesTheAutomationsFileWhenThePluginHasNone(t *testing.T) {

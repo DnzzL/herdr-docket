@@ -144,6 +144,46 @@ const entries = `  # Delete "Report only." from the intake entry after you have 
       End with one line per repo: what you listed, what you closed.
 `
 
+// entryName matches a shipped schedule's name line; the capture is the name
+// Install checks the owner's config for, one entry at a time.
+var entryName = regexp.MustCompile(`(?m)^  - name: (\S+)[ \t]*$`)
+
+// shippedEntry is one schedule as the block ships it: its name, and the chunk
+// that would be appended on its own — the comments that lead the entry (if
+// any), the entry, and the blank line down to the next one.
+type shippedEntry struct{ name, body string }
+
+// shipped splits block into one chunk per schedule, in ship order.
+func shipped(block string) []shippedEntry {
+	locs := entryName.FindAllStringSubmatchIndex(block, -1)
+	out := make([]shippedEntry, 0, len(locs))
+	for i, loc := range locs {
+		start := 0
+		if i > 0 {
+			start = loc[0]
+		}
+		end := len(block)
+		if i+1 < len(locs) {
+			end = locs[i+1][0]
+		}
+		out = append(out, shippedEntry{block[loc[2]:loc[3]], block[start:end]})
+	}
+	return out
+}
+
+// hasEntry reports whether the config already names the schedule: a line that
+// is exactly `- name: X`, so `- name: intake-followup` does not stand in for
+// the intake entry and the indentation the owner chose does not matter.
+func hasEntry(raw []byte, name string) bool {
+	want := "- name: " + name
+	for _, line := range strings.Split(string(raw), "\n") {
+		if strings.TrimSpace(line) == want {
+			return true
+		}
+	}
+	return false
+}
+
 // Install writes the loop into dir: the fleet-side personas, then the
 // schedules that drive them when the automations plugin answers for its
 // config. Everything it writes is reported; everything it leaves alone is
@@ -195,7 +235,19 @@ func Install(dir string, out io.Writer) error {
 	case err != nil:
 		return err
 	}
-	if strings.Contains(string(raw), "- name: intake") {
+	// The entries the config does not name yet, in ship order: a fleet that
+	// installed before an entry existed receives it from a re-run, and one
+	// that already has them all is left alone.
+	var add strings.Builder
+	var added []string
+	for _, e := range shipped(block) {
+		if hasEntry(raw, e.name) {
+			continue
+		}
+		add.WriteString(e.body)
+		added = append(added, e.name)
+	}
+	if add.Len() == 0 {
 		fmt.Fprintf(out, "factory: %s already drives the loop\n", path)
 		return afterInstall(out)
 	}
@@ -205,14 +257,14 @@ func Install(dir string, out io.Writer) error {
 	// file is not this command's to make.
 	key := regexp.MustCompile(`(?m)^automations:[ \t]*$`)
 	if loc := key.FindIndex(raw); loc != nil {
-		raw = append(raw[:loc[1]+1], append([]byte(block), raw[loc[1]+1:]...)...)
+		raw = append(raw[:loc[1]+1], append([]byte(add.String()), raw[loc[1]+1:]...)...)
 	} else {
-		raw = append([]byte("automations:\n"+block+"\n"), raw...)
+		raw = append([]byte("automations:\n"+add.String()+"\n"), raw...)
 	}
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "factory: appended the loop to %s\n", path)
+	fmt.Fprintf(out, "factory: appended %s to %s\n", strings.Join(added, ", "), path)
 	return afterInstall(out)
 }
 

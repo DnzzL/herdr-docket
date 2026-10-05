@@ -369,8 +369,3 @@ the shape):
   rule for when e2e applies), not the fleet's.
 - `unknown` — `gh pr view` lists at most 100 changed files; a larger PR is
   checked against `CODEOWNERS` on those only.
-- `fragile` — `init --factory` writes the schedules only to a config with no
-  `intake` entry yet, so a fleet that installed the loop before `merge-digest`
-  existed does not receive it from a re-run: paste it in from
-  [the wiring](#the-wiring) above. Teaching the installer to append the
-  entries it is missing is filed as a follow-up.
