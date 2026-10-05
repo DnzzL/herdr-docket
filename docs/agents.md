@@ -135,8 +135,9 @@ The daemon re-reads `agents/` on every tick, so a pause lands within ~15s and
 needs no restart. Two things it deliberately does *not* do: it never kills a
 run already in flight (that agent keeps its full timeout and still reports its
 task), and it never overrides you — `herdr-docket run TASK-12` reaches a paused
-agent, because pressing the button is human intent, not scheduling. The board
-says the same thing in yellow on every row an agent is paused on.
+agent, because pressing the button is human intent, not scheduling. To stop
+the whole fleet instead — every agent, and the pipeline's next stage —
+`herdr-docket pause` (see the README's *Watching the fleet*).
 
 ## See also
 

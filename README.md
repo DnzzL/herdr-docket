@@ -84,7 +84,7 @@ line of config, and you can move them one project at a time:
 | assignee / `default_agent` | name the agent on the task, one at a time | `default_agent` picks up everything unassigned — per project, so each one has its own intake |
 | `statuses.failed` | points at a human column — `needs-info`, `ready-for-human` | points at a real `Failed`; nobody is paged |
 | `verifier` | a reviewer verifies every delivered PR, you merge ([Example 4](docs/examples.md#4-a-reviewer-that-verifies-the-devs-prs)) | `merge: auto` — the gate merges a PASS on green CI, except `critical` tasks and `CODEOWNERS` paths ([the pipeline](docs/factory.md#the-pipeline)) |
-| `disabled` / `agent pause` | park an agent while you look at something | never paused |
+| `disabled` / `agent pause` / `pause` | park an agent — or the whole fleet — while you look at something | never paused |
 
 The one lever with teeth is the first: **the fleet only ever picks up the
 status you name**, so handing it a project means handing it one column, not a
@@ -155,7 +155,8 @@ repo is the factory's memory, and it compounds.
 **Raise the dial slowly.** Start a queue with `verifier:` and no `merge:` —
 read the verdicts, merge by hand. When a week of PASSes would have been your
 merges too, add `merge: auto`, and add a `CODEOWNERS` line every time a merge
-makes you nervous. `agent pause` stops anything at once.
+makes you nervous. `herdr-docket pause --now` stops everything at once;
+`agent pause` parks one agent.
 
 **A daily rhythm that works:**
 
