@@ -30,10 +30,10 @@ schedules and refusals live in [The factory](docs/factory.md).
 Write a task the way you would brief a senior engineer, and walk away:
 
 ```bash
-herdr-docket task create "A plan respects a vegetarian preference written in French" -a dev \
-  -d "Users who type « végétarien » still get meat in their week plan.
-Done when: the planner treats the preference the same in any language.
-Verify by: a planner test with « végétarien » that is red on main, green after."
+herdr-docket task create "Search ignores accents" -a dev \
+  -d "Users who type « creme » find none of the « crème » products.
+Done when: a query matches with or without accents.
+Verify by: a search test for « creme » that is red on main, green after."
 ```
 
 Within 15 seconds the daemon opens a [Herdr](https://herdr.dev) workspace on the
@@ -123,7 +123,7 @@ work: a task you would not review in ten minutes is two tasks.
 | Instead of | Write |
 | --- | --- |
 | "Improve onboarding" | "New users drop at step 2. Done when: step 2 needs one field, not four. Verify by: the signup e2e completes with only an email." |
-| "Fix the flaky test" | "`week-plan.spec.ts` fails 1 run in 5 on CI. Done when: it waits on hydration, not a timeout. Verify by: 20 consecutive green runs, pasted." |
+| "Fix the flaky test" | "`checkout.spec.ts` fails 1 run in 5 on CI. Done when: it waits on hydration, not a timeout. Verify by: 20 consecutive green runs, pasted." |
 | "Refactor the planner" | Don't. Name the bug or the feature the refactor unblocks, and let the author choose the shape. |
 
 **Delegate ideas, not solutions.** An idea goes in as a *spike*: "Investigate
@@ -360,6 +360,11 @@ herdr-docket install-skill     # symlinks into ~/.claude/skills
 
 It points a symlink at the bundled skill, so plugin upgrades update the skill
 too. Start a new agent session afterwards.
+
+## Contributing
+
+Issues and pull requests are welcome — a new queue adapter especially.
+Build, test and house style: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
