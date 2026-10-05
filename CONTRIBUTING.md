@@ -37,6 +37,11 @@ herdr plugin link .                 # run your checkout as the installed plugin
 `herdr plugin link` replaces any GitHub install of the plugin, and the daemon
 re-executes itself when the binary changes, so a rebuild is enough to test.
 
+A linked checkout the fleet works on itself merges on GitHub, not here:
+`scripts/deploy.sh` builds `origin/main` into `bin/` from a worktree of its
+own (it never touches this checkout), so run it from a timer or a merged fix
+never reaches the daemon.
+
 Config lives in `herdr plugin config-dir dnzzl.herdr-docket`, run history in
 `~/.local/state/herdr/plugins/dnzzl.herdr-docket`. Both survive uninstalls;
 delete them by hand for a clean slate.
