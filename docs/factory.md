@@ -225,8 +225,10 @@ The loop is one command, but it does not have to be run as one:
 herdr-docket init --factory
 ```
 
-Writes all five personas into an existing fleet dir — never overwriting one
-you already have — appends the entries above when the automations plugin's
+Writes all five personas into an existing fleet dir, and the two roles the
+project-side ones name (`roles/dev.md`, `roles/reviewer.md` — the method, so a
+second project's dev is one short file) — never overwriting one you already
+have — appends the entries above when the automations plugin's
 config is present, and points you at this page.
 
 The three that read the queue (`intake`, `stall`, `lookback`) are pointed at
