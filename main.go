@@ -25,6 +25,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/pick"
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/skill"
+	"github.com/DnzzL/herdr-docket/internal/sweep"
 	"github.com/DnzzL/herdr-docket/internal/text"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
@@ -54,6 +55,7 @@ Usage:
   herdr-docket history [id]     Show recent runs
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
   herdr-docket changelog        Preview the next release's notes ([release <version>] to cut them)
+  herdr-docket worktree sweep   Retire the worktree registrations runs left behind ([--dry-run])
   herdr-docket install-skill    Teach your coding agent to write fleet tasks
   herdr-docket version          Print the version
 
@@ -92,6 +94,8 @@ func main() {
 		err = logsCmd(os.Args[2:], os.Stdout)
 	case "changelog":
 		err = changelogCmd(os.Args[2:], os.Stdout)
+	case "worktree":
+		err = worktreeCmd(os.Args[2:], os.Stdout)
 	case "install-skill":
 		target := ""
 		if len(os.Args) > 2 {
@@ -866,4 +870,66 @@ func logsCmd(args []string, out io.Writer) error {
 		fmt.Fprintln(out, l)
 	}
 	return nil
+}
+
+// worktreeCmd is the sweep over the fleet's checkouts (TASK-69): it retires
+// the worktree registrations runs before TASK-68 left behind, keeping every
+// registration the run history or an open workspace still stakes a claim to.
+// One command, run by hand — the daemon retires what its own runs leave
+// (TASK-68); it never sweeps the past on its own.
+func worktreeCmd(args []string, out io.Writer) error {
+	const usage = "usage: herdr-docket worktree sweep [--dry-run]"
+	if len(args) == 0 || args[0] != "sweep" {
+		what := ""
+		if len(args) > 0 {
+			what = fmt.Sprintf(" %q", args[0])
+		}
+		return fmt.Errorf("worktree:%s needs the sweep word\n%s", what, usage)
+	}
+	opts := sweep.Options{}
+	for _, a := range args[1:] {
+		switch a {
+		case "--dry-run":
+			opts.DryRun = true
+		default:
+			return fmt.Errorf("worktree sweep: unexpected argument %q\n%s", a, usage)
+		}
+	}
+	settings, err := fleet.LoadSettings()
+	if err != nil {
+		return err
+	}
+	agents, diags := fleet.LoadAgents(settings.Dir)
+	for _, d := range diags {
+		fmt.Fprintf(out, "  note    agent %s did not load: %s\n", d.Agent, d.Message)
+	}
+	return sweepWorktrees(workdirRepos(agents, out), opts, out)
+}
+
+// sweepWorktrees is the sweep itself, a variable so the command's tests drive
+// it without the real herdr answering for the machine.
+var sweepWorktrees = sweep.Run
+
+// workdirRepos is the sweep's map of the world: every distinct checkout the
+// fleet's agents work in and that exists on this machine — the repos runs cut
+// their worktrees from — sorted so the report reads the same on every run. A
+// workdir that is not here is said out loud and skipped: an agent that never
+// ran has left nothing to sweep, and a silent skip would look like a sweep
+// that saw nothing.
+func workdirRepos(agents map[string]fleet.Agent, out io.Writer) []string {
+	seen := map[string]bool{}
+	var repos []string
+	for _, a := range agents {
+		if seen[a.Workdir] {
+			continue
+		}
+		seen[a.Workdir] = true
+		if _, err := os.Stat(a.Workdir); err != nil {
+			fmt.Fprintf(out, "  skip    %s — agent %s: no checkout here\n", a.Workdir, a.Name)
+			continue
+		}
+		repos = append(repos, a.Workdir)
+	}
+	sort.Strings(repos)
+	return repos
 }

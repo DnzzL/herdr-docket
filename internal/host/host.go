@@ -143,6 +143,16 @@ var ErrTimedOut = errors.New("the agent was still working")
 // New returns the Host that drives the real Herdr.
 func New() Host { return &live{ops: herdrOps{}, knobs: defaultKnobs()} }
 
+// RetireWorktree retires one worktree registration with the rules Close
+// gives an author's run (TASK-68): clean tree pruned, branch deleted only
+// when a remote holds its exact tip, dirty tree kept whole. It is exported
+// for the sweep that clears the registrations runs before TASK-68 already
+// left behind (TASK-69), so the pile and every future Close answer "safe to
+// delete" the same way — one rule set, one implementation.
+func RetireWorktree(repo, branch string) error {
+	return herdrOps{}.WorktreeRetire(repo, branch)
+}
+
 // live is the production adapter: Herdr's CLI, a real clock, real sleeps.
 type live struct {
 	ops   ops

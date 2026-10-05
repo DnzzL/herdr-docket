@@ -283,6 +283,7 @@ that fails, blocks or is held back from merging raises a Herdr notification.
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
 | `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
+| `herdr-docket worktree sweep` | retire the worktree registrations runs left behind (`--dry-run` plans it without touching git) |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |
 
 ## The queue

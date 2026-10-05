@@ -44,7 +44,13 @@ history`), so a pull request carrying anything past that is visible without
 opening the forge. When the fleet closes a finished run's workspace it
 retires the worktree with it — registration and checkout pruned, the branch
 deleted only when the agent's push put it on the remote unchanged; an
-unpushed branch or uncommitted work stays for a human. `root` is for agents
+unpushed branch or uncommitted work stays for a human. The registrations
+runs left behind *before* that close existed are cleared once by hand with
+`herdr-docket worktree sweep`, which applies the same rules only after
+cross-checking the run history and herdr's open workspaces — resume points,
+in-flight runs, open workspaces and anything history cannot name stay put,
+each reported with its reason (`--dry-run` prints the plan without touching
+git). `root` is for agents
 whose job *is* the working copy:
 backlog grooming, docs, anything that must see uncommitted state.
 
