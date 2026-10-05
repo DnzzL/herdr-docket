@@ -24,6 +24,12 @@ func TestWhatWeShipIsWhatTheDocsShow(t *testing.T) {
 		}
 	}
 
+	for _, r := range roles {
+		if !strings.Contains(string(examples), r.body) {
+			t.Errorf("role %s is not in docs/examples.md verbatim — one of the two has drifted", r.name)
+		}
+	}
+
 	factory, err := os.ReadFile("../../docs/factory.md")
 	if err != nil {
 		t.Fatal(err)

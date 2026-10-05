@@ -42,6 +42,21 @@ var devPersona string
 //go:embed personas/reviewer.md
 var reviewerPersona string
 
+// The project-side two share their method through roles (ADR 0005): the
+// persona says which repo, the role says how to work. A second project's dev
+// is then one short file naming the same role.
+//
+//go:embed roles/dev.md
+var devRole string
+
+//go:embed roles/reviewer.md
+var reviewerRole string
+
+var roles = []struct{ name, body string }{
+	{"dev", devRole},
+	{"reviewer", reviewerRole},
+}
+
 // placeholder is the workdir the project-side personas carry out of
 // docs/examples.md — the line the owner edits before resuming one.
 const placeholder = "workdir: ~/Projects/myapp\n"
@@ -191,6 +206,22 @@ func hasEntry(raw []byte, name string) bool {
 func Install(dir string, out io.Writer) error {
 	if err := os.MkdirAll(filepath.Join(dir, "agents"), 0o755); err != nil {
 		return err
+	}
+	// Roles before the agents that name them: an agent whose role is missing
+	// is grounded. A role the fleet already has is its owner's and is kept.
+	if err := os.MkdirAll(filepath.Join(dir, "roles"), 0o755); err != nil {
+		return err
+	}
+	for _, r := range roles {
+		path := filepath.Join(dir, "roles", r.name+".md")
+		if _, err := os.Stat(path); err == nil {
+			fmt.Fprintf(out, "factory: skipped roles/%s.md — it already exists\n", r.name)
+			continue
+		}
+		if err := os.WriteFile(path, []byte(r.body), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "factory: wrote roles/%s.md\n", r.name)
 	}
 	for _, p := range personas {
 		path := filepath.Join(dir, "agents", p.name, "AGENT.md")
