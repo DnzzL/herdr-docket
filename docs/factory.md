@@ -200,7 +200,7 @@ merges nothing either: a verdict alone is one agent's word.
 ## The dials
 
 Nothing about how much autonomy the loop has lives in the loop. It is the
-levers the [README's autonomy table](../README.md#how-much-autonomy) already
+levers the [README's autonomy table](how-it-works.md#the-levers) already
 lists: which status the fleet may pick up, who takes unassigned work, where
 `failed` points, `agent pause` on anything that
 misbehaves, `herdr-docket pause` on all of it at once. The loop runs *inside*

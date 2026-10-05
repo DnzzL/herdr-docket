@@ -77,7 +77,7 @@ Read `statuses:` as a whitelist: **a status not named there is not the fleet's
 business.** That is the whole point of it — a real board has a triage column, a
 wontfix column, a waiting-on-a-human column, and a fleet that treated every
 unrecognised status as open work would put an agent on them. It is also the
-first lever in [How much autonomy](../README.md#how-much-autonomy): `todo` is
+first lever in [How much autonomy](how-it-works.md#the-levers): `todo` is
 exactly how much of your board you are handing over.
 
 `todo`, `done`, `failed` and `blocked` are required — a queue the fleet can
