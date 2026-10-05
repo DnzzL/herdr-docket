@@ -201,8 +201,8 @@ Nothing about how much autonomy the loop has lives in the loop. It is the
 levers the [README's autonomy table](../README.md#how-much-autonomy) already
 lists: which status the fleet may pick up, who takes unassigned work, where
 `failed` points, `agent pause` on anything that
-misbehaves. The loop runs *inside* those decisions — turn intake off by
-pausing `intake`.
+misbehaves, `herdr-docket pause` on all of it at once. The loop runs *inside*
+those decisions — turn intake off by pausing `intake`.
 
 ## Start small
 
@@ -359,9 +359,14 @@ the shape):
 - `fragile` — the runner reads `fleet.yaml` once, when the daemon starts:
   adding a `verifier:` takes a daemon restart. A PR delivered before that is
   held, not lost.
-- `fragile` — the gate reads `CODEOWNERS` from the author's local checkout,
-  so a checkout behind its base protects what its stale file says (docket
-  TASK-57 moves the read to the PR's base branch).
+- `fragile` — a fleet working its own plugin runs whatever `bin/` holds, and
+  a merge lands on GitHub, not in `bin/`: without
+  [`scripts/deploy.sh`](../CONTRIBUTING.md#working-on-it) on a timer a merged
+  fix never reaches the daemon.
+- `fragile` — parallel runs share one machine. A repo whose e2e harness binds
+  fixed ports, or eats the box's memory, makes concurrent runs collide and
+  time out; the fix is the repo's (a lock around its e2e, and an `AGENTS.md`
+  rule for when e2e applies), not the fleet's.
 - `unknown` — `gh pr view` lists at most 100 changed files; a larger PR is
   checked against `CODEOWNERS` on those only.
 - `fragile` — `init --factory` writes the schedules only to a config with no
