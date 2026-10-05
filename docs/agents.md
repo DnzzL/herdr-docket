@@ -41,7 +41,11 @@ queue repo's own default branch (or the source block's `worktree_base:`
 ref — see docs/queues.md), never from whatever the main checkout had open, and
 the run record names the commit it cut from (`cut <sha>` in `herdr-docket
 history`), so a pull request carrying anything past that is visible without
-opening the forge. `root` is for agents whose job *is* the working copy:
+opening the forge. When the fleet closes a finished run's workspace it
+retires the worktree with it — registration and checkout pruned, the branch
+deleted only when the agent's push put it on the remote unchanged; an
+unpushed branch or uncommitted work stays for a human. `root` is for agents
+whose job *is* the working copy:
 backlog grooming, docs, anything that must see uncommitted state.
 
 A verifier's runs override both: whatever `workspace` its agent names, a run

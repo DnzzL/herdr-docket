@@ -36,6 +36,10 @@ type fakeOps struct {
 	worktreePath   func(repo, branch string) (string, error)
 	worktreeDirty  func(dir string) (bool, error)
 	commitsAhead   func(repo, branch string) (int, error)
+	// worktreeRetire is the lighter teardown of an author's worktree: called
+	// so a test can assert exactly which sessions Close retires.
+	worktreeRetire func(repo, branch string) error
+	retires        []string
 	// worktreeDiscard is the teardown of a verify worktree: path and branch
 	// recorded so a test can assert exactly what was thrown away.
 	worktreeDiscard func(repo, branch string) error
@@ -84,6 +88,14 @@ func (f *fakeOps) CommitsAhead(repo, branch string) (int, error) {
 		return 0, nil
 	}
 	return f.commitsAhead(repo, branch)
+}
+
+func (f *fakeOps) WorktreeRetire(repo, branch string) error {
+	f.retires = append(f.retires, repo+"@"+branch)
+	if f.worktreeRetire == nil {
+		return nil
+	}
+	return f.worktreeRetire(repo, branch)
 }
 
 func (f *fakeOps) WorktreeDiscard(repo, branch string) error {
@@ -462,9 +474,70 @@ func TestCloseDiscardsAVerifyWorktreeAndItsBranch(t *testing.T) {
 					t.Errorf("discards = %v, want %s's worktree and branch thrown away", ops.discards, tc.session.Branch)
 				}
 			} else if len(ops.discards) != 0 {
-				t.Errorf("discards = %v, want none: an author's branch must outlive its run", ops.discards)
+				t.Errorf("discards = %v, want none: an author's branch gets the lighter retire, never the wholesale discard", ops.discards)
 			}
 		})
+	}
+}
+
+// TASK-68: closing an author's worktree session owes the lighter teardown —
+// the registration pruned and the branch deleted only when pushed (git itself
+// decides that, behind the port). A root run, a borrowed tab, a workspace
+// that would not close — the agent may still be working in the directory —
+// and a verify run (which keeps the full discard) are left alone by the
+// retire.
+func TestCloseRetiresAnAuthorWorktreeWhenTheWorkspaceIsReallyClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		closeErr   error
+		session    Session
+		wantRetire bool
+		wantErr    bool
+	}{
+		{"a settled author run", nil, Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-1"}, true, false},
+		{"a workspace already gone under the run", herdr.ErrGone, Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-1"}, true, false},
+		{"a root run claims no branch", nil, Session{WorkspaceID: "w1", Repo: "/x"}, false, false},
+		{"a borrowed tab is not a worktree", nil, Session{WorkspaceID: "w1", TabID: "w1:t1", Repo: "/x"}, false, false},
+		{"a workspace that would not close keeps its tree", errors.New("herdr: connection refused"), Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-1"}, false, true},
+		{"a verify run keeps the full discard", nil, Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-1", Verify: true}, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ops := &fakeOps{workspaceClose: func(string) error { return tc.closeErr }}
+			h := &live{ops: ops, knobs: fast()}
+
+			err := h.Close(tc.session)
+			if tc.wantErr && err == nil {
+				t.Fatal("want the close failure surfaced, got nil")
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("Close = %v", err)
+			}
+			if tc.wantRetire {
+				want := tc.session.Repo + "@" + tc.session.Branch
+				if len(ops.retires) != 1 || ops.retires[0] != want {
+					t.Errorf("retires = %v, want %s retired", ops.retires, want)
+				}
+			} else if len(ops.retires) != 0 {
+				t.Errorf("retires = %v, want none", ops.retires)
+			}
+			if want := tc.session.Verify; len(ops.discards) != 0 != want {
+				t.Errorf("discards = %v, verify=%v: the full discard belongs to verify runs only", ops.discards, want)
+			}
+		})
+	}
+}
+
+// A retire git refuses must reach the caller: cleanup logs it, and silence
+// here is how the pile this task answers came back.
+func TestCloseSurfacesAFailedRetire(t *testing.T) {
+	ops := &fakeOps{worktreeRetire: func(string, string) error { return errors.New("git refused") }}
+	h := &live{ops: ops, knobs: fast()}
+
+	if err := h.Close(Session{WorkspaceID: "w1", Repo: "/x", Branch: "fleet/n-1"}); err == nil {
+		t.Fatal("a failed retire must surface from Close")
+	}
+	if len(ops.retires) != 1 {
+		t.Errorf("retires = %v, want the attempt recorded", ops.retires)
 	}
 }
 
@@ -719,5 +792,133 @@ func TestWorktreeDiscardLeavesNoBranchOrWorktreeBehind(t *testing.T) {
 	}
 	if _, err := run("rev-parse", "--verify", "refs/heads/fleet/task-1-2"); err == nil {
 		t.Error("a branch whose worktree is already gone must still be deleted")
+	}
+}
+
+// TASK-68: the lighter teardown an author's worktree gets, proven against
+// real git. The registration and checkout go once the tree is clean; the
+// branch goes only when every commit it holds is already pushed (the
+// delivery lives on the forge then — the fleet fetches nothing, so the
+// remote-tracking refs the agent's own push updated answer); an unpushed
+// tip keeps its branch, and a dirty tree keeps everything — TASK-23's
+// guarantee that uncommitted work is never destroyed by a teardown.
+func TestWorktreeRetirePrunesTheRegistrationAndDeletesOnlyWhatIsSafe(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed; the retire cannot be proven")
+	}
+	dir := t.TempDir()
+	run := func(root string, args ...string) (string, error) {
+		out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	must := func(args ...string) string {
+		out, err := run(dir, args...)
+		if err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+		return out
+	}
+	must("init", "-q", "-b", "main")
+	must("config", "user.email", "fleet@example.com")
+	must("config", "user.name", "fleet")
+	must("commit", "--allow-empty", "-qm", "first")
+	origin := t.TempDir()
+	must("init", "-q", "--bare", origin)
+	must("remote", "add", "origin", origin)
+	ops := herdrOps{}
+
+	register := func(branch string) string {
+		wt := filepath.Join(t.TempDir(), "wt")
+		must("worktree", "add", "-q", "-b", branch, wt, "HEAD")
+		return wt
+	}
+	registered := func(branch string) bool {
+		return strings.Contains(must("worktree", "list", "--porcelain"), "refs/heads/"+branch)
+	}
+	hasBranch := func(branch string) bool {
+		_, err := run(dir, "rev-parse", "--verify", "refs/heads/"+branch)
+		return err == nil
+	}
+
+	// An unpushed branch is the delivery's only copy: the registration and
+	// the checkout go, the branch stays in the primary.
+	wt := register("fleet/unpushed")
+	if err := ops.WorktreeRetire(dir, "fleet/unpushed"); err != nil {
+		t.Fatal(err)
+	}
+	if registered("fleet/unpushed") {
+		t.Error("the worktree registration must be pruned")
+	}
+	if !hasBranch("fleet/unpushed") {
+		t.Error("an unpushed branch must survive its worktree")
+	}
+	if _, err := os.Stat(wt); !os.IsNotExist(err) {
+		t.Errorf("checkout dir still on disk: %v", err)
+	}
+
+	// A fully pushed branch: everything it holds is on the remote, so it is
+	// deleted with its registration.
+	register("fleet/pushed")
+	must("push", "-q", "-u", "origin", "fleet/pushed")
+	if err := ops.WorktreeRetire(dir, "fleet/pushed"); err != nil {
+		t.Fatal(err)
+	}
+	if registered("fleet/pushed") {
+		t.Error("the worktree registration must be pruned")
+	}
+	if hasBranch("fleet/pushed") {
+		t.Error("a fully pushed branch must be deleted with its worktree")
+	}
+
+	// One commit pushed, the next not: the branch stays with its unpushed
+	// tip — only the registration goes.
+	partial := register("fleet/partial")
+	must("push", "-q", "-u", "origin", "fleet/partial")
+	write(t, filepath.Join(partial, "local.txt"), "local only\n")
+	for _, args := range [][]string{{"add", "."}, {"commit", "-q", "-m", "not pushed"}} {
+		if out, err := run(partial, args...); err != nil {
+			t.Fatalf("git %v in the worktree: %v (%s)", args, err, out)
+		}
+	}
+	if err := ops.WorktreeRetire(dir, "fleet/partial"); err != nil {
+		t.Fatal(err)
+	}
+	if registered("fleet/partial") {
+		t.Error("the worktree registration must be pruned even when the branch stays")
+	}
+	if !hasBranch("fleet/partial") {
+		t.Error("a branch with an unpushed commit must survive")
+	}
+
+	// A branch never pushed under its own name keeps it even when its tip
+	// sits on the remote behind another ref (the live probe caught exactly
+	// this): what the retire deletes is the branch the push actually made.
+	must("push", "-q", "origin", "fleet/unpushed")
+	register("fleet/twin")
+	if err := ops.WorktreeRetire(dir, "fleet/twin"); err != nil {
+		t.Fatal(err)
+	}
+	if registered("fleet/twin") {
+		t.Error("the worktree registration must be pruned")
+	}
+	if !hasBranch("fleet/twin") {
+		t.Error("a branch with no remote ref of its own must survive")
+	}
+
+	// A dirty tree keeps everything: uncommitted work is never destroyed by
+	// a teardown, registration and branch included.
+	dirty := register("fleet/dirty")
+	write(t, filepath.Join(dirty, "uncommitted.txt"), "somebody still needs this\n")
+	if err := ops.WorktreeRetire(dir, "fleet/dirty"); err != nil {
+		t.Fatal(err)
+	}
+	if !registered("fleet/dirty") {
+		t.Error("a dirty worktree's registration must stay")
+	}
+	if !hasBranch("fleet/dirty") {
+		t.Error("a dirty worktree's branch must stay")
+	}
+	if body, err := os.ReadFile(filepath.Join(dirty, "uncommitted.txt")); err != nil || string(body) != "somebody still needs this\n" {
+		t.Errorf("uncommitted work disturbed: %q, %v", body, err)
 	}
 }

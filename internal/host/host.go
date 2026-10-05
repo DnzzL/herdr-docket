@@ -109,8 +109,9 @@ type Host interface {
 	// and it refuses a session with no branch rather than report a clean
 	// delivery for a run that has none to report.
 	Inspect(s Session) (Delivery, error)
-	// Close tears the session's workspace down. Called only when the run left
-	// nothing a human still needs to look at.
+	// Close tears the session's workspace down and retires the worktree
+	// behind it (wholesale for verify, only what is safe for an author).
+	// Called only when the run left nothing a human still needs to look at.
 	Close(s Session) error
 	// Notify raises Herdr's own desktop notification: the one way a run's
 	// report reaches a human who was not watching. Best-effort by contract —
@@ -279,7 +280,10 @@ func (h *live) Inspect(s Session) (Delivery, error) {
 	return Delivery{Commits: commits, Dirty: dirty}, nil
 }
 
-// Close tears the session's workspace down. A workspace that is already gone
+// Close tears the session's workspace down and retires the worktree
+// provisioning left behind: wholesale for a verify session (TASK-65), and
+// for an author only what is safe to delete — pushed branches and clean
+// trees (TASK-68). A workspace that is already gone
 // is torn down already: the runner reaches this from the cleanup path, where
 // the only thing it could do with the distinction is log it. The pane is the
 // caller for which it means something, and it holds the client directly.
@@ -297,14 +301,22 @@ func (h *live) Close(s Session) error {
 	if errors.Is(err, herdr.ErrGone) || h.ops.HasCode(err, herdr.CodeWorkspaceGone) {
 		err = nil
 	}
+	// The teardown of what Provision created, whichever way the run settled.
 	// A verify run's worktree and branch are discarded with it, even when the
 	// workspace was already gone (a run called off by closing it): what the
 	// run judged is recorded in the queue, and nothing it created may stay
-	// registered in the human's repo. An author's branch is a delivery and is
-	// never touched here.
+	// registered in the human's repo. An author's run gets the lighter retire
+	// (TASK-68): the registration pruned, the branch deleted only when every
+	// commit it holds is pushed — and only once the workspace really closed,
+	// since an agent that may still be in the directory must not have it
+	// removed underneath it.
 	if s.Verify && s.Branch != "" {
 		if derr := h.ops.WorktreeDiscard(s.Repo, s.Branch); derr != nil && err == nil {
 			err = derr
+		}
+	} else if err == nil && s.Branch != "" {
+		if rerr := h.ops.WorktreeRetire(s.Repo, s.Branch); rerr != nil {
+			err = rerr
 		}
 	}
 	return err

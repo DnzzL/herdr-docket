@@ -566,8 +566,10 @@ func (r *Runner) guardDelivery(src work.Source, taskID string, s host.Session, f
 
 // cleanup decides what happens to the run's workspace. A task that ended Done
 // left nothing to look at — the work is in the repo and the notes — so the
-// workspace is torn down, and a task handed to another agent is the same: the
-// next agent opens its own. Anything else keeps its workspace open as the
+// workspace is torn down (the host retires the worktree registration behind
+// it, deleting the branch only when it is pushed — TASK-68), and a task
+// handed to another agent is the same: the next agent opens its own.
+// Anything else keeps its workspace open as the
 // place to resume: the board's enter-jump lands there, and the note names it
 // for anyone reading the ticket instead of the board. keep is the guard's
 // answer: a workspace it kept has already said why on the task, so it is left
