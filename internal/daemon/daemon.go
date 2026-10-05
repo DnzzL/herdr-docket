@@ -86,12 +86,29 @@ func Run() error {
 	}
 }
 
+// pausedKey marks, in reported, that the pause is already in the log. No
+// diagnostic or task id can collide with it.
+const pausedKey = "\x00paused"
+
 // evaluate polls the queue and starts every run that can start now: at
 // most one per agent (and one per shared checkout for root-mode agents).
 // reported keeps the unknown-assignee noise down to one comment per task per
 // daemon lifetime: re-noting an unfixed typo every 15 seconds would bury the
 // task in comments.
 func evaluate(runs *runner.Runner, reported map[string]bool) {
+	// A paused fleet starts nothing, so it has nothing to read the queue for.
+	// The log says so once per pause, not once per tick.
+	if runner.Paused() {
+		if !reported[pausedKey] {
+			reported[pausedKey] = true
+			log.Printf("fleet paused — no new runs until `herdr-docket resume`")
+		}
+		return
+	}
+	if reported[pausedKey] {
+		delete(reported, pausedKey)
+		log.Printf("fleet resumed")
+	}
 	settings, err := loadSettings()
 	if err != nil {
 		log.Printf("fleet.yaml error, skipping this tick: %v", err)

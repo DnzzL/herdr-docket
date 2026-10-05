@@ -51,6 +51,11 @@ Usage:
   herdr-docket agent list       Show the agents and which are paused
   herdr-docket agent pause <n>  Stop scheduling an agent (a running task finishes)
   herdr-docket agent resume <n> Start scheduling it again
+  herdr-docket runs             Show the runs in flight
+  herdr-docket stop <task-id>   Stop a task's run in flight (it ends cancelled, the task Blocked)
+  herdr-docket pause [--now]    Pause the fleet: no new runs or pipeline stages (--now also stops runs in flight)
+  herdr-docket resume           Resume the fleet
+  herdr-docket pane             The runs-in-flight overlay: select, stop, pause (the plugin's pane)
   herdr-docket history [id]     Show recent runs
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
   herdr-docket changelog        Preview the next release's notes ([release <version>] to cut them)
@@ -86,6 +91,20 @@ func main() {
 		err = taskCmd(os.Args[2:])
 	case "agent":
 		err = agentCmd(os.Args[2:])
+	case "runs":
+		err = runsCmd(os.Args[2:], os.Stdout)
+	case "stop":
+		if len(os.Args) != 3 {
+			err = fmt.Errorf("usage: herdr-docket stop <task-id>")
+		} else {
+			err = stopRun(host.New(), os.Args[2], os.Stdout)
+		}
+	case "pause":
+		err = pauseCmd(host.New(), os.Args[2:], os.Stdout)
+	case "resume":
+		err = resumeCmd(os.Stdout)
+	case "pane":
+		err = paneCmd()
 	case "history":
 		err = historyCmd(os.Args[2:])
 	case "logs":

@@ -261,6 +261,16 @@ commits and PR, and for a verifier run `verified PASS p=…` — and
 `herdr-docket logs` is the daemon's own account. A run
 that fails, blocks or is held back from merging raises a Herdr notification.
 
+The fleet's own runs in flight are `herdr-docket runs`, or the plugin's
+**Herdr-Docket: runs** overlay pane — `x` stops the selected run, `p` pauses
+the fleet. A stopped run ends cancelled and leaves its task Blocked.
+
+**Pausing the fleet** (`herdr-docket pause`) is the credit brake: the daemon
+starts no run and a pipeline holds its next stage — verifier, rework — until
+`herdr-docket resume`. Runs in flight finish; `pause --now` stops them too.
+`herdr-docket run` still works, since that is you asking. Schedules in
+herdr-automations are not paused: disable them there.
+
 ## Commands
 
 | | |
@@ -281,6 +291,10 @@ that fails, blocks or is held back from merging raises a Herdr notification.
 | `herdr-docket task verdict ID PASS\|FAIL --pr URL` | a verifier's verdict, pinned to the PR's diff |
 | `herdr-docket agent list` | the agents, and which are parked |
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
+| `herdr-docket runs` | the runs in flight; a record past its timeout is marked `stale?` |
+| `herdr-docket stop TASK-12` | stop a task's run in flight |
+| `herdr-docket pause [--now]` / `resume` | pause the whole fleet — no new runs, no pipeline stages (`--now` stops runs in flight) |
+| `herdr-docket pane` | the runs overlay (the plugin opens it for you) |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
 | `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |

@@ -348,7 +348,14 @@ the shape):
 ## Known gaps
 
 - `fragile` — nothing caps a self-tasking loop since budgets went; `agent
-  pause` is the brake, applied by a human reading `history`.
+  pause` or a fleet-wide `herdr-docket pause` is the brake, applied by a
+  human reading `history`.
+- `fragile` — `pause` does not reach the herdr-automations schedules: a
+  paused fleet's crons still start their agents, which then file tasks the
+  daemon will not run. Disable them in herdr-automations.
+- `fragile` — a pipeline held by a pause waits in the daemon's memory: a
+  daemon restart while paused drops it, leaving the delivered PR unverified;
+  and the daemon's self-upgrade on a new binary waits for it, so until resume.
 - `fragile` — the runner reads `fleet.yaml` once, when the daemon starts:
   adding a `verifier:` takes a daemon restart. A PR delivered before that is
   held, not lost.
