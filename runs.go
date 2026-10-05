@@ -67,6 +67,23 @@ func timeoutFor(timeouts map[string]int, agent string) int {
 	return fleet.DefaultTimeoutMinutes
 }
 
+// staleGrace is the slack on a deadline before its record counts as stale:
+// the runner writes timed_out at the deadline, give or take a poll.
+const staleGrace = 2 * time.Minute
+
+// stale reports a record no live run can still be behind. A running record
+// past its timeout should have become timed_out; a timed_out one is listened
+// for twice the timeout more (ADR 0014), then closed. Past that, the daemon
+// died under the run, and the workspace id on the record may since name
+// somebody else's workspace — so nothing acts on it.
+func stale(r history.Record, timeoutMinutes int, now time.Time) bool {
+	limit := time.Duration(timeoutMinutes) * time.Minute
+	if r.Status == history.StatusTimedOut {
+		limit *= 2
+	}
+	return now.Sub(r.At) > limit+staleGrace
+}
+
 // formatRun is one run in flight: task, agent, stage, elapsed against the
 // timeout, and the workspace it lives in. A running record past its timeout
 // is marked stale: the runner writes timed_out at the deadline, so a running
@@ -75,10 +92,10 @@ func formatRun(r history.Record, timeoutMinutes int, now time.Time) string {
 	elapsed := now.Sub(r.At)
 	age := fmt.Sprintf("%s / %dm", shortDuration(elapsed), timeoutMinutes)
 	switch {
+	case stale(r, timeoutMinutes, now):
+		age += " stale?"
 	case r.Status == history.StatusTimedOut:
 		age += " late"
-	case elapsed > time.Duration(timeoutMinutes)*time.Minute:
-		age += " stale?"
 	}
 	trigger := string(r.Trigger)
 	if trigger == "" {
@@ -105,15 +122,19 @@ func stopRun(c sessionCloser, task string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	timeouts := agentTimeouts()
 	for _, r := range live {
 		if r.Task == task {
-			return stopRecord(c, r, out)
+			return stopRecord(c, r, timeoutFor(timeouts, r.Agent), out)
 		}
 	}
 	return fmt.Errorf("%s has no run in flight", task)
 }
 
-func stopRecord(c sessionCloser, r history.Record, out io.Writer) error {
+func stopRecord(c sessionCloser, r history.Record, timeoutMinutes int, out io.Writer) error {
+	if stale(r, timeoutMinutes, time.Now()) {
+		return fmt.Errorf("%s: the record is stale (%s old, past its timeout) — no live run is behind it, and %s may now be another workspace; close it by hand if it is the run's", r.Task, shortDuration(time.Since(r.At)), r.WorkspaceID)
+	}
 	if r.WorkspaceID == "" && r.TabID == "" {
 		return fmt.Errorf("%s: the run's record names no workspace to close", r.Task)
 	}
@@ -148,9 +169,15 @@ func pauseCmd(c sessionCloser, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	timeouts := agentTimeouts()
 	var failed []string
 	for _, r := range live {
-		if err := stopRecord(c, r, out); err != nil {
+		timeout := timeoutFor(timeouts, r.Agent)
+		if stale(r, timeout, time.Now()) {
+			fmt.Fprintf(out, "left %s: its record is stale, no live run is behind it\n", r.Task)
+			continue
+		}
+		if err := stopRecord(c, r, timeout, out); err != nil {
 			failed = append(failed, err.Error())
 		}
 	}
@@ -229,7 +256,7 @@ func paneCmd() error {
 				sel = int(k - '1')
 			case k == 'x' && len(live) > 0:
 				var b strings.Builder
-				if err := stopRecord(closer, live[sel], &b); err != nil {
+				if err := stopRecord(closer, live[sel], timeoutFor(agentTimeouts(), live[sel].Agent), &b); err != nil {
 					status = err.Error()
 				} else {
 					status = strings.TrimSpace(b.String())

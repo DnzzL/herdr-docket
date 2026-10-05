@@ -50,6 +50,12 @@ func (s Settings) sourceOf(taskID string) (SourceConfig, bool) {
 	return c, ok
 }
 
+// MaxRunsFor is the cap of the queue a task's id points at; 0 = none.
+func (s Settings) MaxRunsFor(taskID string) int {
+	c, _ := s.sourceOf(taskID)
+	return c.MaxRuns
+}
+
 // Pipeline is how a task's queue ends a run that delivered a pull request:
 // the agent that verifies it, and whether a PASS may merge on its own. An
 // empty verifier means the queue has no pipeline.

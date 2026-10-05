@@ -31,6 +31,10 @@ type Settings struct {
 	// this they would all start refusing on the day the second queue appears.
 	// Empty is only workable with a single queue.
 	DefaultSource string `yaml:"default_source"`
+	// MaxRuns caps the runs the daemon keeps in flight at once, whatever the
+	// queue: every run is a coding agent on this one machine, and past a few
+	// they starve each other of memory and time out together. 0 = no cap.
+	MaxRuns int `yaml:"max_runs"`
 }
 
 // LoadSettings reads fleet.yaml, fills defaults, expands ~. A missing file is

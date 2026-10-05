@@ -424,3 +424,102 @@ func TestAPausedFleetStartsNoRun(t *testing.T) {
 		t.Fatal("a paused fleet must not start a run")
 	}
 }
+
+// blockingHost holds every run in Do until release is closed, so a test can
+// see what a tick starts while earlier runs are still in flight.
+type blockingHost struct {
+	fakeHost
+	release chan struct{}
+	mu      sync.Mutex
+	started []string
+}
+
+func (h *blockingHost) Do(s host.Session, spec host.Spec, _ time.Duration) error {
+	h.mu.Lock()
+	h.started = append(h.started, spec.Prompt)
+	h.mu.Unlock()
+	<-h.release
+	return nil
+}
+
+func (h *blockingHost) count() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.started)
+}
+
+func waitStarted(t *testing.T, h *blockingHost, n int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for h.count() < n && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond) // and no more than n
+}
+
+func threeAgents() map[string]fleet.Agent {
+	return map[string]fleet.Agent{
+		"a": {Name: "a", Workdir: "/w/a", Workspace: "root", TimeoutMinutes: 1},
+		"b": {Name: "b", Workdir: "/w/b", Workspace: "root", TimeoutMinutes: 1},
+		"c": {Name: "c", Workdir: "/w/c", Workspace: "root", TimeoutMinutes: 1},
+	}
+}
+
+// max_runs caps the fleet as a whole: one machine runs that many agents at
+// once, however many are idle — and runs from an earlier tick still count.
+func TestMaxRunsCapsTheFleetAcrossTicks(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(
+		work.Task{ID: "TASK-1", Title: "T1", Open: true, Assignee: "a"},
+		work.Task{ID: "TASK-2", Title: "T2", Open: true, Assignee: "b"},
+		work.Task{ID: "TASK-3", Title: "T3", Open: true, Assignee: "c"},
+	)
+	withFleet(t, threeAgents(), src, src)
+	loadSettings = func() (fleet.Settings, error) { return fleet.Settings{Dir: "/fleet", MaxRuns: 2}, nil }
+	h := &blockingHost{release: make(chan struct{})}
+	defer close(h.release)
+	runs := runner.New(h, fleet.Settings{Dir: "/fleet"})
+
+	evaluate(runs, map[string]bool{})
+	waitStarted(t, h, 2)
+	if h.count() != 2 {
+		t.Fatalf("first tick started %d runs, want 2", h.count())
+	}
+	evaluate(runs, map[string]bool{})
+	waitStarted(t, h, 2)
+	if h.count() != 2 {
+		t.Fatalf("a tick with 2 runs in flight started more: %d", h.count())
+	}
+}
+
+// A project's max_runs caps that project only: the other queue keeps going.
+func TestMaxRunsPerProjectLeavesTheOtherProjectAlone(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(
+		work.Task{ID: "app/TASK-1", Title: "T1", Open: true, Assignee: "a"},
+		work.Task{ID: "app/TASK-2", Title: "T2", Open: true, Assignee: "b"},
+		work.Task{ID: "lib/TASK-1", Title: "T3", Open: true, Assignee: "c"},
+	)
+	withFleet(t, threeAgents(), src)
+	loadSettings = func() (fleet.Settings, error) {
+		return fleet.Settings{Dir: "/fleet", Sources: map[string]fleet.SourceConfig{
+			"app": {MaxRuns: 1},
+			"lib": {},
+		}}, nil
+	}
+	h := &blockingHost{release: make(chan struct{})}
+	defer close(h.release)
+	runs := runner.New(h, fleet.Settings{Dir: "/fleet"})
+
+	evaluate(runs, map[string]bool{})
+	waitStarted(t, h, 2)
+	app := 0
+	for _, id := range runs.InFlight() {
+		if strings.HasPrefix(id, "app/") {
+			app++
+		}
+	}
+	if h.count() != 2 || app != 1 {
+		t.Fatalf("started %d (app %d), want 2 with 1 from app", h.count(), app)
+	}
+}
