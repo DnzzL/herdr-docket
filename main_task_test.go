@@ -634,6 +634,31 @@ func TestVerdictRecordsThePatchItJudgedAndSaysSoOnThePR(t *testing.T) {
 	}
 }
 
+// The comment the human merging reads is two contracts in one body: line one
+// is the machine-readable verdict parsers grep for, and the verifier's note
+// rides under it so the evidence is on the PR itself, not only in the task
+// notes (TASK-71).
+func TestTheVerdictCommentKeepsLineOneAndCarriesTheNote(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := history.Append(history.Record{RunID: "v1", Task: "TASK-2", Agent: "rev", Status: history.StatusRunning, At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	forge := &fakeForge{pr: gate.PR{PatchID: "p42", State: "OPEN"}}
+	if _, err := runTaskPiped(t, &fakeSource{}, forge, "verdict", "TASK-2", "PASS", "--pr", "https://example.com/pr/9", "--note", "re-derived AC1 on the real surface"); err != nil {
+		t.Fatal(err)
+	}
+	if len(forge.comments) != 1 {
+		t.Fatalf("PR comments = %q", forge.comments)
+	}
+	first, under, _ := strings.Cut(forge.comments[0], "\n")
+	if first != "docket-verdict: PASS patch-id=p42" {
+		t.Errorf("first line = %q, want the verdict line unchanged", first)
+	}
+	if !strings.Contains(under, "re-derived AC1 on the real surface") {
+		t.Errorf("note must follow the verdict line, comment = %q", forge.comments[0])
+	}
+}
+
 func TestVerdictRefusesAMissingPROrAnUnknownWord(t *testing.T) {
 	for _, args := range [][]string{
 		{"verdict", "TASK-2", "PASS"},
