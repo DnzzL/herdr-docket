@@ -171,6 +171,46 @@ func TestTaskCreateNeedsATitle(t *testing.T) {
 	}
 }
 
+// `task create --help` used to take the flag for the title: the queue's own
+// CLI printed its help, it named no id back, and the run still reported a
+// creation — "created docket/ (in To Do)" for a task that never existed
+// (TASK-72). Help prints the usage, exits 0, and reaches no queue at all.
+func TestTaskCreateHelpPrintsUsageAndCreatesNothing(t *testing.T) {
+	for _, flag := range []string{"--help", "-h"} {
+		t.Run(flag, func(t *testing.T) {
+			src := &fakeSource{}
+			got, err := runTask(t, src, "create", flag)
+			if err != nil {
+				t.Fatalf("help must exit 0, got: %v", err)
+			}
+			if !strings.Contains(got, "usage: herdr-docket task create") {
+				t.Fatalf("help must print the usage, got:\n%s", got)
+			}
+			if src.created != nil {
+				t.Fatalf("help must create nothing; the queue saw %v", src.created)
+			}
+		})
+	}
+}
+
+// noIDSource is a queue that answers a create without naming the task —
+// what the backlog CLI does when it prints its own help instead.
+type noIDSource struct{ fakeSource }
+
+func (noIDSource) Create(string, string, string) (string, error) { return "", nil }
+
+// An empty id from the queue is an error, never a creation (TASK-72): the
+// report used to say "created" for a queue that named nothing back.
+func TestTaskCreateEmptyIDIsAnError(t *testing.T) {
+	got, err := runTask(t, &noIDSource{}, "create", "T", "-a", "dev")
+	if err == nil {
+		t.Fatal("an empty id from the queue must fail")
+	}
+	if strings.Contains(got, "created") {
+		t.Fatalf("nothing was created; stdout must not claim one:\n%s", got)
+	}
+}
+
 // The CLI output says where the task landed, every time the fleet did not
 // choose the column, and never implies a choice the queue made on its own
 // (ADR-0012). A task stranded in a column the daemon never reads is exactly
@@ -631,6 +671,31 @@ func TestVerdictRecordsThePatchItJudgedAndSaysSoOnThePR(t *testing.T) {
 	}
 	if len(src.verdicts) != 0 {
 		t.Fatalf("a verdict must not close the task: %v", src.verdicts)
+	}
+}
+
+// The comment the human merging reads is two contracts in one body: line one
+// is the machine-readable verdict parsers grep for, and the verifier's note
+// rides under it so the evidence is on the PR itself, not only in the task
+// notes (TASK-71).
+func TestTheVerdictCommentKeepsLineOneAndCarriesTheNote(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if err := history.Append(history.Record{RunID: "v1", Task: "TASK-2", Agent: "rev", Status: history.StatusRunning, At: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	forge := &fakeForge{pr: gate.PR{PatchID: "p42", State: "OPEN"}}
+	if _, err := runTaskPiped(t, &fakeSource{}, forge, "verdict", "TASK-2", "PASS", "--pr", "https://example.com/pr/9", "--note", "re-derived AC1 on the real surface"); err != nil {
+		t.Fatal(err)
+	}
+	if len(forge.comments) != 1 {
+		t.Fatalf("PR comments = %q", forge.comments)
+	}
+	first, under, _ := strings.Cut(forge.comments[0], "\n")
+	if first != "docket-verdict: PASS patch-id=p42" {
+		t.Errorf("first line = %q, want the verdict line unchanged", first)
+	}
+	if !strings.Contains(under, "re-derived AC1 on the real surface") {
+		t.Errorf("note must follow the verdict line, comment = %q", forge.comments[0])
 	}
 }
 

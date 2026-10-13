@@ -60,18 +60,35 @@ type Runner struct {
 	now        func() time.Time
 }
 
+// Option configures a Runner at construction. Production passes none; the
+// options exist for tests that must answer the pipeline's reach beyond the
+// host (ADR 0013) themselves.
+type Option func(*Runner)
+
+// WithForge answers this Runner's forge reads with f instead of the real
+// forge. Construction-time on purpose: the forge is read from run and settle
+// goroutines, so a setter on a live Runner would race them — a test builds
+// its Runner with the fake already in it.
+func WithForge(f gate.Forge) Option {
+	return func(r *Runner) { r.forge = f }
+}
+
 // New returns a Runner working through h. The queue is not held here: it is
 // passed to Run, so the task a run reads and the queue it writes back to are
 // the same value by construction, even as the daemon rebuilds its source
 // between ticks.
-func New(h host.Host, settings fleet.Settings) *Runner {
-	return &Runner{
+func New(h host.Host, settings fleet.Settings, opts ...Option) *Runner {
+	r := &Runner{
 		host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{}, tasks: map[string]bool{},
 		forge: gate.GH{}, sleep: time.Sleep, now: time.Now, agents: func() map[string]fleet.Agent {
 			a, _ := fleet.LoadAgents(settings.Dir)
 			return a
 		},
 	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // Running reports whether this process holds the task's run — for the whole
