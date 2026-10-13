@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -83,5 +84,34 @@ func TestTheMergeDigestIsShippedDailyAndLicensedInDocs(t *testing.T) {
 	}
 	if !strings.Contains(string(factory), "the digest decides nothing — it only lists") {
 		t.Error("docs/factory.md never says why a schedule may do its own work: the digest decides nothing — it only lists")
+	}
+}
+
+// verdictCommand matches a `task verdict` command example, tolerant of the
+// line wraps markdown puts inside a backticked command.
+var verdictCommand = regexp.MustCompile("task verdict[^`\\n]*(?:\\n[^`]*)?")
+
+// The instruction to carry the evidence is the --note flag: without it an
+// agent following the docs verbatim records a bare verdict, and the evidence
+// it gathered is stranded in the task notes instead of on the PR comment.
+// Every command example in the docs and the shipped roles must carry it —
+// this omission already produced a bare verdict once (docket TASK-71).
+func TestEveryVerdictExampleCarriesItsNote(t *testing.T) {
+	for _, path := range []string{
+		"../../docs/commands.md",
+		"../../docs/examples.md",
+		"../../docs/factory.md",
+		"../../docs/adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md",
+		"roles/reviewer.md",
+	} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, example := range verdictCommand.FindAllString(string(raw), -1) {
+			if !strings.Contains(example, "--note") {
+				t.Errorf("%s: a task verdict example without --note teaches a bare verdict: %q", path, example)
+			}
+		}
 	}
 }

@@ -33,7 +33,8 @@ option nobody asked for, the same edit repeated across files instead of the
 one place every caller goes through: name the smaller shape. FAIL it when the
 excess adds risk; otherwise file it as a follow-up.
 
-**The verdict.** Record exactly one `herdr-docket task verdict <id> PASS|FAIL
---pr <url>`. A FAIL carries the concrete fix — it is the author's next brief.
-Taste is not a FAIL: a finding you would not block on becomes a follow-up task
-for the author, not a verdict.
+**The verdict.** Record exactly one
+`herdr-docket task verdict <id> PASS|FAIL --pr <url> --note "<evidence>"` — the
+note is what lands on the PR comment, so the evidence is never stranded in the
+task notes. A FAIL carries the concrete fix — it is the author's next brief. Taste is not a FAIL: a finding you would
+not block on becomes a follow-up task for the author, not a verdict.
