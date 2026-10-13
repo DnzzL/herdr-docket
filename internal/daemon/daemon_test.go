@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/gate"
+	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/work"
@@ -102,6 +104,31 @@ func (s *memSource) notesFor() []string {
 	return append([]string(nil), s.notes...)
 }
 
+func (s *memSource) verdict(id string) work.Verdict {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.items[id].Verdict
+}
+
+// settleForge answers a PR read with one fixed state — the daemon test's
+// half of runner's forge seam (WithForge). Without it a settle pass in this
+// package would go to the real gh, so the test could neither answer "merged"
+// nor stay offline.
+type settleForge struct {
+	state string
+	reads int
+}
+
+func (f *settleForge) PR(string) (gate.PR, error) {
+	f.reads++
+	return gate.PR{State: f.state}, nil
+}
+func (f *settleForge) Merge(string, string) error          { return nil }
+func (f *settleForge) Codeowners(string) ([]string, error) { return nil, nil }
+func (f *settleForge) Comment(string, string) error        { return nil }
+func (f *settleForge) AddLabel(string, string) error       { return nil }
+func (f *settleForge) RemoveLabel(string, string) error    { return nil }
+
 var errNoTask = errFmt("no such task")
 
 type errFmt string
@@ -175,6 +202,41 @@ func waitEnded(t *testing.T, runs *runner.Runner, id string) {
 	}
 	if runs.Running(id) {
 		t.Fatalf("%s: run never released the task lock", id)
+	}
+}
+
+// The daemon's only production entry to the settle pass (TASK-70) is the
+// `go runs.Settle(src, tasks)` each tick spawns. runner.Settle is proven on
+// its own; nothing tied the wiring to the suite — delete that line and a
+// held task whose pull request the human already merged stays held forever,
+// with every other test green (TASK-74). So: a held task on the queue, its
+// PR in history, the forge answering MERGED, one tick.
+func TestATickSettlesAHeldTaskWhosePullRequestIsMerged(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	const id = "fleet/TASK-1"
+	if err := history.Append(history.Record{
+		RunID: id + "-1", Task: id, Status: history.StatusDone,
+		PullRequest: "https://github.com/DnzzL/herdr-docket/pull/70",
+	}); err != nil {
+		t.Fatalf("record the pull request: %v", err)
+	}
+	src := newMemSource(work.Task{
+		ID: id, Title: "T", Open: true, Blocked: true, Phase: "Blocked", Assignee: "dev",
+	})
+	withFleet(t, map[string]fleet.Agent{
+		"dev": {Name: "dev", Workdir: "/w", Workspace: "root", TimeoutMinutes: 1},
+	}, src)
+	forge := &settleForge{state: "MERGED"}
+	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}, runner.WithForge(forge))
+
+	evaluate(runs, map[string]bool{})
+	waitClosed(t, src, id)
+
+	if got := src.verdict(id); got != work.Done {
+		t.Errorf("verdict = %q, want done: the merged pull request settles the held task", got)
+	}
+	if forge.reads != 1 {
+		t.Errorf("forge reads = %d, want 1: the state was answered through the injected forge", forge.reads)
 	}
 }
 
