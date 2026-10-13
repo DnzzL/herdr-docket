@@ -52,6 +52,11 @@ type Runner struct {
 	forge  gate.Forge
 	sleep  func(time.Duration)
 	agents func() map[string]fleet.Agent
+	// settle's own cadence: it reads the forge every settleEvery rather than
+	// every tick, so its clock is guarded apart from the run slots above.
+	settleMu   sync.Mutex
+	lastSettle time.Time
+	now        func() time.Time
 }
 
 // New returns a Runner working through h. The queue is not held here: it is
@@ -61,7 +66,7 @@ type Runner struct {
 func New(h host.Host, settings fleet.Settings) *Runner {
 	return &Runner{
 		host: h, settings: settings, fleetDir: settings.Dir, busy: map[string]*os.File{}, tasks: map[string]bool{},
-		forge: gate.GH{}, sleep: time.Sleep, agents: func() map[string]fleet.Agent {
+		forge: gate.GH{}, sleep: time.Sleep, now: time.Now, agents: func() map[string]fleet.Agent {
 			a, _ := fleet.LoadAgents(settings.Dir)
 			return a
 		},

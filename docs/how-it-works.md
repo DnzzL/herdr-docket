@@ -69,6 +69,10 @@ Personas built this way — a dev, a verifier, an intake, a lookback:
 5. In a queue with a verifier, a delivered PR goes on: the verifier runs on
    the same task, a FAIL sends the author back with the note (twice at most),
    and a PASS reaches the merge gate — [the pipeline](factory.md#the-pipeline).
+   A hold waits on its pull request and settles with it: every few minutes
+   the fleet reads the PR of each held or failed task through the forge —
+   merged closes the task `Done`, a PR a human closed unmerged closes it
+   `Failed` with a note saying so, an open PR leaves the hold standing.
 
 Runs have a time budget. The prompt tells the agent the honest way out of a
 task that won't fit: one coherent slice, a handoff note, a follow-up task —

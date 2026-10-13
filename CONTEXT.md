@@ -106,5 +106,7 @@ diff, green CI, no `critical` label, no CODEOWNERS path, `merge: auto`.
 
 **Hold**:
 A delivery the gate or the pipeline stopped: the task is closed _blocked_
-with the one reason, and a human is notified.
+with the one reason, and a human is notified. A hold waits on its pull
+request and settles with it: merged, the task closes _done_; closed
+unmerged by a human, _failed_; still open, the hold stands.
 _Avoid_: reject, park
