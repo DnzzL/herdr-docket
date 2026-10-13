@@ -73,6 +73,12 @@ what its users call it.
 
 ## The pipeline
 
+**Factory**:
+A fleet whose queue names a verifier, plus the scheduled tasks that feed and
+review it. Minimal in what its operator runs — the queue they already have,
+no service, no store, no second daemon — not in its size.
+_Avoid_: pipeline (one task's author → verifier → gate), workflow
+
 **Author**:
 The agent whose run delivered a pull request for a task — the queue's
 default agent, in a queue with a verifier.

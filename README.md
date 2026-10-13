@@ -1,7 +1,8 @@
 # herdr-docket
 
-**Give a task to a named coding agent. It opens a pull request, a second agent
-verifies it, and a merge gate written in code merges it — or hands it to you.**
+**Give a task to a named coding agent. It opens a pull request and a second
+agent verifies it. You merge — or, once you allow it, a merge gate written in
+code does.**
 
 A task queue and a small software factory for [Herdr](https://herdr.dev): your
 agents work the queue in parallel, in workspaces you can watch, join or close.
@@ -60,13 +61,14 @@ More: [how it works](docs/how-it-works.md) · [the factory loop](docs/factory.md
 
 ## How much autonomy
 
-Start with a hand on it, then let go one project at a time:
+Start with one task you file by hand, then let go one project at a time:
 
 | Step | `fleet.yaml` | You do |
 | --- | --- | --- |
 | 1. Agents work, you review | a queue, an agent | read and merge every PR |
 | 2. A verifier reviews first | `verifier: reviewer` | merge what passed |
 | 3. The gate merges | `merge: auto` + a `CODEOWNERS` | answer the `Blocked` column |
+| 4. The loop feeds itself | `herdr-docket init --factory` + its schedules | read the weekly lookback ([the factory](docs/factory.md)) |
 
 The fleet only ever picks up the status you name, so your triage and wontfix
 columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers).
@@ -78,9 +80,6 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
   ([where the queue lives](docs/queues.md)).
 - **Agents are markdown** — one `AGENT.md` each: run parameters plus a persona
   ([writing an agent](docs/agents.md), [worked examples](docs/examples.md)).
-- **The whole factory in one command** — `herdr-docket init --factory` adds
-  intake, verifier, a stall sweep and a weekly lookback
-  ([the factory](docs/factory.md)).
 - **A brake** — `herdr-docket pause` stops new runs fleet-wide; the **runs**
   pane shows what is in flight and stops a run with one key.
 - **No service, no store** — markdown in git and one JSONL history file.
@@ -92,9 +91,13 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
   decide *when*, the fleet decides *what* and *who*.
 - **Not a workflow engine.** A task is one goal; its only fixed sequence is
   author → verifier → gate. Agents fan out by filing follow-up tasks.
+- **Not an environment.** An agent needs a repo it can run, test data and a
+  way to check a fix the way a user would; that lives in your repo, and the
+  `AGENT.md` points at it.
 - **Not an autonomous company.** [paperclip.ing](https://paperclip.ing) runs
-  one; this is the smallest version of the idea that still works — named
-  agents, a shared queue, no org chart, autonomy as a dial.
+  one; this is the smallest version of the idea that still works — small in
+  what you run, not in code: named agents, a shared queue, no org chart,
+  autonomy as a dial.
 
 ## Docs
 
