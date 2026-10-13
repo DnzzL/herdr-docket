@@ -298,6 +298,77 @@ func TestTheTaskClaimIsAnFlockASecondHolderCannotTake(t *testing.T) {
 	<-first
 }
 
+// The lock file is a claim, not a record: once the run settles, the flock
+// means nothing and the file goes with it, so the state dir does not grow one
+// run-*.lock per task forever. While the run is live the file must of course
+// stand — the same test's first half is the second run's refusal.
+func TestASettledRunLeavesNoLockFileBehind(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	b := newBoard("TASK-1")
+	started, release := make(chan struct{}), make(chan struct{})
+	h := &fakeHost{after: func() { close(started); <-release; b.Close("TASK-1", work.Done) }}
+	r := New(h, fleet.Settings{Dir: "/fleet"})
+	dev := fleet.Agent{Name: "dev", Workdir: "/w", Workspace: "worktree", TimeoutMinutes: 1}
+	pm := fleet.Agent{Name: "pm", Workdir: "/w", Workspace: "worktree", TimeoutMinutes: 1}
+
+	first := make(chan error, 1)
+	go func() { first <- r.Run(b, work.Task{ID: "TASK-1", Open: true}, dev, "poll") }()
+	<-started
+
+	// Mid-run the claim stands: the task's lock file is on disk and refuses a
+	// second run under any other routing.
+	if _, err := os.Stat(filepath.Join(hostpath.StateDir(), "run-taskid-task-1.lock")); err != nil {
+		t.Fatalf("a live run must hold its lock file on disk: %v", err)
+	}
+	if err := New(&fakeHost{}, fleet.Settings{Dir: "/fleet"}).Run(b, work.Task{ID: "TASK-1", Open: true}, pm, "manual"); err == nil {
+		t.Fatal("a second run on a task whose lock is held must be refused")
+	}
+
+	close(release)
+	if err := <-first; err != nil {
+		t.Fatalf("the first run must settle clean: %v", err)
+	}
+
+	// Settled: no lock file of any kind survives the run — the task's or the
+	// agent's.
+	left, err := filepath.Glob(filepath.Join(hostpath.StateDir(), "run-*.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Fatalf("a settled run leaves no lock file, still on disk: %v", left)
+	}
+}
+
+// The sweep is the one-time half of removal: files from runs that settled
+// before removal existed, and from crashes, go when the daemon starts. Only
+// what no run holds — a live claim's flock passes its test and keeps the file.
+func TestSweepLocksTakesOnlyWhatNoRunHolds(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	stale := filepath.Join(hostpath.StateDir(), "run-taskid-task-9.lock")
+	if err := os.WriteFile(stale, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	held := filepath.Join(hostpath.StateDir(), "run-agent-dev.lock")
+	f, err := os.OpenFile(held, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("hold the lock the way a live run does: %v", err)
+	}
+
+	SweepLocks()
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("a lock file no run holds must be swept, stat = %v", err)
+	}
+	if _, err := os.Stat(held); err != nil {
+		t.Errorf("a lock file a live run holds must survive the sweep: %v", err)
+	}
+}
+
 func TestHappyPathAgentReportsDone(t *testing.T) {
 	b := newBoard("TASK-1")
 	h := &fakeHost{after: func() { b.Close("TASK-1", work.Done) }}

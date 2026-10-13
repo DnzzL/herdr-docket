@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -130,7 +131,9 @@ func (r *Runner) Busy() bool {
 // non-blocking flock on <state>/run-<key>.lock for each. All or nothing, so a
 // run that cannot take every key takes none; the taken key is named back so
 // the refusal can say what was busy. flock dies with the process, so a
-// crashed run never leaves a stale claim behind.
+// crashed run never leaves a stale claim behind — and a settled run removes
+// the lock file itself, so the state dir holds lock files only for runs in
+// flight (the sweep takes the ones that settled before removal existed).
 func (r *Runner) acquire(keys ...string) (taken string, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -143,38 +146,78 @@ func (r *Runner) acquire(keys ...string) (taken string, ok bool) {
 		log.Printf("state dir: %v", err)
 		return "", false
 	}
-	held := make([]*os.File, 0, len(keys))
+	held := map[string]*os.File{}
 	for _, key := range keys {
-		f, err := os.OpenFile(filepath.Join(hostpath.StateDir(), "run-"+key+".lock"), os.O_CREATE|os.O_RDWR, 0o644)
-		if err != nil {
-			log.Printf("run lock: %v", err)
+		f, err := claim(key)
+		switch {
+		case err == nil:
+			held[key] = f
+			r.busy[key] = f
+		case errors.Is(err, errBusy):
 			releaseLocked(r.busy, held) // give back what this attempt took
+			return key, false
+		default:
+			log.Printf("run lock: %v", err)
+			releaseLocked(r.busy, held)
 			return "", false
 		}
-		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-			f.Close()
-			releaseLocked(r.busy, held)
-			return key, false
-		}
-		held = append(held, f)
-		r.busy[key] = f
 	}
 	return "", true
 }
 
-// releaseLocked unlocks and closes files this process holds, and drops their
-// in-process entries. Only ever called with r.mu held.
-func releaseLocked(busy map[string]*os.File, files []*os.File) {
-	for _, f := range files {
-		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-		f.Close()
-	}
-	for key, f := range busy {
-		for _, held := range files {
-			if held == f {
-				delete(busy, key)
-			}
+// errBusy is claim's answer when the key's flock is already held — by a run
+// of this process or of any other; the flock is what tells them apart, not
+// this process's bookkeeping.
+var errBusy = errors.New("the lock is held by another run")
+
+// claim takes one key's flock, and only while the file it locked is still the
+// file at the path. drop removes the file while it still holds the flock, so
+// a descriptor opened just before that unlink must not walk away holding a
+// claim on a file nothing else can find: it loses and claims again on the
+// fresh file, which is the one every new opener sees. Without this check the
+// unlink-while-held ordering would still leave a instant where two runs hold
+// flocks on the same task — one on the unlinked file, one on its replacement.
+func claim(key string) (*os.File, error) {
+	path := lockPath(key)
+	for attempt := 0; attempt < 2; attempt++ {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+		if err != nil {
+			return nil, err
 		}
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			f.Close()
+			return nil, errBusy
+		}
+		if sameFile(f, path) {
+			return f, nil
+		}
+		f.Close() // the file was replaced under us; claim the one at the path
+	}
+	return nil, errBusy
+}
+
+// sameFile reports whether f's file is still the one at path — the flock
+// protects a run only while the file it locked is the file every new opener
+// finds.
+func sameFile(f *os.File, path string) bool {
+	fd, errF := f.Stat()
+	p, errP := os.Stat(path)
+	if errF != nil || errP != nil {
+		return false
+	}
+	a, isA := fd.Sys().(*syscall.Stat_t)
+	b, isB := p.Sys().(*syscall.Stat_t)
+	return isA && isB && a.Dev == b.Dev && a.Ino == b.Ino
+}
+
+func lockPath(key string) string { return filepath.Join(hostpath.StateDir(), "run-"+key+".lock") }
+
+// releaseLocked gives back the claims one acquire attempt took, file first:
+// only ever called with r.mu held.
+func releaseLocked(busy map[string]*os.File, held map[string]*os.File) {
+	for key, f := range held {
+		drop(lockPath(key), f)
+		delete(busy, key)
 	}
 }
 
@@ -182,9 +225,52 @@ func (r *Runner) release(key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if f, ok := r.busy[key]; ok {
-		syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-		f.Close()
 		delete(r.busy, key)
+		drop(lockPath(key), f)
+	}
+}
+
+// drop gives back one held claim and retires its file: the unlink comes
+// first, while the flock still excludes other runs — between the unlink and
+// the close a new opener may already create and take the next file, and that
+// is correct (this run has settled); what must never happen is a second run
+// taking this file's claim, which the held flock refuses and claim's inode
+// check catches from the other side. An unlink error leaves a file whose
+// flock is dead — a leftover, which the next claim/release pair or the
+// daemon's sweep takes.
+func drop(path string, f *os.File) {
+	os.Remove(path)
+	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	f.Close()
+}
+
+// SweepLocks removes the run lock files no run holds: leftovers of runs that
+// settled before removal existed, and of crashes. A live claim — the
+// daemon's or a manual `herdr-docket run`'s, its flock held across
+// processes — passes its flock test and keeps its file. Called once, when
+// the daemon starts: from then on a settled run drops its own file, and a
+// crash's leftover goes the next time that key is claimed and released.
+func SweepLocks() {
+	dir := hostpath.StateDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "run-") || !strings.HasSuffix(name, ".lock") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		f, err := os.OpenFile(path, os.O_RDWR, 0o644)
+		if err != nil {
+			continue
+		}
+		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+			f.Close() // a live run holds it — a claim, not a leftover
+			continue
+		}
+		drop(path, f)
 	}
 }
 
