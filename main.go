@@ -415,6 +415,13 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 				return err
 			}
 			criteria = append(criteria, v)
+		case "-h", "--help":
+			// Help is not a title: the flag used to fall through to the
+			// title, the backlog CLI printed its own help for it, and the
+			// empty id that came back was reported as a creation
+			// (TASK-72). Print the usage and reach no queue at all.
+			fmt.Fprintln(out, usage)
+			return nil
 		default:
 			if title != "" {
 				return fmt.Errorf("task create: unexpected argument %q\n%s", args[i], usage)
@@ -434,6 +441,13 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 	if err != nil {
 		return err
 	}
+	// A create the queue named nothing back for is an error, not a creation
+	// (TASK-72): "created" for an empty id is how a phantom "docket/" got
+	// announced. Said before the bar is written and before anything is
+	// reported — an id the queue never gave cannot carry writes or news.
+	if id == "" {
+		return fmt.Errorf("task create: the queue returned no id for the new task — run herdr-docket task list to see whether it landed before trying again")
+	}
 	// The bar is written through the new id after the create: one call site
 	// for criteria, whatever column the queue chose or could not choose when
 	// it landed (ADR-0012). A queue that cannot store criteria says where the
@@ -446,15 +460,7 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 	// otherwise (ADR-0012) — the column a daemon will never read is exactly
 	// what a friend would want to know about.
 	if started {
-		if id == "" {
-			fmt.Fprintln(out, "created (in To Do)")
-			return nil
-		}
 		fmt.Fprintf(out, "created %s (in To Do)\n", id)
-		return nil
-	}
-	if id == "" {
-		fmt.Fprintln(out, "created — the queue filed it by its own default, not anything the fleet chose")
 		return nil
 	}
 	fmt.Fprintf(out, "created %s (filed in the queue's own default — the fleet did not choose the column)\n", id)
