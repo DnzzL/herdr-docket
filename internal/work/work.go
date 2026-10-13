@@ -143,7 +143,7 @@ type Assigner interface {
 
 // CriterionWriter is the optional capability of a source that can put
 // acceptance criteria on an existing task — the bar a run hands on writes
-// through the id Create returned (ADR-0014), beside the landing that ADR-0012
+// through the id Create returned (ADR-0019), beside the landing that ADR-0012
 // gave Create and CreateTodo: the landing decides whether the next tick can
 // claim the task, the criteria decide what the run has to show. Backlog.md
 // appends through its task edit's --ac, one flag per criterion; GitHub writes

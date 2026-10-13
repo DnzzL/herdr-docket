@@ -1,4 +1,4 @@
-# 0014 — Criteria are a capability, not a column on Create
+# 0019 — Criteria are a capability, not a column on Create
 
 The failure this answers (TASK-22): `herdr-docket task create` could not carry
 acceptance criteria, so an agent handing work on had two ways to say what
