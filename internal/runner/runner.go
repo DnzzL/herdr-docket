@@ -249,14 +249,20 @@ func (r *Runner) release(key string) {
 
 // drop gives back one held claim and retires its file: the unlink comes
 // first, while the flock still excludes other runs — between the unlink and
-// the close a new opener may already create and take the next file, and that
-// is correct (this run has settled); what must never happen is a second run
-// taking this file's claim, which the held flock refuses and claim's inode
-// check catches from the other side. An unlink error leaves a file whose
-// flock is dead — a leftover, which the next claim/release pair or the
-// daemon's sweep takes.
+// the close a new opener may already create and take the next file, and
+// that is correct (this run has settled); what must never happen is a second
+// run taking this file's claim, which the held flock refuses and claim's inode
+// check catches from the other side. The sameFile guard is the sweep's
+// window closed from this side: a descriptor opened before the file was
+// retired (sweep's open-to-flock gap) flocks a dead inode once it resumes,
+// and unlinking by path there would remove the *next* run's live claim —
+// with the guard it unlocks and closes without touching it. An unlink error
+// or a stale path leaves a file whose flock is dead — a leftover, which the
+// next claim/release pair or the daemon's sweep takes.
 func drop(path string, f *os.File) {
-	os.Remove(path)
+	if sameFile(f, path) {
+		os.Remove(path)
+	}
 	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	f.Close()
 }
