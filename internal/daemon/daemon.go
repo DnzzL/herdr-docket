@@ -136,6 +136,15 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		return
 	}
 
+	// A hold settles with its pull request (TASK-70): every few minutes the
+	// fleet reads, through the forge, the PR of each held or failed task and
+	// lets its state close the task — merged settles done, closed unmerged by
+	// a human settles failed, open stands. Its own goroutine because a pass is
+	// a few forge reads per held task and must never delay the tick that
+	// starts runs; Settle owns the cadence, so the ticks in between spawn a
+	// call that reads nothing.
+	go runs.Settle(src, tasks)
+
 	// The router sees every agent, with a busy flag: an agent that cannot take a
 	// run this tick is unavailable, not unknown. Dropping it from the map here
 	// is what used to write "is not a fleet agent" onto a ticket whose agent was
