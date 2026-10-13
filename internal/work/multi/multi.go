@@ -175,18 +175,29 @@ func (s *Source) CreateIn(name, title, body, assignee string) (string, bool, err
 	if !ok {
 		return "", false, fmt.Errorf("no configured source %q", name)
 	}
+	var id string
+	var started bool
 	if st, can := sub.(work.TodoStarter); can {
-		id, err := st.CreateTodo(title, body, assignee)
+		var err error
+		id, err = st.CreateTodo(title, body, assignee)
 		if err != nil {
 			return "", false, err
 		}
-		return name + "/" + id, true, nil
+		started = true
+	} else {
+		var err error
+		id, err = sub.Create(title, body, assignee)
+		if err != nil {
+			return "", false, err
+		}
 	}
-	id, err := sub.Create(title, body, assignee)
-	if err != nil {
-		return "", false, err
+	// A sub that named no id gets no prefixed one (TASK-72): prefixing "" is
+	// how "docket/" was reported as a creation. An id the queue never gave
+	// cannot be routed to later either — the error says so instead.
+	if id == "" {
+		return "", false, fmt.Errorf("queue %q returned no id for the new task", name)
 	}
-	return name + "/" + id, false, nil
+	return name + "/" + id, started, nil
 }
 
 // WriteCriteria writes criteria on the queue the id names, through the

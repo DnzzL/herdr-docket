@@ -218,6 +218,21 @@ func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
 	})
 }
 
+// ghostSource is a sub that creates a task without naming it — what the
+// backlog CLI does when it prints its own help instead (TASK-72).
+type ghostSource struct{ *memSource }
+
+func (ghostSource) Create(string, string, string) (string, error) { return "", nil }
+
+// A sub that named no id gets no prefixed one: prefixing the empty string
+// fabricated "docket/", which the CLI then announced as a creation.
+func TestCreateInRefusesAnEmptySubID(t *testing.T) {
+	src := New(map[string]work.Source{"docket": &ghostSource{memSource: newMem()}})
+	if id, _, err := src.CreateIn("docket", "T", "", ""); err == nil {
+		t.Fatalf("an empty id from the queue must be an error, got id %q", id)
+	}
+}
+
 // A prefixed id routes every write to the queue it named — Get, Comment and
 // Close alike — and Get hands the task back under the prefixed id, not the
 // backend's bare one.
