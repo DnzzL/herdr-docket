@@ -171,6 +171,46 @@ func TestTaskCreateNeedsATitle(t *testing.T) {
 	}
 }
 
+// `task create --help` used to take the flag for the title: the queue's own
+// CLI printed its help, it named no id back, and the run still reported a
+// creation — "created docket/ (in To Do)" for a task that never existed
+// (TASK-72). Help prints the usage, exits 0, and reaches no queue at all.
+func TestTaskCreateHelpPrintsUsageAndCreatesNothing(t *testing.T) {
+	for _, flag := range []string{"--help", "-h"} {
+		t.Run(flag, func(t *testing.T) {
+			src := &fakeSource{}
+			got, err := runTask(t, src, "create", flag)
+			if err != nil {
+				t.Fatalf("help must exit 0, got: %v", err)
+			}
+			if !strings.Contains(got, "usage: herdr-docket task create") {
+				t.Fatalf("help must print the usage, got:\n%s", got)
+			}
+			if src.created != nil {
+				t.Fatalf("help must create nothing; the queue saw %v", src.created)
+			}
+		})
+	}
+}
+
+// noIDSource is a queue that answers a create without naming the task —
+// what the backlog CLI does when it prints its own help instead.
+type noIDSource struct{ fakeSource }
+
+func (noIDSource) Create(string, string, string) (string, error) { return "", nil }
+
+// An empty id from the queue is an error, never a creation (TASK-72): the
+// report used to say "created" for a queue that named nothing back.
+func TestTaskCreateEmptyIDIsAnError(t *testing.T) {
+	got, err := runTask(t, &noIDSource{}, "create", "T", "-a", "dev")
+	if err == nil {
+		t.Fatal("an empty id from the queue must fail")
+	}
+	if strings.Contains(got, "created") {
+		t.Fatalf("nothing was created; stdout must not claim one:\n%s", got)
+	}
+}
+
 // The CLI output says where the task landed, every time the fleet did not
 // choose the column, and never implies a choice the queue made on its own
 // (ADR-0012). A task stranded in a column the daemon never reads is exactly
