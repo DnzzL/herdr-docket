@@ -55,6 +55,12 @@ func Run() error {
 	}
 	log.Printf("daemon starting, fleet=%s", settings.Dir)
 
+	// The one time leftover lock files are this process's business: runs that
+	// settled before removal existed, and runs whose process crashed. A live
+	// claim — including a manual `herdr-docket run`'s — holds its flock and
+	// keeps its file; everything else goes, so the state dir stops growing.
+	runner.SweepLocks()
+
 	// Fail fast on a queue the fleet cannot build, but keep no handle on it:
 	// every tick builds its own, so the writes always land on the queue the
 	// tick read from.
