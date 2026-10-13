@@ -174,7 +174,8 @@ sources:
 2. **The verifier judges**, in a run of its own: a worktree the fleet
    provisions at the PR's head commit and removes when the run settles —
    never a tab on the checkout you work in. It records exactly one
-   `task verdict <id> PASS|FAIL --pr <url>`. The CLI pins the verdict to the
+   `task verdict <id> PASS|FAIL --pr <url> --note "<evidence>"`. The CLI pins
+   the verdict to the
    PR's `git patch-id` and says it on the PR as `docket-verdict: …`.
 3. **A FAIL goes back to the author** with the verifier's note as its brief
    and its own PR to fix. A second FAIL holds the task for you.

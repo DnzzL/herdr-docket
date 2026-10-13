@@ -14,7 +14,7 @@ author back with the notes at most twice, then the task is Blocked. Agents no
 longer hand work on; `task assign` stays a human verb.
 
 **The merge decision is code.** The verifier records a verdict through the
-CLI (`task verdict PASS|FAIL`), pinned to the PR's `git patch-id`. The gate
+CLI (`task verdict PASS|FAIL --note "…"`), pinned to the PR's `git patch-id`. The gate
 merges only when the verdict is PASS on the current patch-id, checks pass,
 the task carries no `critical` label and no changed file matches the repo's
 `CODEOWNERS`. Anything else holds the task Blocked and notifies. CI green
