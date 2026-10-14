@@ -188,11 +188,12 @@ func initCmd(arg string) error {
 
 // authCmd is thin on purpose: which queues can be signed in to, and how, is
 // fleet's business, not the CLI's. The name is a queue kind — basecamp,
-// github — or the name of one source when a fleet has several.
+// github, notara — or the name of one source when a fleet has several.
 func authCmd(args []string) error {
 	const usage = `usage: herdr-docket auth <queue> [--token <pat>]
   queues that sign in: basecamp   a Launchpad app of your own, browser flow
-                       github     a PAT with the project scope, or gh's token`
+                       github     a PAT with the project scope, or gh's token
+                       notara     an ntr_ key from Notara's sidebar → API keys`
 	name, token := "", ""
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {

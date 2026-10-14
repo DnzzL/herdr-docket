@@ -50,7 +50,7 @@ func New(dir string, vocab Vocabulary) *Source { return NewWith(dir, newCLI(dir)
 // queue's worktree runs branch from (fleet.yaml's worktree_base:). Configuration
 // wins over derived, which wins over nothing — the same ladder statuses: runs on.
 func NewWith(dir string, c client, vocab Vocabulary, overrides map[string]string) *Source {
-	return &Source{client: c, vocab: vocab.OrDefault(), repo: dir, overrides: overrides}
+	return &Source{client: c, vocab: OrDefault(vocab), repo: dir, overrides: overrides}
 }
 
 // NewWithBase is New for a source block that names its own base branch
@@ -130,43 +130,7 @@ func (s *Source) Close(id string, v work.Verdict) error {
 	}
 	// status is total over the known verdicts, which the test beside this
 	// one keeps it.
-	return s.client.SetStatus(id, s.vocab.status(v))
-}
-
-// status is the translation from the port's verdict to the word that records
-// it in this project. An adapter that can only say one thing about an ending
-// (a binary completed flag) has no such table — it asks the port whether the
-// verdict is known and records whatever it can.
-func (v Vocabulary) status(verdict work.Verdict) string {
-	switch verdict {
-	case work.Done:
-		return v.Done
-	case work.Failed:
-		return v.Failed
-	case work.Blocked:
-		return v.Blocked
-	}
-	return ""
-}
-
-// verdictOf is the same table read backwards: what a closed task's status
-// word still says about how it ended. Backlog.md is rich enough to keep the
-// verdict, which is how the runner knows whether to tear down a run's
-// workspace or leave it open to resume. A binary backend cannot, and simply
-// leaves Verdict empty. Ordered, not a map: two phases of a project may share
-// one word, and which verdict that word means must not depend on map order.
-func (v Vocabulary) verdictOf(status string) work.Verdict {
-	switch status {
-	case "":
-		return ""
-	case v.Done:
-		return work.Done
-	case v.Failed:
-		return work.Failed
-	case v.Blocked:
-		return work.Blocked
-	}
-	return ""
+	return s.client.SetStatus(id, s.vocab.Status(v))
 }
 
 // Assign re-routes the task to another agent. Backlog.md holds a list of
@@ -213,56 +177,15 @@ func (s *Source) asTask(t task) work.Task {
 		ID:        t.ID,
 		Title:     t.Title,
 		Assignee:  assignee(t.Assignees),
-		Open:      s.vocab.open(t.Status),
-		Blocked:   s.vocab.parked(t.Status),
-		Phase:     s.vocab.phase(t.Status),
-		Verdict:   s.vocab.verdictOf(t.Status),
+		Open:      s.vocab.Open(t.Status),
+		Blocked:   s.vocab.Parked(t.Status),
+		Phase:     s.vocab.Phase(t.Status),
+		Verdict:   s.vocab.VerdictOf(t.Status),
 		Priority:  rank(t.Priority),
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,
 		Labels:    t.Labels,
 	}
-}
-
-// phase reads a status in the fleet's words. A closed status stands under its
-// verdict's word, because the three endings are one vocabulary and not two;
-// an open one under the fleet's name for it. A status this project has that
-// the fleet was never told about still shows, under its own name: the board
-// renders the phases it does not know after the ones it does.
-func (v Vocabulary) phase(status string) string {
-	if verdict := v.verdictOf(status); verdict != "" {
-		return verdict.Label()
-	}
-	switch status {
-	case "":
-		return ""
-	case v.Todo:
-		return string(work.PhaseTodo)
-	case v.InProgress:
-		return string(work.PhaseInProgress)
-	}
-	return status
-}
-
-// open reports whether a status is work the fleet may pick up. A whitelist,
-// deliberately: a project has columns the fleet has no business in — triage,
-// wontfix, waiting on a human — and reading anything unrecognised as open
-// would put an agent on them.
-func (v Vocabulary) open(status string) bool {
-	if status == "" {
-		return false
-	}
-	return status == v.Todo || status == v.InProgress
-}
-
-// parked reports whether a status is the one that waits on a human — this
-// project's own blocked word. Written only where the queue names one, a
-// task the vocabulary does not know at all is not parked by guess: the
-// whitelist above already leaves it invisible to routing, and inventing a
-// parked state for a column the fleet never mapped would be a second
-// vocabulary, not a translation.
-func (v Vocabulary) parked(status string) bool {
-	return status != "" && status == v.Blocked
 }
 
 // rank reads a Backlog.md priority as a rank the core can compare. Higher is

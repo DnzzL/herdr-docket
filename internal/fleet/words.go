@@ -1,6 +1,9 @@
 package fleet
 
-import "github.com/DnzzL/herdr-docket/internal/work"
+import (
+	"github.com/DnzzL/herdr-docket/internal/work"
+	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
+)
 
 // Words are the status words one queue writes, in that queue's own language.
 // The fleet already owns them — a source's statuses: block, or the default —
@@ -27,10 +30,18 @@ func (w Words) Known() bool { return w.Todo != "" }
 // block. A backend that does not speak in statuses returns the zero Words.
 func (s Settings) WordsFor(taskID string) Words {
 	c, ok := s.sourceOf(taskID)
-	if !ok || c.kind() != kindBacklogmd {
+	if !ok {
 		return Words{}
 	}
-	v := c.Statuses.OrDefault()
+	var v work.Vocabulary
+	switch c.kind() {
+	case kindBacklogmd:
+		v = backlogmd.OrDefault(c.Statuses)
+	case kindNotara:
+		v = c.Statuses
+	default:
+		return Words{}
+	}
 	return Words{
 		Todo:       v.Todo,
 		InProgress: v.InProgress,
