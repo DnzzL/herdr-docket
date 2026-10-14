@@ -144,7 +144,7 @@ func initBacklog(dir string, vocab backlogmd.Vocabulary) error {
 			return fmt.Errorf("backlog init: %s", out)
 		}
 	}
-	return patchStatusesTo(filepath.Join(dir, "backlog", "config.yml"), statusesYAML(vocab.OrDefault()))
+	return patchStatusesTo(filepath.Join(dir, "backlog", "config.yml"), statusesYAML(backlogmd.OrDefault(vocab)))
 }
 
 // patchStatuses rewrites the statuses list in the Backlog.md config with the

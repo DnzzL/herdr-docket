@@ -9,6 +9,7 @@
 | `herdr-docket init --factory` | …and install the factory loop (see [docs/factory.md](factory.md)) |
 | `herdr-docket auth basecamp` | sign in to a hosted queue, once |
 | `herdr-docket auth github` | same, for a GitHub Projects board (`--token <pat>` to store one) |
+| `herdr-docket auth notara --token ntr_…` | same, for a Notara database: stores the key, adds the fleet's statuses and agents as options |
 | `herdr-docket list` | the queue, grouped by phase, with the routed agent |
 | `herdr-docket run TASK-12` | run one task now |
 | `herdr-docket task list` | the queue as the agent sees it (`--all` includes closed work) |

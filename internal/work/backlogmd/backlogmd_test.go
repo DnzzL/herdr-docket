@@ -491,7 +491,7 @@ func TestEveryKnownVerdictHasAStatus(t *testing.T) {
 		if !v.Known() {
 			t.Fatalf("%q is a port verdict but Known() denies it", v)
 		}
-		if DefaultVocabulary().status(v) == "" {
+		if DefaultVocabulary().Status(v) == "" {
 			t.Errorf("verdict %q has no Backlog.md status to record it as", v)
 		}
 	}

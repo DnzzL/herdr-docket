@@ -13,6 +13,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
 	"github.com/DnzzL/herdr-docket/internal/work/basecamp"
 	"github.com/DnzzL/herdr-docket/internal/work/github"
+	"github.com/DnzzL/herdr-docket/internal/work/notara"
 )
 
 // A fleet that names no source at all still works: Backlog.md in the fleet
@@ -528,4 +529,29 @@ func gitRepoWithDefault(t *testing.T) string {
 	run("update-ref", "refs/remotes/origin/main", "main")
 	run("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 	return dir
+}
+
+// kind: notara builds the Notara adapter from its own block and the source's
+// statuses: and worktree_base:, and refuses a source that names no words.
+func TestANotaraSourceIsBuiltFromItsBlock(t *testing.T) {
+	c := SourceConfig{
+		Kind:         kindNotara,
+		Notara:       notara.Config{URL: "http://localhost:3100", Workspace: "w", Database: "d"},
+		Statuses:     vocab("ready-for-agent", "in-progress", "done", "failed", "blocked"),
+		WorktreeBase: "origin/main",
+	}
+	src, err := NewSource(Settings{Source: c})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := src.(*notara.Source); !ok {
+		t.Fatalf("kind notara built a %T", src)
+	}
+	if got := work.BaseBranchOf(src, "NOT-1"); got != "origin/main" {
+		t.Errorf("base branch = %q, want the source's worktree_base", got)
+	}
+	c.Statuses = backlogmd.Vocabulary{}
+	if _, err := NewSource(Settings{Source: c}); err == nil || !strings.Contains(err.Error(), "statuses") {
+		t.Errorf("a notara source with no statuses: err = %v", err)
+	}
 }

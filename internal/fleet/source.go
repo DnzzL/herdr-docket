@@ -11,6 +11,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/work/basecamp"
 	"github.com/DnzzL/herdr-docket/internal/work/github"
 	"github.com/DnzzL/herdr-docket/internal/work/multi"
+	"github.com/DnzzL/herdr-docket/internal/work/notara"
 )
 
 // The queues the fleet knows how to speak to.
@@ -18,6 +19,7 @@ const (
 	kindBacklogmd = "backlogmd"
 	kindBasecamp  = "basecamp"
 	kindGithub    = "github"
+	kindNotara    = "notara"
 )
 
 // SourceConfig is the `source:` block of fleet.yaml: which backend the queue
@@ -44,6 +46,7 @@ type SourceConfig struct {
 	MaxRuns int `yaml:"max_runs"`
 	// Statuses is the project's own status words. Empty means the project
 	// speaks the fleet's, which is true of one the fleet laid down itself.
+	// A notara source must name them: a database has no lifecycle to assume.
 	Statuses backlogmd.Vocabulary `yaml:"statuses"`
 	// WorktreeBase names the git ref a run of this queue branches from
 	// (TASK-45). Empty derives the repo's own default branch — origin/HEAD —
@@ -56,6 +59,9 @@ type SourceConfig struct {
 	// Github is the block kind github reads: which board, and which repository
 	// its issues live in.
 	Github github.Config `yaml:"github"`
+	// Notara is the block kind notara reads: which server, workspace and
+	// database are the queue.
+	Notara notara.Config `yaml:"notara"`
 }
 
 // kind is the source kind with the default filled in.
@@ -126,6 +132,8 @@ func newQueue(c SourceConfig, dir string) (work.Source, error) {
 		return basecamp.New(c.Basecamp)
 	case kindGithub:
 		return github.New(c.Github)
+	case kindNotara:
+		return notara.New(c.Notara, c.Statuses, c.WorktreeBase)
 	}
 	return nil, unknownQueue(c.Kind)
 }
@@ -148,7 +156,7 @@ func (c SourceConfig) dirFrom(fleetDir string) string {
 // Which queues exist is stated once, in the switch above, and this is how both
 // the config and the CLI report one that does not.
 func unknownQueue(kind string) error {
-	return fmt.Errorf("unknown queue %q: the fleet speaks %s, %s or %s", kind, kindBacklogmd, kindBasecamp, kindGithub)
+	return fmt.Errorf("unknown queue %q: the fleet speaks %s, %s, %s or %s", kind, kindBacklogmd, kindBasecamp, kindGithub, kindNotara)
 }
 
 // Auth signs the fleet in to a queue that needs it, and says so plainly for
@@ -168,6 +176,8 @@ func Auth(s Settings, name, token string, out io.Writer) error {
 		return basecamp.Login(out)
 	case kindGithub:
 		return github.Login(c.Github, agentNames(s), token, out)
+	case kindNotara:
+		return notara.Login(c.Notara, c.Statuses, agentNames(s), token, out)
 	}
 	return unknownQueue(name)
 }

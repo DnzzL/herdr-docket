@@ -84,7 +84,7 @@ func TestAVocabularyMustNameEveryEnding(t *testing.T) {
 	if err := (Vocabulary{}).Validate(); err != nil {
 		t.Errorf("no statuses block at all is the default, got %v", err)
 	}
-	if got := (Vocabulary{}).OrDefault(); got != DefaultVocabulary() {
+	if got := OrDefault(Vocabulary{}); got != DefaultVocabulary() {
 		t.Errorf("orDefault = %+v, want the fleet's own words", got)
 	}
 }

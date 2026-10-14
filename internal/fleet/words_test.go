@@ -62,3 +62,18 @@ func TestPipelineIsReadFromTheTasksOwnQueue(t *testing.T) {
 		}
 	}
 }
+
+// A Notara database speaks its own words exactly like a Backlog.md project:
+// the prompt teaches them, and never the fleet's defaults in their place.
+func TestANotaraQueueTeachesItsOwnWords(t *testing.T) {
+	s := Settings{Sources: map[string]SourceConfig{
+		"notara": {Kind: kindNotara, Statuses: vocab("ready-for-agent", "in-progress", "done", "failed", "blocked")},
+		"empty":  {Kind: kindNotara},
+	}}
+	if got := s.WordsFor("notara/NOT-92"); got.Todo != "ready-for-agent" || got.Blocked != "blocked" {
+		t.Errorf("notara words = %+v", got)
+	}
+	if w := s.WordsFor("empty/NOT-1"); w.Known() {
+		t.Errorf("a notara source with no statuses must not be taught Backlog.md's, got %+v", w)
+	}
+}
