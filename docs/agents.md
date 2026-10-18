@@ -54,6 +54,27 @@ The choice matters most for personas that must *write* to a project's own
 worktree. Do the reading in a scratch worktree, the recording in the repo root,
 and say so in the persona.
 
+## The sandbox's git credential
+
+A sandboxed run — an agent wrapped by
+[agent-sandbox.nix](https://github.com/archie-judd/agent-sandbox.nix) — has
+no `~/.ssh` and no ssh agent: **ssh is absent inside, on purpose**. Its only
+git credential is one fine-grained personal access token, scoped to a single
+repository (for DishNow: `DnzzL/DishNow-v2`, Contents read/write, Pull
+requests read/write, Metadata read, 90-day expiry). Minting it is a human
+step in the GitHub UI — the API cannot mint fine-grained tokens — and
+`scripts/sandbox-git-token.sh` is the walkthrough: it takes you through the
+form, reads the token from the terminal, proves it over https (an
+`ls-remote`,
+a throwaway-branch push, a `gh pr create`, then cleans all of it up), and
+stores nothing.
+
+The token reaches the sandbox as ordinary environment — `GITHUB_TOKEN` (and
+`GH_TOKEN` for `gh`) exported in the shell that starts herdr's panes, with
+the sandbox's flake referencing `"$GITHUB_TOKEN"` and never a value. What is
+not that token stays on the host; a token the sandbox does not need is
+authority the sandbox should not have.
+
 ## Running a post on another agent runtime
 
 Herdr speaks more than one coding agent, and `agent:` picks which one a post
