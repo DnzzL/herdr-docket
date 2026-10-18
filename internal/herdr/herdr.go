@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -149,9 +150,21 @@ func (Client) WorktreeCreate(repo, branch, base, label string) (workspaceID, pan
 }
 
 // WorkspaceCreate opens a workspace directly on a directory (root mode).
-func (Client) WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error) {
+// env is set for the pane's shell at creation — the only channel herdr has:
+// it does not reach the workspace's later tabs, and `worktree create` takes
+// none of it.
+func (Client) WorkspaceCreate(cwd, label string, env map[string]string) (workspaceID, paneID string, err error) {
+	args := []string{"workspace", "create", "--cwd", cwd, "--label", label, "--no-focus"}
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		args = append(args, "--env", k+"="+env[k])
+	}
 	var res createResult
-	err = run(&res, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
+	err = run(&res, args...)
 	if err != nil {
 		return "", "", err
 	}

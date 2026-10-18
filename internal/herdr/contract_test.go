@@ -117,7 +117,7 @@ func TestARealBusyPaneRefusesAnAgentStartWithTheCodeTheFleetRetriesOn(t *testing
 	requireHerdr(t)
 
 	var c Client
-	workspaceID, paneID, err := c.WorkspaceCreate(t.TempDir(), "docket contract")
+	workspaceID, paneID, err := c.WorkspaceCreate(t.TempDir(), "docket contract", nil)
 	if err != nil {
 		t.Fatalf("own throwaway workspace: %v", err)
 	}

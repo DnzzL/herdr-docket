@@ -16,8 +16,10 @@ import (
 // says nothing", which keeps each test to the calls it actually cares about.
 type fakeOps struct {
 	worktreeCreate  func(repo, branch, base, label string) (string, string, error)
+	worktreeAdd     func(repo, branch, base, dir string) (string, error)
+	worktreeAdds    int
 	commitAt        func(repo, ref string) (string, error)
-	workspaceCreate func(cwd, label string) (string, string, error)
+	workspaceCreate func(cwd, label string, env map[string]string) (string, string, error)
 	// primary is the workspace a repo is already open in; empty means none,
 	// which is the fleet's cue to open one of its own.
 	primary        string
@@ -58,6 +60,14 @@ func (f *fakeOps) WorktreeCreate(repo, branch, base, label string) (string, stri
 	return f.worktreeCreate(repo, branch, base, label)
 }
 
+func (f *fakeOps) WorktreeAdd(repo, branch, base, dir string) (string, error) {
+	f.worktreeAdds++
+	if f.worktreeAdd == nil {
+		return dir, nil
+	}
+	return f.worktreeAdd(repo, branch, base, dir)
+}
+
 func (f *fakeOps) CommitAt(repo, ref string) (string, error) {
 	if f.commitAt == nil {
 		return "0000000", nil
@@ -94,11 +104,11 @@ func (f *fakeOps) WorktreeDiscard(repo, branch string) error {
 	return f.worktreeDiscard(repo, branch)
 }
 
-func (f *fakeOps) WorkspaceCreate(cwd, label string) (string, string, error) {
+func (f *fakeOps) WorkspaceCreate(cwd, label string, env map[string]string) (string, string, error) {
 	if f.workspaceCreate == nil {
 		return "w2", "w2:p1", nil
 	}
-	return f.workspaceCreate(cwd, label)
+	return f.workspaceCreate(cwd, label, env)
 }
 
 func (f *fakeOps) WorkspaceClose(id string) error {
@@ -337,7 +347,7 @@ func TestProvisionRefusesToStartAWorktreeItCannotNameTheBaseOf(t *testing.T) {
 
 func TestProvisionRootModeOpensTheRepoItself(t *testing.T) {
 	called := false
-	ops := &fakeOps{workspaceCreate: func(cwd, label string) (string, string, error) {
+	ops := &fakeOps{workspaceCreate: func(cwd, label string, env map[string]string) (string, string, error) {
 		called = true
 		if cwd != "/repo" {
 			t.Errorf("cwd = %q", cwd)
@@ -719,5 +729,120 @@ func TestWorktreeDiscardLeavesNoBranchOrWorktreeBehind(t *testing.T) {
 	}
 	if _, err := run("rev-parse", "--verify", "refs/heads/fleet/task-1-2"); err == nil {
 		t.Error("a branch whose worktree is already gone must still be deleted")
+	}
+}
+
+// A sandboxed run cannot use herdr's worktree create: it carries no
+// environment, and the ZDOTDIR that puts the wrapper on the pane's PATH must
+// be there before the shell starts. The fleet cuts the worktree itself and
+// opens a workspace on the path, which does carry it.
+func TestSandboxedWorktreeRunIsCutByTheFleetWithItsZDOTDIR(t *testing.T) {
+	var createdCWD, createdLabel string
+	var createdEnv map[string]string
+	ops := &fakeOps{
+		worktreeCreate: func(repo, branch, base, label string) (string, string, error) {
+			t.Error("a sandboxed run must not go through herdr's worktree create: it cannot carry environment")
+			return "", "", nil
+		},
+		workspaceCreate: func(cwd, label string, env map[string]string) (string, string, error) {
+			createdCWD, createdLabel, createdEnv = cwd, label, env
+			return "w9", "w9:p1", nil
+		},
+	}
+	h := &live{ops: ops, knobs: fast()}
+
+	s, err := h.Provision(Spec{
+		Name: "n", Repo: "/x", Workspace: WorkspaceWorktree, Sandbox: "/sbx/zdot",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ops.worktreeAdds != 1 {
+		t.Fatalf("git worktree add calls = %d, want 1", ops.worktreeAdds)
+	}
+	home, _ := os.UserHomeDir()
+	want := filepath.Join(home, ".herdr", "worktrees", "x", strings.ReplaceAll(s.Branch, "/", "-"))
+	if createdCWD != want {
+		t.Errorf("workspace cwd = %q, want %q (the worktree the fleet just cut)", createdCWD, want)
+	}
+	if createdLabel != "fleet: n" {
+		t.Errorf("label = %q", createdLabel)
+	}
+	if createdEnv["ZDOTDIR"] != "/sbx/zdot" {
+		t.Errorf("ZDOTDIR = %q, want the agent's sandbox", createdEnv["ZDOTDIR"])
+	}
+	if !strings.HasPrefix(s.Branch, "fleet/n-") {
+		t.Errorf("branch = %q", s.Branch)
+	}
+	if s.Verify {
+		t.Error("an author run is not a verify run")
+	}
+}
+
+// The borrowed tab of a root run cannot carry environment either, so a
+// sandboxed root agent opens a workspace of its own even when the repo is
+// already open somewhere.
+func TestSandboxedRootRunOpensItsOwnWorkspaceWithTheEnv(t *testing.T) {
+	var createdEnv map[string]string
+	ops := &fakeOps{
+		primary: "wEXIST",
+		workspaceCreate: func(cwd, label string, env map[string]string) (string, string, error) {
+			createdEnv = env
+			return "w9", "w9:p1", nil
+		},
+	}
+	h := &live{ops: ops, knobs: fast()}
+
+	s, err := h.Provision(Spec{
+		Name: "n", Repo: "/x", Workspace: WorkspaceRoot, Sandbox: "/sbx/zdot",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.WorkspaceID != "w9" {
+		t.Errorf("workspace = %q, want a workspace of its own rather than the borrowed tab wEXIST", s.WorkspaceID)
+	}
+	if ops.tabs != 0 {
+		t.Errorf("tab creates = %d, want 0", ops.tabs)
+	}
+	if createdEnv["ZDOTDIR"] != "/sbx/zdot" {
+		t.Errorf("ZDOTDIR = %q", createdEnv["ZDOTDIR"])
+	}
+}
+
+// WorktreeAdd is the git side of sandboxed provisioning: -b off the named
+// base, or off whatever the checkout has checked out when none is named.
+func TestWorktreeAddCutsTheBranchTheFleetNames(t *testing.T) {
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v (%s)", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	dir := t.TempDir()
+	git(dir, "init", "-q", "-b", "main")
+	git(dir, "config", "user.email", "t@t")
+	git(dir, "config", "user.name", "t")
+	os.WriteFile(filepath.Join(dir, "f"), []byte("x"), 0o644)
+	git(dir, "add", "f")
+	git(dir, "commit", "-qm", "first")
+
+	ops := herdrOps{}
+	added, err := ops.WorktreeAdd(dir, "fleet/n-1", "", filepath.Join(t.TempDir(), "wt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if git(added, "branch", "--show-current") != "fleet/n-1" {
+		t.Errorf("worktree is not on the run's branch")
+	}
+
+	fromBase, err := ops.WorktreeAdd(dir, "fleet/n-2", "HEAD", filepath.Join(t.TempDir(), "wt2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if git(fromBase, "rev-parse", "HEAD") != git(dir, "rev-parse", "HEAD") {
+		t.Errorf("worktree with a named base must start at that base")
 	}
 }

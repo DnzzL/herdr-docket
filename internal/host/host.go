@@ -15,6 +15,8 @@ package host
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -47,6 +49,10 @@ type Spec struct {
 	Prompt    string
 	MCPConfig string
 	AgentArgs []string
+	// Sandbox names a ZDOTDIR chain the run's shell starts under, putting a
+	// sandboxed agent binary first on the pane's PATH. Empty runs the agent
+	// on the host, as before.
+	Sandbox string
 }
 
 // WorkspaceMode is how the run's workspace is provisioned.
@@ -220,7 +226,21 @@ func (h *live) Provision(a Spec) (Session, error) {
 		if err != nil {
 			return Session{}, err
 		}
-		workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, a.Base, label)
+		if a.Sandbox != "" {
+			// A sandboxed shell must start under the sandbox's ZDOTDIR, and
+			// herdr's worktree create carries no environment — the fleet cuts
+			// the worktree itself and opens a workspace on the path, which
+			// does. Same layout herdr uses, so both kinds of run sit side by
+			// side in herdr's worktree list.
+			dir := worktreeDir(a.Repo, branch)
+			path, aerr := h.ops.WorktreeAdd(a.Repo, branch, a.Base, dir)
+			if aerr != nil {
+				return Session{}, aerr
+			}
+			workspaceID, paneID, err = h.ops.WorkspaceCreate(path, label, map[string]string{"ZDOTDIR": a.Sandbox})
+		} else {
+			workspaceID, paneID, err = h.ops.WorktreeCreate(a.Repo, branch, a.Base, label)
+		}
 	case a.Workspace == WorkspaceRoot:
 		// A root run works the project's own checkout, which is usually
 		// already open in a workspace. Borrow it as a tab rather than stacking
@@ -228,12 +248,19 @@ func (h *live) Provision(a Spec) (Session, error) {
 		// one entry in the sidebar instead of one per run. A project nobody
 		// has open gets a workspace of its own, as before — the fleet never
 		// creates the primary it would then be borrowing.
+		if a.Sandbox != "" {
+			// A sandboxed shell needs its ZDOTDIR at creation, and a borrowed
+			// tab cannot carry environment — a sandboxed root run opens a
+			// workspace of its own even when the repo is already open.
+			workspaceID, paneID, err = h.ops.WorkspaceCreate(a.Repo, label, map[string]string{"ZDOTDIR": a.Sandbox})
+			break
+		}
 		if primary, perr := h.ops.PrimaryWorkspace(a.Repo); perr == nil && primary != "" {
 			paneID, tabID, err = h.ops.TabCreate(primary, a.Repo, label)
 			workspaceID = primary
 			break
 		}
-		workspaceID, paneID, err = h.ops.WorkspaceCreate(a.Repo, label)
+		workspaceID, paneID, err = h.ops.WorkspaceCreate(a.Repo, label, nil)
 	default:
 		err = fmt.Errorf("unknown workspace mode %q", a.Workspace)
 	}
@@ -335,6 +362,22 @@ func Slug(name string) string { return slug(name) }
 
 // slug is Slug's implementation, kept private for the package's own callers
 // (the branch in Provision, agentName's name and tag).
+// worktreeDir is where a sandboxed worktree run checks out: the layout herdr's
+// own worktree create uses (~/.herdr/worktrees/<repo>/<branch with dashes>),
+// so a sandboxed run is a neighbour of every other run and herdr's worktree
+// list finds it the same way.
+func worktreeDir(repo, branch string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = filepath.Dir(repo)
+	}
+	base := filepath.Base(filepath.Clean(repo))
+	if base == "." || base == ".." || base == "" {
+		base = "repo"
+	}
+	return filepath.Join(home, ".herdr", "worktrees", base, strings.ReplaceAll(branch, "/", "-"))
+}
+
 func slug(name string) string {
 	var b strings.Builder
 	lastDash := true // also trims leading dashes

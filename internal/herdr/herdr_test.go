@@ -217,3 +217,63 @@ exit 0
 		t.Fatalf("argv = %q, want %q", got, want)
 	}
 }
+
+// The env channel of a workspace is how a sandboxed run's ZDOTDIR reaches the
+// pane's shell: `herdr workspace create --env K=V`, one flag per variable,
+// keys in a stable order so the argv is the same on every machine.
+func TestWorkspaceCreateForwardsEnvironment(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "args")
+	bin := filepath.Join(dir, "herdr")
+	script := fmt.Sprintf(
+		"#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\necho '{\"id\":\"cli:workspace:create\",\"result\":{\"workspace\":{\"workspace_id\":\"wZ\"},\"root_pane\":{\"pane_id\":\"wZ:p1\"}}}'\n",
+		log)
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", bin)
+
+	ws, pane, err := (Client{}).WorkspaceCreate("/wt", "label", map[string]string{
+		"ZDOTDIR": "/sbx", "A": "b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws != "wZ" || pane != "wZ:p1" {
+		t.Fatalf("ids = %q %q", ws, pane)
+	}
+	got, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Join([]string{
+		"workspace", "create", "--cwd", "/wt", "--label", "label", "--no-focus",
+		"--env", "A=b", "--env", "ZDOTDIR=/sbx", "",
+	}, "\n")
+	if string(got) != want {
+		t.Errorf("argv:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// No sandbox, no flags: an agent without the field reaches herdr exactly as
+// before, byte for byte.
+func TestWorkspaceCreateWithoutEnvSendsNoEnvFlags(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "args")
+	bin := filepath.Join(dir, "herdr")
+	script := fmt.Sprintf(
+		"#!/bin/sh\nprintf '%%s\\n' \"$@\" > %q\necho '{\"id\":\"cli:workspace:create\",\"result\":{\"workspace\":{\"workspace_id\":\"wZ\"},\"root_pane\":{\"pane_id\":\"wZ:p1\"}}}'\n",
+		log)
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", bin)
+
+	if _, _, err := (Client{}).WorkspaceCreate("/wt", "label", nil); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(log)
+	if strings.Contains(string(got), "--env") {
+		t.Errorf("argv carries --env with no sandbox configured:\n%s", got)
+	}
+}

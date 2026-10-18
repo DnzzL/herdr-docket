@@ -44,7 +44,7 @@ func TestLiveVerifyProvisionAndClose(t *testing.T) {
 	// A primary workspace open on the repo — the tab a root-mode run would
 	// borrow: the pinned provision must not touch it.
 	var c herdr.Client
-	primary, _, err := c.WorkspaceCreate(repo, "TASK-65 probe primary")
+	primary, _, err := c.WorkspaceCreate(repo, "TASK-65 probe primary", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

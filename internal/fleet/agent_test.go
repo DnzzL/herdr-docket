@@ -304,3 +304,22 @@ func TestARoleThatNamesNoFileGroundsItsAgent(t *testing.T) {
 		t.Errorf("the diagnostic must name the missing role, got %+v", diags)
 	}
 }
+
+func TestLoadAgentsExpandsTildeSandbox(t *testing.T) {
+	dir := t.TempDir()
+	writeAgent(t, dir, "w", "---\nworkdir: "+dir+"\nsandbox: ~/sandbox/zdot\n---\nB")
+	agents, _ := LoadAgents(dir)
+	home, _ := os.UserHomeDir()
+	if got := agents["w"].Sandbox; got != filepath.Join(home, "sandbox", "zdot") {
+		t.Fatalf("sandbox = %q", got)
+	}
+}
+
+func TestLoadAgentsWithoutSandboxRunsOnTheHost(t *testing.T) {
+	dir := t.TempDir()
+	writeAgent(t, dir, "w", "---\nworkdir: "+dir+"\n---\nB")
+	agents, _ := LoadAgents(dir)
+	if got := agents["w"].Sandbox; got != "" {
+		t.Fatalf("sandbox = %q, want empty (host run)", got)
+	}
+}

@@ -16,7 +16,12 @@ import (
 // the work either happened or didn't. The tests script it.
 type ops interface {
 	WorktreeCreate(repo, branch, base, label string) (workspaceID, paneID string, err error)
-	WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error)
+	// WorktreeAdd cuts a worktree with git itself and answers with its path —
+	// the provisioning of a sandboxed run, whose workspace must be opened on
+	// that path with environment herdr's worktree create cannot carry. An
+	// empty base inherits whatever the checkout has checked out.
+	WorktreeAdd(repo, branch, base, dir string) (path string, err error)
+	WorkspaceCreate(cwd, label string, env map[string]string) (workspaceID, paneID string, err error)
 	WorkspaceClose(workspaceID string) error
 
 	// PrimaryWorkspace is the workspace a repo is already open in, or "" when
@@ -133,6 +138,21 @@ func (herdrOps) WorktreePath(repo, branch string) (string, error) {
 // was closed under the run) still loses its branch; a worktree that still
 // exists is removed first, since git refuses to delete a branch checked out
 // somewhere.
+func (herdrOps) WorktreeAdd(repo, branch, base, dir string) (string, error) {
+	if strings.HasPrefix(base, "-") {
+		// git would read a leading dash as a flag of its own.
+		return "", fmt.Errorf("worktree add: base %q is not a ref", base)
+	}
+	args := []string{"worktree", "add", dir, "-b", branch}
+	if base != "" {
+		args = append(args, base)
+	}
+	if _, err := gitOutput(repo, args...); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
 func (herdrOps) WorktreeDiscard(repo, branch string) error {
 	if path, err := worktreePath(repo, branch); err == nil {
 		if _, err := gitOutput(repo, "worktree", "remove", "--force", path); err != nil {

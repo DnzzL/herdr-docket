@@ -31,6 +31,7 @@ Every field:
 | `agent` | Which runtime starts the run: `pi`, `claude`, `codex`, `gemini`, `opencode`, `cursor`, … (default `claude`). |
 | `agent_args` | Anything else the runtime takes, passed through untouched and *after* `--model` and `--mcp-config`. |
 | `mcp_config` | Emits `--mcp-config`, which is Claude Code's flag — leave it empty on any other runtime. |
+| `sandbox` | A ZDOTDIR chain that starts the run's shell inside an agent-sandbox.nix sandbox — see [Sandboxing an agent](#sandboxing-an-agent). Empty (default): the agent runs on the host. |
 | `role` | Shared method: `roles/<role>.md`, prepended after `FLEET.md`. |
 | `timeout_minutes` | The run's deadline (default 60). Past it the run is recorded `timed_out` and keeps its agent for twice that long to settle; never settling fails the task, notifies, and ends the agent ([ADR 0014](adr/0014-the-timeout-records-a-late-run-it-does-not-drop-the-delivery.md)). |
 | `disabled` | `true` keeps the persona and takes the agent out of scheduling. |
@@ -43,6 +44,42 @@ the run record names the commit it cut from (`cut <sha>` in `herdr-docket
 history`), so a pull request carrying anything past that is visible without
 opening the forge. `root` is for agents whose job *is* the working copy:
 backlog grooming, docs, anything that must see uncommitted state.
+
+## Sandboxing an agent
+
+`sandbox:` names a directory set up as the run's `ZDOTDIR`. With `ZDOTDIR`
+set, zsh reads its rc files from there *instead of* `$HOME`, so the chain
+re-sources exactly the two it replaces and then shims: a `.zshenv` that runs
+`[ -f ~/.zshenv ] && . ~/.zshenv`, and a `.zshrc` that runs `. ~/.zshrc`
+followed by prepending a shim directory to `PATH`, in which the agent kind's
+plain name (`claude`, `pi`, …) execs an
+[agent-sandbox.nix](https://github.com/archie-judd/agent-sandbox.nix)
+wrapper (`claude-sandboxed`, `pi-sandboxed`, …). A `.zprofile` is neither
+read nor needed — herdr's panes are non-login shells. `herdr agent start`
+keeps typing the plain name, so detection and prompting are unchanged — the
+spike this field comes from drove a real run end to end with the author
+inside bubblewrap and the verifier on the host.
+
+What the directory holds is the machine's business, not the fleet's, and its
+setup carries three contracts:
+
+- Credentials reach the sandbox as ordinary environment, expanded at launch:
+  the variables the wrapper declares (e.g. `GITHUB_TOKEN`,
+  `CLAUDE_CODE_OAUTH_TOKEN`) must exist wherever herdr starts panes from, and
+  the flake references them as `"$VAR"` — never with a value in it.
+- The sandbox's `allowedPackages` must carry the repo's toolchain — `bun`,
+  `gh` and `nodejs` for a Nuxt app, plus `python3` if the test harness needs
+  it — and a linked worktree needs the main checkout's `.git` writable
+  (`rwDirs`) with the git identity readable (`roFiles`).
+- What is not declared does not exist: `~/.ssh`, the rest of `$HOME`, every
+  other checkout. An agent that needs more gets it declared, not granted.
+
+How the fleet provisions it: herdr's `worktree create` cannot carry
+environment, so a sandboxed `worktree` run is cut by the fleet itself
+(`git worktree add`, same `~/.herdr/worktrees/…` layout) and opened as a
+workspace on the path; a sandboxed `root` run opens a workspace of its own
+instead of borrowing a tab, because a borrowed tab cannot carry environment
+either. The sandbox is per agent: the queue's verifier stays on the host.
 
 A verifier's runs override both: whatever `workspace` its agent names, a run
 that judges a pull request is cut in a fresh worktree at the PR's head

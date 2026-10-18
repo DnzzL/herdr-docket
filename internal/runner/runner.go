@@ -393,6 +393,7 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 		Prompt:    prompt.Runnable(text),
 		MCPConfig: a.MCPConfig,
 		AgentArgs: a.AgentArgs,
+		Sandbox:   a.Sandbox,
 	}
 	// A verify run is pinned to the PR's head commit (TASK-65): the forge is
 	// asked for it here, and the host cuts the run's own worktree at that

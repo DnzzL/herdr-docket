@@ -28,10 +28,14 @@ type Agent struct {
 	// Role names a file in the fleet's roles/ dir whose body every agent of
 	// that role opens with — the method two posts share when they do the same
 	// job in different repos. Absent is the whole fleet before roles existed.
-	Role           string   `yaml:"role"`
-	MCPConfig      string   `yaml:"mcp_config"`
-	AgentArgs      []string `yaml:"agent_args"`
-	TimeoutMinutes int      `yaml:"timeout_minutes"`
+	Role      string   `yaml:"role"`
+	MCPConfig string   `yaml:"mcp_config"`
+	AgentArgs []string `yaml:"agent_args"`
+	// Sandbox names a ZDOTDIR chain the run's shell starts under, putting a
+	// sandboxed agent binary first on the pane's PATH (agent-sandbox.nix).
+	// Empty runs the agent on the host, as before.
+	Sandbox        string `yaml:"sandbox"`
+	TimeoutMinutes int    `yaml:"timeout_minutes"`
 	// Disabled keeps the agent in agents/ but out of scheduling: the daemon
 	// starts no new run for it. A run already in flight is untouched.
 	Disabled bool `yaml:"disabled"`
@@ -97,6 +101,7 @@ func loadAgent(fleetDir, path, name string) (Agent, error) {
 		return Agent{}, fmt.Errorf("frontmatter has no workdir")
 	}
 	a.Workdir = expandHome(a.Workdir)
+	a.Sandbox = expandHome(a.Sandbox)
 	if a.Kind == "" {
 		a.Kind = "claude"
 	}
