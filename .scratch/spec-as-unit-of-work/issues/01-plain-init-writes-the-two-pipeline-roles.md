@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `init` into an empty fleet dir writes both roles and says so
-- [ ] `init` over an existing `dev` or `reviewer` role leaves it byte-identical and reports the skip
-- [ ] A drift test fails if either shipped role is not verbatim in `docs/examples.md`
-- [ ] `init --factory` still works, without writing the roles a second time
+- [x] `init` into an empty fleet dir writes both roles and says so
+- [x] `init` over an existing `dev` or `reviewer` role leaves it byte-identical and reports the skip
+- [x] A drift test fails if either shipped role is not verbatim in `docs/examples.md`
+- [x] `init --factory` still works, without writing the roles a second time
 
 **Done when:** the two roles ship with plain `init` and are tested through it.
 
