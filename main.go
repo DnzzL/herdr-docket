@@ -36,7 +36,7 @@ const usage = `herdr-docket — a task queue worked by your Herdr agents
 
 Usage:
   herdr-docket daemon           Run the worker (started by the plugin startup hook)
-  herdr-docket init             Bootstrap the fleet dir (the local Backlog.md project + example agent)
+  herdr-docket init             Bootstrap the fleet dir (the local Backlog.md project + example agent + dev/reviewer roles)
   herdr-docket init --factory   …and install the factory loop: personas + schedules (docs/factory.md)
   herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials ([--token <pat>])
   herdr-docket list             List the queue, grouped by phase
@@ -173,7 +173,7 @@ func initCmd(arg string) error {
 	if err != nil {
 		return err
 	}
-	if err := fleet.Init(settings); err != nil {
+	if err := fleet.Init(settings, os.Stdout); err != nil {
 		return err
 	}
 	fmt.Printf("fleet ready at %s\n", settings.Dir)

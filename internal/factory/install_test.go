@@ -370,13 +370,16 @@ func TestInstallWritesTheProjectPersonasPaused(t *testing.T) {
 	}
 }
 
-// The project-side two share their method through roles (ADR 0005): the
-// agents init writes name roles/dev.md and roles/reviewer.md, and those files
-// land with them — an agent naming a role that does not exist is grounded,
-// so a factory that wrote one without the other would install two dead posts.
-func TestInstallWritesTheRolesTheProjectPersonasName(t *testing.T) {
+// The project-side two share their method through roles (ADR 0005), and plain
+// init writes those roles (ADR 0021): `init --factory` runs init, then the
+// loop — so the agents it installs load with their roles, and the loop does
+// not write the roles a second time.
+func TestInitFactoryInstallsAgentsThatLoadWithTheirRoles(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, "", 1))
+	if err := fleet.Init(fleet.Settings{Dir: dir, Source: fleet.SourceConfig{Kind: "github"}}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
 	var out bytes.Buffer
 	if err := Install(dir, &out); err != nil {
 		t.Fatal(err)
@@ -390,27 +393,8 @@ func TestInstallWritesTheRolesTheProjectPersonasName(t *testing.T) {
 		if !ok || a.Role != name || a.RoleBrief == "" {
 			t.Errorf("%s: loaded %v, role %q, brief %d bytes", name, ok, a.Role, len(a.RoleBrief))
 		}
-		if !strings.Contains(out.String(), "roles/"+name+".md") {
-			t.Errorf("output must say it wrote roles/%s.md:\n%s", name, out.String())
-		}
 	}
-}
-
-// A role the fleet already has is its owner's method: init never replaces it.
-func TestInstallKeepsARoleTheFleetAlreadyHas(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HERDR_BIN_PATH", fakeHerdr(t, "", 1))
-	if err := os.MkdirAll(filepath.Join(dir, "roles"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	mine := filepath.Join(dir, "roles", "dev.md")
-	if err := os.WriteFile(mine, []byte("my own method"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := Install(dir, &bytes.Buffer{}); err != nil {
-		t.Fatal(err)
-	}
-	if raw, _ := os.ReadFile(mine); string(raw) != "my own method" {
-		t.Fatalf("roles/dev.md overwritten: %q", raw)
+	if strings.Contains(out.String(), "roles/") {
+		t.Errorf("the loop wrote or skipped roles a second time:\n%s", out.String())
 	}
 }

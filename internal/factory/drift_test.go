@@ -25,12 +25,6 @@ func TestWhatWeShipIsWhatTheDocsShow(t *testing.T) {
 		}
 	}
 
-	for _, r := range roles {
-		if !strings.Contains(string(examples), r.body) {
-			t.Errorf("role %s is not in docs/examples.md verbatim — one of the two has drifted", r.name)
-		}
-	}
-
 	factory, err := os.ReadFile("../../docs/factory.md")
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +96,7 @@ func TestEveryVerdictExampleCarriesItsNote(t *testing.T) {
 		"../../docs/examples.md",
 		"../../docs/factory.md",
 		"../../docs/adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md",
-		"roles/reviewer.md",
+		"../fleet/roles/reviewer.md",
 	} {
 		raw, err := os.ReadFile(path)
 		if err != nil {
