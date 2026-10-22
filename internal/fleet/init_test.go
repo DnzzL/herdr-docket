@@ -156,6 +156,20 @@ func TestTheRolesInitWritesAreTheOnesTheDocsShow(t *testing.T) {
 	}
 }
 
+// The author decides spec-or-ticket from its role alone: a card with a Spec:
+// line is worked by reading implement-spec's SKILL.md, which is user-invoked
+// only, so the role must say read it, never invoke it.
+func TestTheDevRoleInitWritesNamesTheSpecRule(t *testing.T) {
+	dir := t.TempDir()
+	initFleet(t, dir)
+	role := read(t, filepath.Join(dir, "roles", "dev.md"))
+	for _, want := range []string{"`Spec:`", "~/.agents/skills/implement-spec/SKILL.md", "never the Skill tool", "/tdd", "--note"} {
+		if !strings.Contains(role, want) {
+			t.Errorf("roles/dev.md does not say %q:\n%s", want, role)
+		}
+	}
+}
+
 // A role the fleet already has is its owner's method: re-running init keeps
 // it byte for byte and says it was skipped.
 func TestInitKeepsARoleTheFleetAlreadyHas(t *testing.T) {
