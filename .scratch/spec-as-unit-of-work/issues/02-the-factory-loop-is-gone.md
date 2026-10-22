@@ -4,13 +4,13 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `init --factory` exits non-zero and its message names the removal and points at plain `init`
-- [ ] No persona or schedule of the loop ships in the binary any more
-- [ ] `docs/factory.md` and the loop's sections of `docs/examples.md` are gone; no doc links to them
-- [ ] The usage text no longer mentions `--factory`
-- [ ] A held PR still gets its notification and `merge-needed` label (existing tests stay green)
+- [x] `init --factory` exits non-zero and its message names the removal and points at plain `init`
+- [x] No persona or schedule of the loop ships in the binary any more
+- [x] `docs/factory.md` and the loop's sections of `docs/examples.md` are gone; no doc links to them
+- [x] The usage text no longer mentions `--factory`
+- [x] A held PR still gets its notification and `merge-needed` label (existing tests stay green)
 
 **Done when:** the loop is gone from binary, usage and docs, and the one flag that installed it fails loudly.
 
