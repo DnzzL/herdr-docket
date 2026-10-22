@@ -21,7 +21,8 @@ read, diff, and back up:
   queue is Backlog.md, and its phases are the lifecycle:
   `To Do → In Progress → Done | Failed | Blocked`.
 - **A card is one unit of work.** The task the queue holds is usually a
-  pointer: its body carries a line `Spec: .scratch/<slug>/spec.md` and the
+  pointer: its body carries a line `Spec: <path>` — wherever the repo's
+  `docs/agents/issue-tracker.md` keeps specs — and the
   spec's own *Done when* and *Verify by*. The author works the spec's tickets
   on one integration branch and delivers one pull request. A card with no `Spec:`
   line is a single ticket, worked on its own. The ticket files are the

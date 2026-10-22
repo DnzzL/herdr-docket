@@ -8,7 +8,7 @@ earlier runs left (TASK-69). An idea worth a dozen tasks became a dozen PRs to
 verify and gate one by one.
 
 **A card is a spec.** An idea is grilled with the human, then written with
-Pocock's `to-spec` and `to-tickets`, unmodified, in their local mode: spec
+Pocock's `to-spec` and `to-tickets`, unmodified, into the repo's issue tracker (`docs/agents/issue-tracker.md`): spec
 and ticket files (blocking edges as text) committed on the queue's base
 branch. The card points to the spec and carries the spec's own `Done when` /
 `Verify by`. `work.Task` does not change: the ticket graph is the run's
@@ -41,6 +41,8 @@ in the card body, written by a docket skill*: forks what Pocock's skills
 already publish locally. *GitHub native auto-merge instead of the gate*: puts
 the merge policy in one forge and needs a paid plan for branch protection on
 private repos (ADR 0013). *A planner agent splitting the spec after the
-grill*: re-derives context the grill session already holds.
+grill*: re-derives context the grill session already holds. *One spec store
+(local markdown) for every repo*: migrates repos whose tracker already holds
+their specs; the roles only need to close tickets the way that tracker says.
 
 **Status:** accepted

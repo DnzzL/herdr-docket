@@ -51,7 +51,7 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 ## How it works
 
 1. **A grill** turns an unclear idea into a spec and its tickets, committed
-   under `.scratch/<slug>/` — each says what to do and how a stranger proves
+   to the repo's issue tracker (here `.scratch/<slug>/`) — each says what to do and how a stranger proves
    it is done.
 2. **A card** either points at a spec with a `Spec:` line and carries the
    spec's own *Done when* and *Verify by*, or — when the task is clear —
