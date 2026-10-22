@@ -1,4 +1,4 @@
-# 0020 — A Notara database is a queue, and the status table is shared
+# 0022 — A Notara database is a queue, and the status table is shared
 
 Date: 2026-10-14 · Status: accepted
 

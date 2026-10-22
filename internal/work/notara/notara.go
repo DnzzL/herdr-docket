@@ -3,7 +3,7 @@
 // key, its page's to-dos are the acceptance criteria and its comment thread
 // is the conversation. Notara knows nothing of runs (its ADR-012): what a
 // status word means is this fleet's `statuses:` block, read through
-// work.Vocabulary like a Backlog.md project's (ADR-0020). Its kind in
+// work.Vocabulary like a Backlog.md project's (ADR-0022). Its kind in
 // fleet.yaml is `notara`.
 package notara
 
@@ -133,7 +133,7 @@ func (s *Source) Get(id string) (work.Task, error) {
 
 // Create files a card straight into the pickup word. Notara's select has no
 // default status, and a card with none is open to no one: the fleet's whitelist
-// never reads it, and nothing would ever claim it (ADR-0020).
+// never reads it, and nothing would ever claim it (ADR-0022).
 func (s *Source) Create(title, body, assignee string) (string, error) {
 	fields := map[string]any{s.cfg.statusField(): s.vocab.Todo}
 	if assignee != "" {
