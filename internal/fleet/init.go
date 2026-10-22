@@ -147,12 +147,12 @@ func initRoles(dir string, out io.Writer) error {
 		}
 	}
 	for _, r := range pipelineRoles {
-		path := filepath.Join(dir, "roles", r.name+".md")
-		if _, err := os.Stat(path); err == nil {
+		rolePath := filepath.Join(dir, "roles", r.name+".md")
+		if _, err := os.Stat(rolePath); err == nil {
 			fmt.Fprintf(out, "skipped roles/%s.md — it already exists\n", r.name)
 			continue
 		}
-		if err := os.WriteFile(path, []byte(r.body), 0o644); err != nil {
+		if err := os.WriteFile(rolePath, []byte(r.body), 0o644); err != nil {
 			return err
 		}
 		fmt.Fprintf(out, "wrote roles/%s.md\n", r.name)

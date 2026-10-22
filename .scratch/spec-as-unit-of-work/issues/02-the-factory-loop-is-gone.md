@@ -14,4 +14,4 @@
 
 **Done when:** the loop is gone from binary, usage and docs, and the one flag that installed it fails loudly.
 
-**Verify by:** `go test ./...` green; `herdr-docket init --factory; echo $?` prints the removal message and a non-zero status; `grep -rn -- "--factory\|factory.md" docs README.md main.go` finds nothing.
+**Verify by:** `go test ./...` green; `herdr-docket init --factory; echo $?` prints the removal message and a non-zero status; `grep -rn -- "--factory\|factory.md" docs README.md main.go` finds only main.go's removal error and links to `working-with-a-factory.md`.

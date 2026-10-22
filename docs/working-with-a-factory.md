@@ -25,7 +25,7 @@ If you cannot write *Verify by*, the work is not ready for an agent — it is
 still a decision (see below). One spec, one card, one pull request; each
 ticket a slice you would review in ten minutes. An idea whose pull request you
 would not read in one sitting is two specs. A one-line fix needs no spec: a
-card on its own, with its *Verify by*, is a single ticket.
+card on its own, with its *Verify by*, worked as one ticket's worth of work.
 
 | Instead of | Write |
 | --- | --- |

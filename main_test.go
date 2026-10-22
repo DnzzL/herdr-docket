@@ -171,7 +171,6 @@ func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
 // `init --factory` must fail loudly, not silently get a plain init and believe
 // the loop is installed: the error names the removal and the way forward.
 func TestInitFactoryFailsNamingTheRemoval(t *testing.T) {
-	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	err := initCmd("--factory")
 	if err == nil {
 		t.Fatal("init --factory must fail now that the loop is gone")

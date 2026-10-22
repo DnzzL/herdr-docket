@@ -64,8 +64,9 @@ _Avoid_: subtask, issue
 **Card**:
 The task filed for a spec, and the only thing that triggers a run. Its body
 is a line `Spec: .scratch/<slug>/spec.md` plus the spec's _Done when_ and
-_Verify by_. A card with no `Spec:` line is a single ticket, worked on its
-own.
+_Verify by_. A card with no `Spec:` line is still a card: its body carries
+its own _Done when_ and _Verify by_, and its run works it as one ticket's
+worth of work, with no spec.
 _Avoid_: story, epic
 
 `.scratch` is a plan, not a tracker: the queue holds cards, the repo holds
@@ -108,7 +109,7 @@ _Avoid_: pipeline (one card's author → verifier → gate), workflow
 The agent whose run delivered a pull request for a card — the queue's
 default agent, in a queue with a verifier. On a spec it is the implementer:
 it works the tickets on one integration branch and delivers one pull request.
-_Avoid_: worker, dev (a persona's name, not a role)
+_Avoid_: worker, dev (the role `init` ships, not the pipeline's word)
 
 **Delivery**:
 A pull request an author hands in with `task done --pr` in a queue with a

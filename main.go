@@ -35,7 +35,7 @@ const usage = `herdr-docket — a task queue worked by your Herdr agents
 
 Usage:
   herdr-docket daemon           Run the worker (started by the plugin startup hook)
-  herdr-docket init             Bootstrap the fleet dir (the local Backlog.md project + example agent + dev/reviewer roles)
+  herdr-docket init             Bootstrap the fleet dir: Backlog.md project, example agent, dev/reviewer roles
   herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials ([--token <pat>])
   herdr-docket list             List the queue, grouped by phase
   herdr-docket run <task-id>    Run one open task now, whatever its phase

@@ -97,8 +97,7 @@ them. Both roles ship with `herdr-docket init`.
 5. In a queue with a verifier, a delivered PR goes on: the verifier runs on
    the same task and checks the spec's and every ticket's *Verify by* against
    the one PR, a FAIL sends the author back to the same branch with the note
-   (twice at most),
-   and a PASS reaches the merge gate — [the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md).
+   (twice at most, then to you), and a PASS reaches the merge gate — [the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md).
    A hold waits on its pull request and settles with it: every few minutes
    the fleet reads the PR of each held or failed task through the forge —
    merged closes the task `Done`, a PR a human closed unmerged closes it

@@ -14,8 +14,9 @@ branch. The card points to the spec and carries the spec's own `Done when` /
 `Verify by`. `work.Task` does not change: the ticket graph is the run's
 business, not the queue's, so no adapter learns parents or dependencies.
 
-**One implementer per repo runs it.** The author's run becomes
-`/implement-spec` on the spec: an integration branch, one subagent per ready
+**One implementer per repo runs it.** The author's run reads the
+implement-spec skill's `SKILL.md` and follows it on the spec (the skill is
+user-invoked only, so it is read, not invoked): an integration branch, one subagent per ready
 ticket in its own worktree, a final `code-review`, one PR. Worktrees are the
 agent runtime's, not the runner's. Docket stays runtime-agnostic: the prompt
 asks for subagents, and a runtime without them works the graph alone. In the

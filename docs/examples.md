@@ -81,7 +81,7 @@ wrong error type — it had read the code. A follow-up audit run re-checked all
 35 tickets against the code and caught two "ready" tickets whose work had
 already landed.
 
-## 2. A dev that works `ready for agent` tickets
+## 2. A dev that works `ready for agent` cards
 
 `agents/dev/AGENT.md` — the post: which repo, what is at stake there.
 
@@ -95,7 +95,7 @@ role: dev
 
 You work on MyApp. Its CLAUDE.md and AGENTS.md are your bar: the commands
 to run, and which tests apply to which change. Your verifier is `reviewer`;
-a follow-up you file goes to `dev`.
+a follow-up task you file goes to `dev`.
 ```
 
 `roles/dev.md` — the method it names with `role: dev`, shared by every dev the fleet has, in any repo ([sharing a method](agents.md#sharing-a-method-between-agents)):
