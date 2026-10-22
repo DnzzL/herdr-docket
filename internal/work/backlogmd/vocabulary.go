@@ -5,7 +5,7 @@ import "github.com/DnzzL/herdr-docket/internal/work"
 // Vocabulary is one project's status words, in the fleet's terms. Backlog.md
 // validates every write against the statuses the project declares, and a
 // project the fleet did not lay down has its own. The table itself is shared
-// with every queue that keeps status words (ADR-0020); what is Backlog.md's
+// with every queue that keeps status words (ADR-0022); what is Backlog.md's
 // alone is the default below.
 type Vocabulary = work.Vocabulary
 

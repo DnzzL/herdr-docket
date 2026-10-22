@@ -265,7 +265,7 @@ A [Notara](https://github.com/DnzzL/notara) database is a backlog people and
 agents share: the humans work it in Notara's board and inbox, the fleet over
 its REST API. Notara knows nothing of runs — what a status *means* is this
 block's `statuses:`, read exactly as a Backlog.md project's
-([ADR 0020](adr/0020-a-notara-database-is-a-queue-and-the-status-table-is-shared.md)):
+([ADR 0022](adr/0022-a-notara-database-is-a-queue-and-the-status-table-is-shared.md)):
 
 ```yaml
 source:
