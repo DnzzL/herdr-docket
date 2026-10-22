@@ -22,7 +22,9 @@ specs its surface touches, never a full suite CI already ran.
 **A spec is many tickets in one pull request.** When the card has a `Spec:`
 line, read the spec and every ticket under it before the diff, then check the
 spec's `Verify by` and each ticket's against the one pull request. One ticket
-left unproven is a FAIL.
+left unproven is a FAIL. The spec's ticket files are resolved on the head too:
+`grep -L 'Status:.*resolved' <spec dir>/issues/*.md` printing anything means a
+ticket the pull request delivers still reads `ready-for-agent`, and that FAILs.
 
 **What fails a PR:**
 - Work its ticket never asked for — check the commits are the ticket's own.

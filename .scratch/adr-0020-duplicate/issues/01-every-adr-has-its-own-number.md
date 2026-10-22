@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] A test in the root package reads the ADR directory and fails listing each number used by more than one file, with the file names; it is red on main before the rename (commit it red first)
 - [ ] The Notara ADR is 0022 in its file name and title; no other ADR content changes
