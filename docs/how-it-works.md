@@ -20,10 +20,10 @@ read, diff, and back up:
   criteria, priority, and an `assignee` that names the agent. By default that
   queue is Backlog.md, and its phases are the lifecycle:
   `To Do → In Progress → Done | Failed | Blocked`.
-- **A card is a spec.** The task the queue holds is usually a pointer: its
-  body carries a line `Spec: .scratch/<slug>/spec.md` and the spec's own
-  *Done when* and *Verify by*. The author works the spec's tickets on one
-  integration branch and delivers one pull request. A card with no `Spec:`
+- **A card is one unit of work.** The task the queue holds is usually a
+  pointer: its body carries a line `Spec: .scratch/<slug>/spec.md` and the
+  spec's own *Done when* and *Verify by*. The author works the spec's tickets
+  on one integration branch and delivers one pull request. A card with no `Spec:`
   line is a single ticket, worked on its own. The ticket files are the
   author's plan and trigger nothing: the card is the only thing the daemon
   routes.
@@ -105,8 +105,9 @@ under `.scratch`, because there is nothing left to plan.
    knows. The daemon reconciles anything left hanging and records the run in
    an append-only `history.jsonl`.
 5. In a queue with a verifier, a delivered PR goes on: the verifier runs on
-   the same task and checks the spec's and every ticket's *Verify by* against
-   the one PR, a FAIL sends the author back to the same branch with the note
+   the same task and checks every *Verify by* the card carries — the spec's
+   and each ticket's, or the clear card's own — against the one PR, a FAIL
+   sends the author back to the same branch with the note
    (twice at most, then to you), and a PASS reaches the merge gate — [the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md).
    A hold waits on its pull request and settles with it: every few minutes
    the fleet reads the PR of each held or failed task through the forge —
