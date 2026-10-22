@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The shipped `dev` role no longer calls a no-spec card a ticket, and says it is worked as one ticket's worth of work
 - [ ] The examples manual carries the same text (drift test green)
