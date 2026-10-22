@@ -20,6 +20,13 @@ read, diff, and back up:
   criteria, priority, and an `assignee` that names the agent. By default that
   queue is Backlog.md, and its phases are the lifecycle:
   `To Do → In Progress → Done | Failed | Blocked`.
+- **A card is a spec.** The task the queue holds is usually a pointer: its
+  body carries a line `Spec: .scratch/<slug>/spec.md` and the spec's own
+  *Done when* and *Verify by*. The author works the spec's tickets on one
+  integration branch and delivers one pull request. A card with no `Spec:`
+  line is a single ticket, worked on its own. The ticket files are the
+  author's plan and trigger nothing: the card is the only thing the daemon
+  routes.
 - **An agent** is one markdown file: YAML frontmatter for the run parameters,
   body for the persona every one of its runs opens with. Every field, and the
   runtimes a post can run on: [Writing an agent](agents.md).
@@ -48,8 +55,29 @@ read, diff, and back up:
   (the work is in the repo and the notes). `Failed`/`Blocked` → the workspace
   stays open as the place to resume, and the ticket gets a note naming it.
 
-Personas built this way — a dev, a verifier, an intake, a lookback:
+Personas built this way — a PM, a dev, a marketer, a verifier:
 [Worked examples](examples.md).
+
+## From idea to card
+
+Work starts as a conversation, not a ticket. You grill the idea with an agent
+until it is settled, then the same session writes it down with the `to-spec`
+and `to-tickets` skills in their local mode:
+
+```
+.scratch/<slug>/
+├── spec.md            # the problem, the decisions, Done when / Verify by
+└── issues/
+    ├── 01-<slug>.md   # one ticket each: what to build, Blocked by,
+    └── 02-<slug>.md   # Done when, Verify by
+```
+
+The session commits that directory on the queue's base branch, then files one
+card whose body is the `Spec:` line plus the spec's *Done when* and *Verify
+by*. The queue gains no field for it: the pointer is text, and the order the
+tickets run in is the author's business — the `dev` role reads the
+`implement-spec` skill and follows it, using subagents when its runtime has
+them. Both roles ship with `herdr-docket init`.
 
 ## Anatomy of a run
 
@@ -67,7 +95,9 @@ Personas built this way — a dev, a verifier, an intake, a lookback:
    knows. The daemon reconciles anything left hanging and records the run in
    an append-only `history.jsonl`.
 5. In a queue with a verifier, a delivered PR goes on: the verifier runs on
-   the same task, a FAIL sends the author back with the note (twice at most),
+   the same task and checks the spec's and every ticket's *Verify by* against
+   the one PR, a FAIL sends the author back to the same branch with the note
+   (twice at most),
    and a PASS reaches the merge gate — [the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md).
    A hold waits on its pull request and settles with it: every few minutes
    the fleet reads the PR of each held or failed task through the forge —

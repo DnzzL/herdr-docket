@@ -1,10 +1,10 @@
 # herdr-docket
 
-**Give a task to a named coding agent. It opens a pull request and a second
-agent verifies it. You merge — or, once you allow it, a merge gate written in
-code does.**
+**Grill an idea into a spec and file it as one card. A named coding agent
+works it to one pull request and a second agent verifies it. You merge — or,
+once you allow it, a merge gate written in code does.**
 
-A task queue and a small software factory for [Herdr](https://herdr.dev): your
+A task queue and a spec-to-merge pipeline for [Herdr](https://herdr.dev): your
 agents work the queue in parallel, in workspaces you can watch, join or close.
 
 [![CI](https://github.com/DnzzL/herdr-docket/actions/workflows/ci.yml/badge.svg)](https://github.com/DnzzL/herdr-docket/actions/workflows/ci.yml)
@@ -12,9 +12,9 @@ agents work the queue in parallel, in workspaces you can watch, join or close.
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ```text
- you / intake ──► task ──► author ──► PR ──► verifier ──► gate ──► merged
- (says how it's                ▲               │ FAIL       │
-  verified)                    └───────────────┘            └──► held: your Blocked column
+ idea ──► grill ──► card ──► author ──► one PR ──► verifier ──► gate ──► merged
+          (spec +   (Spec:    ▲                     │ FAIL       │
+          tickets)  line)     └─────────────────────┘            └──► held: your Blocked column
 ```
 
 ## Who it's for
@@ -47,13 +47,19 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 
 ## How it works
 
-1. **A task** says what to do and how a stranger proves it is done.
-2. **The daemon** routes it to the agent it names and starts a run in a Herdr
-   workspace — one run per agent, agents in parallel.
-3. **The author** delivers a pull request.
-4. **A verifier** that did not write it re-derives every claim and records
-   PASS or FAIL. A FAIL goes back to the author, twice at most.
-5. **The gate** — code, not a prompt — merges a PASS on green CI, unless the
+1. **A grill** turns an idea into a spec and its tickets, committed under
+   `.scratch/<slug>/` — each says what to do and how a stranger proves it is
+   done.
+2. **A card** points at the spec with a `Spec:` line and carries the spec's
+   own *Done when* and *Verify by*. A small change is a card on its own.
+3. **The daemon** routes the card to the agent it names and starts a run in a
+   Herdr workspace — one run per agent, agents in parallel.
+4. **The author** works the spec's tickets on one integration branch —
+   subagents when its runtime has them — and delivers one pull request.
+5. **A verifier** that did not write it checks the spec's and every ticket's
+   *Verify by* and records PASS or FAIL. A FAIL goes back to the author on the
+   same branch, twice at most.
+6. **The gate** — code, not a prompt — merges a PASS on green CI, unless the
    task is `critical` or the diff touches your `CODEOWNERS`. Anything else
    waits in your `Blocked` column with the one reason it stopped.
 
@@ -61,11 +67,11 @@ More: [how it works](docs/how-it-works.md).
 
 ## How much autonomy
 
-Start with one task you file by hand, then let go one project at a time:
+Start with one card you file by hand, then let go one project at a time:
 
 | Step | `fleet.yaml` | You do |
 | --- | --- | --- |
-| 1. Agents work, you review | a queue, an agent | read and merge every PR |
+| 1. Agents work, you review | a queue, an agent | grill the spec, read and merge every PR |
 | 2. A verifier reviews first | `verifier: reviewer` | merge what passed |
 | 3. The gate merges | `merge: auto` + a `CODEOWNERS` | answer the `Blocked` column |
 
@@ -88,8 +94,9 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
 - **Not a scheduler.** Recurring work belongs to
   [herdr-automations](https://github.com/DnzzL/herdr-automations): automations
   decide *when*, the fleet decides *what* and *who*.
-- **Not a workflow engine.** A task is one goal; its only fixed sequence is
-  author → verifier → gate. Agents fan out by filing follow-up tasks.
+- **Not a workflow engine.** A card is one spec; its only fixed sequence is
+  author → verifier → gate. The ticket graph is the author's plan, not the
+  queue's: `.scratch` triggers nothing.
 - **Not an environment.** An agent needs a repo it can run, test data and a
   way to check a fix the way a user would; that lives in your repo, and the
   `AGENT.md` points at it.

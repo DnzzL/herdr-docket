@@ -8,11 +8,11 @@ import (
 )
 
 // Resuming is the gesture that puts an agent back in front of real work, and
-// `init --factory` ships three agents pointed at a placeholder repo with
-// "point its workdir at your repo, then resume" printed beside them. Nothing
-// enforced the "then": an agent could be armed at a directory that does not
-// exist, and the first task routed to it failed at provision with nothing on
-// the board explaining why.
+// an agent can sit on a placeholder repo — `init`'s example points at
+// ~/Projects/example — waiting for "point its workdir at your repo, then
+// resume". Nothing enforced the "then": an agent could be armed at a directory
+// that does not exist, and the first task routed to it failed at provision
+// with nothing on the board explaining why.
 func TestResumableRefusesAnAgentPointedNowhere(t *testing.T) {
 	dir := t.TempDir()
 	real := filepath.Join(dir, "repo")

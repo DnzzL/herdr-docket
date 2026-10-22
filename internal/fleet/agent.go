@@ -225,9 +225,10 @@ func expandHome(path string) string {
 // a task to it, and the run dies at provision with the board saying only that
 // it failed.
 //
-// It exists because `init --factory` ships three agents on a placeholder
-// workdir and prints "point its workdir at your repo, then resume". Nothing
-// enforced the "then", and the gesture is where a human is still looking.
+// It exists because an agent can sit on a placeholder workdir — `init`'s
+// example points at ~/Projects/example — and "point its workdir at your repo,
+// then resume" is a promise nothing enforced. The gesture is where a human is
+// still looking.
 func Resumable(dir, name string) error {
 	agents, _ := LoadAgents(dir)
 	a, ok := agents[name]
