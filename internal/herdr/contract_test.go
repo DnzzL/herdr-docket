@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 
@@ -128,11 +129,17 @@ func TestARealBusyPaneRefusesAnAgentStartWithTheCodeTheFleetRetriesOn(t *testing
 	if err := paneInteractive(t, c, paneID); err != nil {
 		t.Fatalf("the pane never got interactive: %v", err)
 	}
-	if err := c.AgentStart("docket-contract-first", "pi", paneID, nil); err != nil {
+	// Names are unique per run: herdr holds a closed workspace's agent names
+	// for a moment, so a fixed name makes back-to-back runs answer
+	// agent_name_taken instead of the busy-pane refusal this pins.
+	runID := strconv.FormatInt(time.Now().UnixNano(), 36)
+	first := "contract-first-" + runID
+	second := "contract-second-" + runID
+	if err := c.AgentStart(first, "pi", paneID, nil); err != nil {
 		t.Fatalf("first agent start should succeed on an up shell: %v", err)
 	}
 	// The second start is the busy one: the pane is already an agent's.
-	err = c.AgentStart("docket-contract-second", "pi", paneID, nil)
+	err = c.AgentStart(second, "pi", paneID, nil)
 	if !HasCode(err, CodePaneBusy) {
 		t.Fatalf("agent start into an occupied pane: HasCode(CodePaneBusy) = false: %v — the start retry would not fire", err)
 	}
