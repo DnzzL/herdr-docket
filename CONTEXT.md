@@ -50,20 +50,21 @@ _Avoid_: checklist, steps, subtasks
 
 **Spec**:
 The unit of work: one idea, grilled with the human and written with
-`to-spec` to `.scratch/<slug>/spec.md` on the queue's base branch. It carries
+`to-spec` into the repo's issue tracker (`docs/agents/issue-tracker.md`; here
+`.scratch/<slug>/spec.md`) on the queue's base branch. It carries
 its own _Done when_ and _Verify by_, and ships as one pull request.
 _Avoid_: PRD, epic, plan
 
 **Ticket**:
-One slice of a spec, written with `to-tickets` to
-`.scratch/<slug>/issues/<NN>-<slug>.md`: what to build, what blocks it, its
+One slice of a spec, written with `to-tickets` beside it (here
+`.scratch/<slug>/issues/<NN>-<slug>.md`): what to build, what blocks it, its
 _Done when_ and _Verify by_. The ticket files are the implementer's plan and
 trigger nothing; the queue never sees them.
 _Avoid_: subtask, issue
 
 **Card**:
 The task filed for a spec, and the only thing that triggers a run. Its body
-is a line `Spec: .scratch/<slug>/spec.md` plus the spec's _Done when_ and
+is a line `Spec: <path to the spec>` plus the spec's _Done when_ and
 _Verify by_. A card with no `Spec:` line is still a card: its body carries
 its own _Done when_ and _Verify by_, and its run works it as one ticket's
 worth of work, with no spec.
@@ -152,5 +153,5 @@ docket's words map onto the shared vocabulary of the `software-factory` skill
 | Herdr workspace | runner |
 
 The one collision: a software-factory _ticket_ is docket's card, while
-docket's _ticket_ is a file in `.scratch` — a plan inside one run, which that
+docket's _ticket_ is a file beside its spec — a plan inside one run, which that
 language does not name.

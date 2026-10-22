@@ -114,9 +114,9 @@ use /tdd. Use subagents when your runtime has them; work alone when it does
 not.
 
 **Hand back.** Deliver with `herdr-docket task done <id> --pr <url> --note "…"`,
-the note saying what you verified yourself. Before delivering a spec, set every
-ticket file under its `issues/` to `Status: resolved` — a ticket the pull request
-delivers is not left `ready-for-agent` on the board. If it comes back, the
+the note saying what you verified yourself. Before delivering a spec, resolve every
+ticket it delivers the way the repo's `docs/agents/issue-tracker.md` closes
+work — none is left open on the board. If it comes back, the
 verifier's note is your brief on the same branch: fix only what it names. In
 doubt, block the task with the single question that would settle it. Never merge.
 ```
@@ -201,9 +201,9 @@ specs its surface touches, never a full suite CI already ran.
 **A spec is many tickets in one pull request.** When the card has a `Spec:`
 line, read the spec and every ticket under it before the diff, then check the
 spec's `Verify by` and each ticket's against the one pull request. One ticket
-left unproven is a FAIL. The spec's ticket files are resolved on the head too:
-`grep -L 'Status:.*resolved' <spec dir>/issues/*.md` printing anything means a
-ticket the pull request delivers still reads `ready-for-agent`, and that FAILs.
+left unproven is a FAIL. Every ticket the pull request delivers is
+closed on the head too, the way the repo's `docs/agents/issue-tracker.md`
+closes work; one still open FAILs.
 
 **What fails a PR:**
 - Work its ticket never asked for — check the commits are the ticket's own.
