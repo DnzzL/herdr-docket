@@ -34,6 +34,15 @@ go vet ./... && gofmt -l .          # both must be clean; CI enforces them
 herdr plugin link .                 # run your checkout as the installed plugin
 ```
 
+A test never touches your real home: every package whose code resolves the
+config, state or skill directory has a `testmain_test.go` calling
+`internal/testenv`, which points HOME and Herdr's plugin dirs at a temp dir
+before the tests run. A new package that does the same wants one too. A live
+probe that must see the real queue opts out with `HERDR_DOCKET_TESTENV=real`.
+
+Tests that exec `git` or `gh` are outside that guard: they still read your real
+`~/.gitconfig` and gh config. Keep them read-only.
+
 `herdr plugin link` replaces any GitHub install of the plugin, and the daemon
 re-executes itself when the binary changes, so a rebuild is enough to test.
 

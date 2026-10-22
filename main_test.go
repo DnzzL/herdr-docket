@@ -316,3 +316,29 @@ func TestChangelogRefusesAnArgumentItDoesNotKnow(t *testing.T) {
 		t.Error("a refused command must leave the fragments alone")
 	}
 }
+
+// TASK-84: a test run once wrote an automation into the owner's real config.
+// The guard lives in TestMain, so it is checked rather than assumed: every
+// directory this binary resolves sits inside one fresh temp root, and a write
+// to the config dir lands there.
+func TestATestRunNeverResolvesTheRealHome(t *testing.T) {
+	home := os.Getenv("HOME")
+	if !strings.HasPrefix(home, os.TempDir()+string(os.PathSeparator)) {
+		t.Fatalf("HOME = %q, want the temp dir testenv made", home)
+	}
+	for name, dir := range map[string]string{
+		"XDG_CONFIG_HOME":      os.Getenv("XDG_CONFIG_HOME"),
+		"hostpath.ConfigDir()": hostpath.ConfigDir(),
+		"hostpath.StateDir()":  hostpath.StateDir(),
+	} {
+		if !strings.HasPrefix(dir, home+string(os.PathSeparator)) {
+			t.Errorf("%s = %q, want it under the temp home %q", name, dir, home)
+		}
+	}
+	if err := os.MkdirAll(hostpath.ConfigDir(), 0o755); err != nil {
+		t.Fatalf("the config dir must be writable in a test run: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hostpath.ConfigDir(), "probe"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("writing the config dir must land in the temp home: %v", err)
+	}
+}
