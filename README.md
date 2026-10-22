@@ -57,7 +57,7 @@ the task with a verdict, and the run lands in `herdr-docket history`.
    task is `critical` or the diff touches your `CODEOWNERS`. Anything else
    waits in your `Blocked` column with the one reason it stopped.
 
-More: [how it works](docs/how-it-works.md) · [the factory loop](docs/factory.md).
+More: [how it works](docs/how-it-works.md).
 
 ## How much autonomy
 
@@ -68,7 +68,6 @@ Start with one task you file by hand, then let go one project at a time:
 | 1. Agents work, you review | a queue, an agent | read and merge every PR |
 | 2. A verifier reviews first | `verifier: reviewer` | merge what passed |
 | 3. The gate merges | `merge: auto` + a `CODEOWNERS` | answer the `Blocked` column |
-| 4. The loop feeds itself | `herdr-docket init --factory` + its schedules | read the weekly lookback ([the factory](docs/factory.md)) |
 
 The fleet only ever picks up the status you name, so your triage and wontfix
 columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers).
@@ -103,7 +102,6 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
 
 [How it works](docs/how-it-works.md) ·
 [working with a factory](docs/working-with-a-factory.md) ·
-[the factory loop](docs/factory.md) ·
 [writing an agent](docs/agents.md) ·
 [worked examples](docs/examples.md) ·
 [where the queue lives](docs/queues.md) ·

@@ -157,14 +157,29 @@ func TestHistoryLineShowsTheVerification(t *testing.T) {
 	}
 }
 
-// The one-step factory setup is the only flag init takes: an unknown
-// argument is refused before anything on disk is touched, and the refusal
-// names the flag so the discovery path is the error message.
+// init takes no flag: an unknown argument is refused before anything on disk
+// is touched, and the refusal points at plain init.
 func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
 	if err := initCmd("--frobnicate"); err == nil {
 		t.Fatal("want an error")
-	} else if !strings.Contains(err.Error(), "--factory") {
-		t.Errorf("error must point at the flag that exists: %v", err)
+	} else if !strings.Contains(err.Error(), "herdr-docket init") {
+		t.Errorf("error must point at plain init: %v", err)
+	}
+}
+
+// The factory loop is gone (ADR 0021). A fleet that still runs
+// `init --factory` must fail loudly, not silently get a plain init and believe
+// the loop is installed: the error names the removal and the way forward.
+func TestInitFactoryFailsNamingTheRemoval(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	err := initCmd("--factory")
+	if err == nil {
+		t.Fatal("init --factory must fail now that the loop is gone")
+	}
+	for _, want := range []string{"--factory", "removed", "herdr-docket init"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q must mention %q", err, want)
+		}
 	}
 }
 

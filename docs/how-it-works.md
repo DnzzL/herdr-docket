@@ -68,7 +68,7 @@ Personas built this way — a dev, a verifier, an intake, a lookback:
    an append-only `history.jsonl`.
 5. In a queue with a verifier, a delivered PR goes on: the verifier runs on
    the same task, a FAIL sends the author back with the note (twice at most),
-   and a PASS reaches the merge gate — [the pipeline](factory.md#the-pipeline).
+   and a PASS reaches the merge gate — [the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md).
    A hold waits on its pull request and settles with it: every few minutes
    the fleet reads the PR of each held or failed task through the forge —
    merged closes the task `Done`, a PR a human closed unmerged closes it
@@ -88,7 +88,7 @@ line of config, and you can move them one project at a time:
 | `statuses.todo` | a column you fill by hand — `ready-for-agent` | your project's default column: everything new is fair game |
 | assignee / `default_agent` | name the agent on the task, one at a time | `default_agent` picks up everything unassigned — per project, so each one has its own intake |
 | `statuses.failed` | points at a human column — `needs-info`, `ready-for-human` | points at a real `Failed`; nobody is paged |
-| `verifier` | a reviewer verifies every delivered PR, you merge ([Example 4](examples.md#4-a-reviewer-that-verifies-the-devs-prs)) | `merge: auto` — the gate merges a PASS on green CI, except `critical` tasks and `CODEOWNERS` paths ([the pipeline](factory.md#the-pipeline)) |
+| `verifier` | a reviewer verifies every delivered PR, you merge ([Example 4](examples.md#4-a-reviewer-that-verifies-the-devs-prs)) | `merge: auto` — the gate merges a PASS on green CI, except `critical` tasks and `CODEOWNERS` paths ([the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)) |
 | `disabled` / `agent pause` / `pause` | park an agent — or the whole fleet — while you look at something | never paused |
 
 The one lever with teeth is the first: **the fleet only ever picks up the
@@ -99,13 +99,6 @@ see [Where the queue lives](queues.md).
 It never overrides you in the other direction either: `herdr-docket run TASK-12`
 reaches a paused agent, because pressing the button is
 human intent, not scheduling.
-
-These levers are also the whole of a running *factory* — intake polling
-sources into verified tasks, a verifier and a merge gate on every PR, a stall
-sweep, a weekly lookback
-over what keeps recurring. The loop is personas and cron, wired in
-[docs/factory.md](factory.md); `herdr-docket init --factory` writes it
-into an existing fleet, the repo-side personas paused until you name the repo.
 
 ## Watching the fleet
 
