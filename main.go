@@ -16,7 +16,6 @@ import (
 
 	"github.com/DnzzL/herdr-docket/internal/changelog"
 	"github.com/DnzzL/herdr-docket/internal/daemon"
-	"github.com/DnzzL/herdr-docket/internal/factory"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/gate"
 	"github.com/DnzzL/herdr-docket/internal/history"
@@ -36,8 +35,7 @@ const usage = `herdr-docket — a task queue worked by your Herdr agents
 
 Usage:
   herdr-docket daemon           Run the worker (started by the plugin startup hook)
-  herdr-docket init             Bootstrap the fleet dir (the local Backlog.md project + example agent)
-  herdr-docket init --factory   …and install the factory loop: personas + schedules (docs/factory.md)
+  herdr-docket init             Bootstrap the fleet dir: Backlog.md project, example agent, dev/reviewer roles
   herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials ([--token <pat>])
   herdr-docket list             List the queue, grouped by phase
   herdr-docket run <task-id>    Run one open task now, whatever its phase
@@ -161,28 +159,24 @@ func changelogCmd(args []string, out io.Writer) error {
 }
 
 func initCmd(arg string) error {
-	factoryLoop := false
 	switch arg {
 	case "":
 	case "--factory":
-		factoryLoop = true
+		return errors.New("init: --factory was removed with the factory loop — run `herdr-docket init`, which writes the dev and reviewer roles")
 	default:
-		return fmt.Errorf("init: unknown argument %q — the only flag is --factory", arg)
+		return fmt.Errorf("init: unknown argument %q — init takes none; run `herdr-docket init`", arg)
 	}
 	settings, err := fleet.LoadSettings()
 	if err != nil {
 		return err
 	}
-	if err := fleet.Init(settings); err != nil {
+	if err := fleet.Init(settings, os.Stdout); err != nil {
 		return err
 	}
 	fmt.Printf("fleet ready at %s\n", settings.Dir)
 	fmt.Println("- describe your agents in agents/<name>/AGENT.md")
 	fmt.Println("- add work: herdr-docket task create \"...\" -a <agent>")
 	fmt.Println("- the daemon (or `herdr-docket daemon`) picks tasks up from there")
-	if factoryLoop {
-		return factory.Install(settings.Dir, os.Stdout)
-	}
 	return nil
 }
 

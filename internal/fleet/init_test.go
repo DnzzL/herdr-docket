@@ -1,8 +1,10 @@
 package fleet
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -109,4 +111,92 @@ func read(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// initFleet runs init the way the CLI does, over a queue that lives elsewhere
+// so the test needs no Backlog.md CLI, and returns what init printed.
+func initFleet(t *testing.T, dir string) string {
+	t.Helper()
+	var out bytes.Buffer
+	if err := Init(Settings{Dir: dir, Source: SourceConfig{Kind: kindGithub}}, &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
+}
+
+// The pipeline's two roles ship with plain init (ADR 0021): a fleet has the
+// author's and the verifier's method from its first run, beside the example,
+// without installing any loop — and init says what it wrote.
+func TestInitWritesTheTwoPipelineRoles(t *testing.T) {
+	dir := t.TempDir()
+	out := initFleet(t, dir)
+	for _, name := range []string{"dev", "reviewer", "example"} {
+		if got := read(t, filepath.Join(dir, "roles", name+".md")); got == "" {
+			t.Errorf("roles/%s.md is empty", name)
+		}
+	}
+	for _, name := range []string{"dev", "reviewer"} {
+		if !strings.Contains(out, "wrote roles/"+name+".md") {
+			t.Errorf("output must say it wrote roles/%s.md:\n%s", name, out)
+		}
+	}
+}
+
+// The manual and the shipped bytes must not drift: docs/examples.md shows the
+// roles a fleet copies by hand, and these are the ones init writes. Read
+// against the docs on disk — if someone edits one side, this goes red until
+// both agree.
+func TestTheRolesInitWritesAreTheOnesTheDocsShow(t *testing.T) {
+	examples := read(t, "../../docs/examples.md")
+	dir := t.TempDir()
+	initFleet(t, dir)
+	for _, name := range []string{"dev", "reviewer"} {
+		if !strings.Contains(examples, read(t, filepath.Join(dir, "roles", name+".md"))) {
+			t.Errorf("role %s is not in docs/examples.md verbatim — one of the two has drifted", name)
+		}
+	}
+}
+
+// A role the fleet already has is its owner's method: re-running init keeps
+// it byte for byte and says it was skipped.
+func TestInitKeepsARoleTheFleetAlreadyHas(t *testing.T) {
+	dir := t.TempDir()
+	initFleet(t, dir)
+	mine := filepath.Join(dir, "roles", "dev.md")
+	if err := os.WriteFile(mine, []byte("my own method"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := initFleet(t, dir)
+	if got := read(t, mine); got != "my own method" {
+		t.Fatalf("roles/dev.md overwritten: %q", got)
+	}
+	for _, name := range []string{"dev", "reviewer"} {
+		if !strings.Contains(out, "skipped roles/"+name+".md") {
+			t.Errorf("output must say it skipped roles/%s.md:\n%s", name, out)
+		}
+	}
+}
+
+// verdictCommand matches a `task verdict` command example, tolerant of the
+// line wraps markdown puts inside a backticked command.
+var verdictCommand = regexp.MustCompile("task verdict[^`\\n]*(?:\\n[^`]*)?")
+
+// The instruction to carry the evidence is the --note flag: without it an
+// agent following the docs verbatim records a bare verdict, and the evidence
+// it gathered is stranded in the task notes instead of on the PR comment.
+// Every command example in the docs and the shipped roles must carry it —
+// this omission already produced a bare verdict once (docket TASK-71).
+func TestEveryVerdictExampleCarriesItsNote(t *testing.T) {
+	for _, path := range []string{
+		"../../docs/commands.md",
+		"../../docs/examples.md",
+		"../../docs/adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md",
+		"roles/reviewer.md",
+	} {
+		for _, example := range verdictCommand.FindAllString(read(t, path), -1) {
+			if !strings.Contains(example, "--note") {
+				t.Errorf("%s: a task verdict example without --note teaches a bare verdict: %q", path, example)
+			}
+		}
+	}
 }

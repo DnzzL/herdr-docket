@@ -1,7 +1,9 @@
 package fleet
 
 import (
+	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,6 +44,21 @@ const exampleRole = `# roles/example.md — a role every agent that names it ope
 # run assembled without its method looks exactly like a run that had one.
 `
 
+// The pipeline's two roles (ADR 0021): the author's method and the
+// verifier's, shipped with plain init so a fleet has both from its first run.
+// Verbatim as docs/examples.md shows them — a drift test pins the two.
+//
+//go:embed roles/dev.md
+var devRole string
+
+//go:embed roles/reviewer.md
+var reviewerRole string
+
+var pipelineRoles = []struct{ name, body string }{
+	{"dev", devRole},
+	{"reviewer", reviewerRole},
+}
+
 const exampleAgent = `---
 # model: claude-sonnet-5
 workdir: ~/Projects/example
@@ -76,10 +93,12 @@ const exampleFleet = `# FLEET.md — the fleet's shared brief
 #   found it.
 `
 
-// Init bootstraps the fleet directory: a git repo, an example agent, and —
-// when the queue is a local one — the Backlog.md project itself. Safe to
-// re-run: existing pieces are left alone.
-func Init(s Settings) error {
+// Init bootstraps the fleet directory: a git repo, an example agent, the
+// pipeline's two roles, and — when the queue is a local one — the Backlog.md
+// project itself. Safe to re-run: existing pieces are left alone. What it
+// does to those two roles is reported to out: they are the files an owner
+// edits, and a re-run must say it kept them.
+func Init(s Settings, out io.Writer) error {
 	dir := s.Dir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -97,7 +116,7 @@ func Init(s Settings) error {
 	if err := initBrief(dir); err != nil {
 		return err
 	}
-	if err := initRoles(dir); err != nil {
+	if err := initRoles(dir, out); err != nil {
 		return err
 	}
 	example := filepath.Join(dir, "agents", "example")
@@ -115,15 +134,30 @@ func Init(s Settings) error {
 // initRoles lays down the roles/ dir with a commented example the first time
 // init runs. A role is optional and this scaffold reaches nobody until an
 // agent names it — but a directory nobody can see is a feature nobody uses.
-func initRoles(dir string) error {
+// The pipeline's two roles land on every run that lacks them; a role the
+// fleet already has is its owner's and is kept.
+func initRoles(dir string, out io.Writer) error {
 	path := filepath.Join(dir, "roles", "example.md")
-	if _, err := os.Stat(filepath.Dir(path)); err == nil {
-		return nil
+	if _, err := os.Stat(filepath.Dir(path)); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, []byte(exampleRole), 0o644); err != nil {
+			return err
+		}
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+	for _, r := range pipelineRoles {
+		rolePath := filepath.Join(dir, "roles", r.name+".md")
+		if _, err := os.Stat(rolePath); err == nil {
+			fmt.Fprintf(out, "skipped roles/%s.md — it already exists\n", r.name)
+			continue
+		}
+		if err := os.WriteFile(rolePath, []byte(r.body), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "wrote roles/%s.md\n", r.name)
 	}
-	return os.WriteFile(path, []byte(exampleRole), 0o644)
+	return nil
 }
 
 // initBrief lays down the commented FLEET.md scaffold the first time init

@@ -13,8 +13,8 @@ mirror of it.
 _Avoid_: backlog, board, sprint
 
 **Task**:
-One unit of work in the queue.
-_Avoid_: item, ticket, card, issue, to-do
+One unit of work in the queue — the word the code and the CLI use.
+_Avoid_: item, issue, to-do; _ticket_ (a slice of a spec, never in the queue)
 
 A backend with a vocabulary of its own keeps that word inside its adapter — a
 GitHub adapter says *issue*, because that is what GitHub calls the thing a
@@ -46,6 +46,32 @@ A task's acceptance criteria. Read-only to the fleet: a run never edits them,
 and the verdict and its evidence go in the closing note.
 _Avoid_: checklist, steps, subtasks
 
+## The work
+
+**Spec**:
+The unit of work: one idea, grilled with the human and written with
+`to-spec` to `.scratch/<slug>/spec.md` on the queue's base branch. It carries
+its own _Done when_ and _Verify by_, and ships as one pull request.
+_Avoid_: PRD, epic, plan
+
+**Ticket**:
+One slice of a spec, written with `to-tickets` to
+`.scratch/<slug>/issues/<NN>-<slug>.md`: what to build, what blocks it, its
+_Done when_ and _Verify by_. The ticket files are the implementer's plan and
+trigger nothing; the queue never sees them.
+_Avoid_: subtask, issue
+
+**Card**:
+The task filed for a spec, and the only thing that triggers a run. Its body
+is a line `Spec: .scratch/<slug>/spec.md` plus the spec's _Done when_ and
+_Verify by_. A card with no `Spec:` line is still a card: its body carries
+its own _Done when_ and _Verify by_, and its run works it as one ticket's
+worth of work, with no spec.
+_Avoid_: story, epic
+
+`.scratch` is a plan, not a tracker: the queue holds cards, the repo holds
+specs and tickets, and no adapter learns the graph between them.
+
 ## The workers
 
 **Fleet**:
@@ -74,15 +100,16 @@ what its users call it.
 ## The pipeline
 
 **Factory**:
-A fleet whose queue names a verifier, plus the scheduled tasks that feed and
-review it. Minimal in what its operator runs — the queue they already have,
-no service, no store, no second daemon — not in its size.
-_Avoid_: pipeline (one task's author → verifier → gate), workflow
+A fleet whose queue names a verifier: cards in, merged pull requests out.
+Minimal in what its operator runs — the queue they already have, no service,
+no store, no second daemon — not in its size.
+_Avoid_: pipeline (one card's author → verifier → gate), workflow
 
 **Author**:
-The agent whose run delivered a pull request for a task — the queue's
-default agent, in a queue with a verifier.
-_Avoid_: worker, dev (a persona's name, not a role)
+The agent whose run delivered a pull request for a card — the queue's
+default agent, in a queue with a verifier. On a spec it is the implementer:
+it works the tickets on one integration branch and delivers one pull request.
+_Avoid_: worker, dev (the role `init` ships, not the pipeline's word)
 
 **Delivery**:
 A pull request an author hands in with `task done --pr` in a queue with a
@@ -110,3 +137,20 @@ with the one reason, and a human is notified. A hold waits on its pull
 request and settles with it: merged, the task closes _done_; closed
 unmerged by a human, _failed_; still open, the hold stands.
 _Avoid_: reject, park
+
+## In the software-factory language
+
+docket's words map onto the shared vocabulary of the `software-factory` skill
+(mattpocock/skills#1316). The CLI and the code keep docket's words.
+
+| docket | software factory |
+| --- | --- |
+| task (a card) | ticket |
+| queue backend | ticket tracker |
+| daemon | orchestrator |
+| agent role (`roles/<role>.md`) | task |
+| Herdr workspace | runner |
+
+The one collision: a software-factory _ticket_ is docket's card, while
+docket's _ticket_ is a file in `.scratch` — a plan inside one run, which that
+language does not name.

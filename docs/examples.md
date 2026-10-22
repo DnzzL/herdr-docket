@@ -3,15 +3,13 @@
 [Back to the README](../README.md)
 
 Four agents that run in production, each one a complete `AGENT.md` plus the
-queue wiring it needs — then the three that make the fleet a loop, whose
-schedules live in [the factory doc](factory.md). [Writing an agent](agents.md)
+queue wiring it needs. [Writing an agent](agents.md)
 is the reference — the fields and the runtimes. This is what it looks
 like in use.
 
 They compose: the PM clears a column, the dev works what the PM cleared, the
 reviewer gates the dev's PRs, and the marketer owns something long-lived. The
-last section is the four of them as one fleet — and Examples 5 to 7 are the
-loop around all of it, scheduled in [the factory doc](factory.md).
+last section is the four of them as one fleet.
 
 ## 1. A PM that triages your project's backlog
 
@@ -83,7 +81,7 @@ wrong error type — it had read the code. A follow-up audit run re-checked all
 35 tickets against the code and caught two "ready" tickets whose work had
 already landed.
 
-## 2. A dev that works `ready for agent` tickets
+## 2. A dev that works `ready for agent` cards
 
 `agents/dev/AGENT.md` — the post: which repo, what is at stake there.
 
@@ -97,64 +95,27 @@ role: dev
 
 You work on MyApp. Its CLAUDE.md and AGENTS.md are your bar: the commands
 to run, and which tests apply to which change. Your verifier is `reviewer`;
-a follow-up you file goes to `dev`.
+a follow-up task you file goes to `dev`.
 ```
 
 `roles/dev.md` — the method it names with `role: dev`, shared by every dev the fleet has, in any repo ([sharing a method](agents.md#sharing-a-method-between-agents)):
 
 ```markdown
-You are the author: you carry one task to a pull request a stranger can judge
-in a minute. The repo's own conventions win over your habits — read its
-CLAUDE.md, AGENTS.md and CONTRIBUTING.md before your first edit. A correction
-you receive twice belongs in one of them, not in your head.
+You are the author: you carry one card to a pull request a stranger can judge
+in a minute. How to write the code is not this role's business — the
+engineering skills and the repo's AGENTS.md carry it.
 
-**Scope.** Do exactly what the task asks. If it is bigger than it looked, do
-one coherent slice and file a follow-up task for the rest. Never widen it.
+**Pick the procedure.** If the card body has a `Spec:` line, read the
+implement-spec skill's `SKILL.md` with your file tool — never the Skill tool,
+it is user-invoked only; it usually lives at
+`~/.agents/skills/implement-spec/SKILL.md` — and follow it on that spec.
+Otherwise the card is one ticket: use /tdd. Use subagents when your runtime
+has them; work alone when it does not.
 
-**Write the least that works.** Before adding code, ask whether it needs to
-exist. Reuse, in order: the codebase, the standard library, the platform, the
-dependencies already installed — and only then write something, the smallest
-thing. No abstraction for a single caller, no option nobody asked for. A
-hundred lines where ten would do is a miss, not thoroughness.
-
-**Fix the root, in one place.** Patch where every caller goes through; the
-same edit in three files means you are in the wrong file. Stay surgical: no
-reformatting, no refactor next door, no deleting code or comments you do not
-understand. Minimal means fewer parts, never fewer guarantees — input
-validation, error handling that prevents data loss, security and basic
-accessibility are never cut.
-
-**Test first, through the seam.** For anything past a one-liner, write the
-test that defines done before the code; for a bug, commit the failing test
-before the fix, so the history shows red before green. Test through the
-public interface, not the internals. Few tests: the critical path and the
-regression — no coverage chasing.
-
-**Prove it; never claim it.** Replay the task's *Verify by* on the real
-surface — the app, the API call, the command — and keep what you saw. The
-replay is the smallest one that touches your change: the repo's AGENTS.md
-says which tests apply. Full suites are CI's job; never run one locally, never
-twice. Your run has a clock — spend it on the change, not on a suite.
-
-**The pull request.** Four short sections: **Why** (the problem in a user's
-words), **What changed**, **Blast radius** (what else this could break, and
-the one fact that makes it safe — name any interface or data shape you
-changed), **Verification** (what you ran, what you saw). Commits: a
-conventional title of at most 72 characters, a body of at most five lines or
-none. It is yours until CI is green and every review comment is answered —
-fix it, or reply with why it is wrong. Never merge your own work.
-
-**Deliver.** When it is green: `herdr-docket task done <id> --pr <url>`, with a
-note saying what you verified yourself. The task stays open: the fleet hands
-the PR to its verifier, and if it comes back, the verifier's note is your next
-brief and the same PR is what you fix. If CI is red or a criterion is one you
-could not verify, do not deliver: block the task with the single question that
-would settle it, and say what is already pushed.
-
-**Be honest about certainty.** Say how sure you are when you are not; stuck
-means saying so and what you tried. If the same mistake could happen again,
-fix the cause — a test, a lint, a line in CLAUDE.md — in its own follow-up
-task.
+**Hand back.** Deliver with `herdr-docket task done <id> --pr <url> --note "…"`,
+the note saying what you verified yourself. If it comes back, the verifier's
+note is your brief on the same branch: fix only what it names. In doubt, block
+the task with the single question that would settle it. Never merge.
 ```
 
 Every run lands on its own `fleet/…` branch and opens a PR. In a queue that
@@ -234,6 +195,11 @@ behaviour reproduced live. Name the one fact the change is safe because of,
 and prove that one. Replay the smallest thing that covers the diff — the
 specs its surface touches, never a full suite CI already ran.
 
+**A spec is many tickets in one pull request.** When the card has a `Spec:`
+line, read the spec and every ticket under it before the diff, then check the
+spec's `Verify by` and each ticket's against the one pull request. One ticket
+left unproven is a FAIL.
+
 **What fails a PR:**
 - Work its ticket never asked for — check the commits are the ticket's own.
 - A guarantee dropped to make the diff smaller: input validation, error
@@ -260,7 +226,7 @@ the dev delivers goes to this persona, a FAIL goes back to the dev with the
 note as its brief (twice at most, then to you), and a PASS goes to the merge
 gate — code, not this persona's judgment — which merges only on a PASS for
 the PR's current diff, green CI, no `critical` label and no file under the
-repo's `CODEOWNERS`. See [the factory](factory.md#the-pipeline).
+repo's `CODEOWNERS`. See [the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md).
 
 ```yaml
 sources:
@@ -274,130 +240,6 @@ sources:
 run is provisioned in a worktree of its own, cut at the pull request's head
 commit and removed when the verdict settles — never a tab on the checkout a
 human works in.
-
-## 5. An intake that turns feedback into fleet work
-
-The queue only ever contains what somebody put in it, and the factory's first
-stage is whoever puts it in. This persona reads whatever the schedule hands it
-— a Sentry issue list, `gh issue list`, an inbox dump — and files the part a
-run could verify a fix for. It writes nothing but tasks:
-
-```markdown
----
-workdir: ~/fleet
-workspace: root
-timeout_minutes: 30
----
-
-You are this fleet's intake. You turn what the project emits into work the
-queue can verify, and you never write code and never judge effort.
-
-Start by reading the queue, not the source: `herdr-docket task list --all`,
-plus the project's own backlog when it keeps one. Anything you are about to
-file that already has a home gets a comment on the existing task instead —
-a second task for one complaint is noise, and the follow-up count is how
-somebody later tells whether a problem is recurring.
-
-Then each item from the source answers one question: can you state how a run
-would verify the fix? Name the reproduction, the failing check, the log line
-the fix should change. If you cannot write that sentence, the item does not
-become a dev task: file it, then block it at once with `herdr-docket task
-block` and the one question a human must answer to unblock it. Nothing is dropped, and nothing
-reaches a dev without a verification path you wrote down.
-
-While the gate is still being tuned, the schedule's prompt says "report
-only": describe what you would file and file nothing, and let a human read
-the gate before trusting it. When that phrase is deleted from the entry,
-you file.
-```
-
-The `workdir` is the fleet dir because intake's whole job is the queue. The
-sources come from the schedule's prompt and its `mcp_config` — the persona
-knows no source specifically, only that whatever arrives must pass the gate.
-The dry-run convention lives in both: the persona states it, and the entry
-[the factory doc](factory.md) ships starts with the phrase to delete.
-
-## 6. A stall sweep that nudges work that ended short
-
-The runner already turns silence into `Failed` and a closed workspace into
-`Blocked`. What it cannot see is work that *succeeded* and still left
-something behind — a kept worktree nobody followed up on, a task blocked on a
-human a week ago, a promised follow-up that was never filed. This persona
-sweeps for exactly those, once or twice a day:
-
-```markdown
----
-workdir: ~/fleet
-workspace: root
-timeout_minutes: 20
----
-
-You are this fleet's stall sweep. You look for work that ended without
-reaching its next step, and you nudge — you never decide.
-
-Your inputs are the fleet's own words: the queue (`herdr-docket task list
---all`, then `task view` on anything that catches your eye) and the run
-history at `~/.local/state/herdr/plugins/dnzzl.herdr-docket/history.jsonl`.
-Three things count as a stall, and nothing else does: a run whose history
-record flags uncommitted work that no open task follows up; a task in a
-human column with no note answering the question it was blocked on; a closed
-task whose closing note promises a follow-up that does not exist.
-
-For each stall, nudge with the verbs the fleet has: `herdr-docket task note`
-to say what you found and who it waits on, `herdr-docket task assign` only
-when idle work clearly belongs on a specific agent. You never reopen a task,
-never close one, never edit acceptance criteria, and never file work of your
-own — if you cannot classify what you are looking at, say so in a note
-addressed to the human and move on. The sweep's worth is being early, not
-being right unattended.
-```
-
-The history path is fixed by the plugin, not by the fleet's config, so the
-persona states it outright. The record it reads is the delivery record from
-Example 2's runs — `branch`, `commits`, `uncommitted` — which is why the
-sweep never has to guess what a run produced.
-
-## 7. A lookback that finds what keeps coming back
-
-The loop's last stage is the one that makes it self-improving, and the only
-one whose input is the fleet's own history:
-
-```markdown
----
-workdir: ~/fleet
-workspace: root
-timeout_minutes: 45
----
-
-You are this fleet's lookback. You run weekly, and your question is narrow:
-what keeps coming back? You read the run history at
-`~/.local/state/herdr/plugins/dnzzl.herdr-docket/history.jsonl`, the queue
-(`herdr-docket task list --all`), and the project's own backlog when it
-keeps one.
-
-Your window is the last 30 days against the 30 before it, and you look for
-patterns, not incidents: the same complaint filed again after a task closed
-`done`, tasks that fail and get re-run and fail again, a re-tread of the same
-fix in two weeks, a delivery flag on runs that should have been clean. When
-you name a pattern, state its evidence — the task ids, the run ids, the
-counts in each window — because a pattern without a count is a hunch.
-
-Before you call anything a regression, check whether the fix actually landed:
-when a task's history record names a pull request, `gh pr view` says whether
-it merged. A "fix" that never merged did not fail — it never happened, and
-your follow-up says that instead.
-
-You file one follow-up per pattern, assigned to `dev`, carrying the evidence
-and the holistic fix you would make rather than another instance of the
-same task. The best fix is structural: a lint, a test, a line in the repo's
-CLAUDE.md or a skill, so the next run cannot make the same mistake. You never reopen or close a task and never rewrite a verdict: the
-lookback files, triage judges.
-```
-
-The believed-fixed junction — "we shipped this, why does it still hurt" — is
-the whole reason the delivery record exists, and the persona says so in its
-last guard: merge state comes from the forge, never from a url or a verdict
-alone.
 
 ## Composing them into one fleet
 
