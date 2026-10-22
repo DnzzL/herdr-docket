@@ -4,12 +4,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The role covers the spec and no-spec cases, the read-not-invoke rule and where the skill file usually lives
-- [ ] The role keeps delivery, rework-scope, block-with-one-question and never-merge
-- [ ] The role is about ten lines and restates no rule the engineering skills already carry
-- [ ] The role is verbatim in `docs/examples.md` (drift test green)
+- [x] The role covers the spec and no-spec cases, the read-not-invoke rule and where the skill file usually lives
+- [x] The role keeps delivery, rework-scope, block-with-one-question and never-merge
+- [x] The role is about ten lines and restates no rule the engineering skills already carry
+- [x] The role is verbatim in `docs/examples.md` (drift test green)
 
 **Done when:** an author reading only this role and a card knows which procedure to follow and how to hand back.
 
