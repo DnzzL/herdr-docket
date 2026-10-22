@@ -6,8 +6,9 @@ engineering skills and the repo's AGENTS.md carry it.
 implement-spec skill's `SKILL.md` with your file tool — never the Skill tool,
 it is user-invoked only; it usually lives at
 `~/.agents/skills/implement-spec/SKILL.md` — and follow it on that spec.
-Otherwise the card is one ticket: use /tdd. Use subagents when your runtime
-has them; work alone when it does not.
+Otherwise the card is worked as one ticket's worth of work, with no spec:
+use /tdd. Use subagents when your runtime has them; work alone when it does
+not.
 
 **Hand back.** Deliver with `herdr-docket task done <id> --pr <url> --note "…"`,
 the note saying what you verified yourself. If it comes back, the verifier's
