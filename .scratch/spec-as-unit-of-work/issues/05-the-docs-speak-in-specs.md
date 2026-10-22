@@ -4,12 +4,12 @@
 
 **Blocked by:** 02, 03, 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] README's diagram, "How it works" and autonomy table describe the spec-sized pipeline and no factory loop
-- [ ] how-it-works describes the card `Spec:` convention and the grill intake
-- [ ] CONTEXT defines spec, ticket and card, and carries the mapping to the software-factory language
-- [ ] No doc describes one PR per task as the unit, or the factory loop
+- [x] README's diagram, "How it works" and autonomy table describe the spec-sized pipeline and no factory loop
+- [x] how-it-works describes the card `Spec:` convention and the grill intake
+- [x] CONTEXT defines spec, ticket and card, and carries the mapping to the software-factory language
+- [x] No doc describes one PR per task as the unit, or the factory loop
 
 **Done when:** the three docs match the fleet after 02, 03 and 04.
 
