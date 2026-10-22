@@ -47,11 +47,13 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 
 ## How it works
 
-1. **A grill** turns an idea into a spec and its tickets, committed under
-   `.scratch/<slug>/` — each says what to do and how a stranger proves it is
-   done.
+1. **A grill** turns an unclear idea into a spec and its tickets, committed
+   under `.scratch/<slug>/` — each says what to do and how a stranger proves
+   it is done.
 2. **A card** points at the spec with a `Spec:` line and carries the spec's
-   own *Done when* and *Verify by*. A small change is a card on its own.
+   own *Done when* and *Verify by*. A clear task skips the grill: it is a card
+   with its own *Done when* / *Verify by* and no `Spec:` line, worked as one
+   ticket's worth of work.
 3. **The daemon** routes the card to the agent it names and starts a run in a
    Herdr workspace — one run per agent, agents in parallel.
 4. **The author** works the spec's tickets on one integration branch —
