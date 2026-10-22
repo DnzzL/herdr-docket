@@ -4,12 +4,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] The role tells the verifier to read the spec and every ticket before the diff
-- [ ] The role makes one unproven `Verify by` a FAIL
-- [ ] Nothing else in the role changes
-- [ ] The role is verbatim in `docs/examples.md` (drift test green)
+- [x] The role tells the verifier to read the spec and every ticket before the diff
+- [x] The role makes one unproven `Verify by` a FAIL
+- [x] Nothing else in the role changes
+- [x] The role is verbatim in `docs/examples.md` (drift test green)
 
 **Done when:** a verifier reading this role judges a spec-sized PR against every ticket, with the same verdict seam.
 
