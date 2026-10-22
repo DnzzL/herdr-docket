@@ -60,9 +60,13 @@ Personas built this way — a PM, a dev, a marketer, a verifier:
 
 ## From idea to card
 
-Work starts as a conversation, not a ticket. You grill the idea with an agent
-until it is settled, then the same session writes it down with the `to-spec`
-and `to-tickets` skills in their local mode:
+Two paths lead to a card, and one thing picks between them: whether the path
+to the result is clear.
+
+**Unclear → grill it into a spec.** Work starts as a conversation, not a
+ticket. You grill the idea with an agent until it is settled, then the same
+session writes it down with the `to-spec` and `to-tickets` skills in their
+local mode:
 
 ```
 .scratch/<slug>/
@@ -78,6 +82,12 @@ by*. The queue gains no field for it: the pointer is text, and the order the
 tickets run in is the author's business — the `dev` role reads the
 `implement-spec` skill and follows it, using subagents when its runtime has
 them. Both roles ship with `herdr-docket init`.
+
+**Clear → file the card itself.** A task whose outcome and the way a stranger
+proves it are already known needs no spec: you write the card with its own
+*Done when* and *Verify by*, with no `Spec:` line, and the author works it as
+one ticket's worth of work — `/tdd`, no subagents needed. Nothing is committed
+under `.scratch`, because there is nothing left to plan.
 
 ## Anatomy of a run
 
