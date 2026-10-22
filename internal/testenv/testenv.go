@@ -15,12 +15,24 @@ import (
 	"testing"
 )
 
+// RealEnv, set to "real", skips the overrides so a test can reach the owner's
+// real home on purpose — the live probes that need the real fleet.yaml and
+// queue (LIVE_SETTLE=1). It is why the guard does not make a real-queue check
+// unrunnable; the default stays isolated.
+const RealEnv = "HERDR_DOCKET_TESTENV"
+
 // Main points HOME, XDG_CONFIG_HOME and Herdr's plugin config and state dirs at
 // a fresh temp dir, runs m, and removes the dir. Call it from TestMain, which
 // is the only place it can cover every test in the binary:
 //
 //	func TestMain(m *testing.M) { os.Exit(testenv.Main(m)) }
+//
+// When HERDR_DOCKET_TESTENV=real is set the overrides are skipped, so the
+// binary sees the real environment.
 func Main(m *testing.M) int {
+	if os.Getenv(RealEnv) == "real" {
+		return m.Run()
+	}
 	dir, err := os.MkdirTemp("", "herdr-docket-test")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "testenv: %v\n", err)

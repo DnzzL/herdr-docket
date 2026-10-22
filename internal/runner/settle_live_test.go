@@ -5,7 +5,11 @@ package runner
 // write and the forge's real pull-request states line up on the tasks the
 // board is actually holding.
 //
-//	LIVE_SETTLE=1 go test ./internal/runner/ -run TestLiveSettlePass -v
+//	HERDR_DOCKET_TESTENV=real LIVE_SETTLE=1 go test ./internal/runner/ -run TestLiveSettlePass -v
+//
+// HERDR_DOCKET_TESTENV=real is what makes the run see the owner's real
+// fleet.yaml: without it internal/testenv sends HOME and the plugin dirs to a
+// temp dir, and the pass would list a queue that does not exist.
 //
 // Not a CI test: it writes the pass's notes and verdicts to the real queue,
 // and only for the docket queue — the other queues settle on the daemon's
