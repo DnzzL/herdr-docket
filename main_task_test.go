@@ -820,3 +820,63 @@ func TestTaskAskAndAnswerNeedTheirArguments(t *testing.T) {
 		}
 	}
 }
+
+// runTaskTriaged runs a task verb in a queue whose triager is the one given.
+func runTaskTriaged(t *testing.T, src work.Source, triager string, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	env := taskEnv{src: src, pipeline: func(string) fleet.Pipeline { return fleet.Pipeline{} },
+		triager: func(string) string { return triager }}
+	err := runTaskCmd(env, args, &out)
+	return out.String(), err
+}
+
+// An idea filed with nobody named goes to the queue's triager to be grilled;
+// a card with an assignee, or a queue with no triager, lands as it always did.
+func TestTaskCreateFilesUnassignedWorkIntoTriage(t *testing.T) {
+	t.Run("unassigned, queue with a triager: Triage", func(t *testing.T) {
+		src := &phasingSource{}
+		got, err := runTaskTriaged(t, src, "pm", "create", "an idea")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.phases, want) {
+			t.Fatalf("phases %v, want %v", src.phases, want)
+		}
+		if want := "created TASK-9 (in Triage)"; !strings.Contains(got, want) {
+			t.Fatalf("output %q, want %q", got, want)
+		}
+	})
+	t.Run("assigned, queue with a triager: To Do", func(t *testing.T) {
+		src := &phasingSource{}
+		if _, err := runTaskTriaged(t, src, "pm", "create", "T", "-a", "dev"); err != nil {
+			t.Fatal(err)
+		}
+		if len(src.phases) != 0 {
+			t.Fatalf("an assigned card must not be moved, got phases %v", src.phases)
+		}
+	})
+	t.Run("unassigned, no triager: To Do", func(t *testing.T) {
+		src := &phasingSource{}
+		if _, err := runTaskTriaged(t, src, "", "create", "T"); err != nil {
+			t.Fatal(err)
+		}
+		if len(src.phases) != 0 {
+			t.Fatalf("without a triager nothing grills triage, got phases %v", src.phases)
+		}
+	})
+}
+
+// Scripts (the phone's idea widget) ask the box which queues it has.
+func TestQueuesListsOneNamePerLine(t *testing.T) {
+	var out bytes.Buffer
+	writeQueues(&out, fleet.Settings{Sources: map[string]fleet.SourceConfig{"web": {}, "api": {}}})
+	if got, want := out.String(), "api\nweb\n"; got != want {
+		t.Fatalf("queues = %q, want %q", got, want)
+	}
+	out.Reset()
+	writeQueues(&out, fleet.Settings{})
+	if got, want := out.String(), "default\n"; got != want {
+		t.Fatalf("one source: queues = %q, want %q", got, want)
+	}
+}

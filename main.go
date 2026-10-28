@@ -63,6 +63,7 @@ Usage:
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
   herdr-docket changelog        Preview the next release's notes ([release <version>] to cut them)
   herdr-docket install-skill    Teach your coding agent to write fleet tasks
+  herdr-docket queues           List the queue names, one per line
   herdr-docket version          Print the version
 
 Fleet dir: %s   (override: fleet.yaml in %s)
@@ -120,6 +121,11 @@ func main() {
 			target = os.Args[2]
 		}
 		err = skill.Install(target)
+	case "queues":
+		var settings fleet.Settings
+		if settings, err = fleet.LoadSettings(); err == nil {
+			writeQueues(os.Stdout, settings)
+		}
 	case "version":
 		fmt.Println(Version)
 	default:
@@ -307,7 +313,7 @@ func taskCmd(args []string) error {
 		return err
 	}
 	cwd, _ := os.Getwd()
-	env := taskEnv{src: src, defaultQueue: queueFor(cwd, settings), pipeline: settings.PipelineFor, forge: gate.GH{}}
+	env := taskEnv{src: src, defaultQueue: queueFor(cwd, settings), pipeline: settings.PipelineFor, forge: gate.GH{}, triager: settings.Defaults().Triager}
 	return runTaskCmd(env, args, os.Stdout)
 }
 
@@ -319,6 +325,26 @@ type taskEnv struct {
 	// pipeline answers whether a task's queue verifies before it merges.
 	pipeline func(taskID string) fleet.Pipeline
 	forge    gate.Forge
+	// triager names a task's queue's triager; nil or "" means none.
+	triager func(taskID string) string
+}
+
+// writeQueues prints the fleet's queue names, one per line, for scripts that
+// pass one back as -s. A fleet with one `source:` has no name for it and
+// prints "default".
+func writeQueues(w io.Writer, s fleet.Settings) {
+	if len(s.Sources) == 0 {
+		fmt.Fprintln(w, "default")
+		return
+	}
+	names := make([]string, 0, len(s.Sources))
+	for name := range s.Sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		fmt.Fprintln(w, n)
+	}
 }
 
 // queueFor is the queue a `task create` lands in when the command line did not
@@ -364,7 +390,7 @@ func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 		}
 		return taskView(src, args[1], out)
 	case "create":
-		return taskCreate(src, defaultQueue, args[1:], out)
+		return taskCreate(src, defaultQueue, env.triager, args[1:], out)
 	case "assign":
 		if len(args) != 3 {
 			return fmt.Errorf("usage: herdr-docket task assign <id> <agent>")
@@ -423,7 +449,7 @@ func taskAssign(src work.Source, id, agent string, out io.Writer) error {
 	return nil
 }
 
-func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writer) error {
+func taskCreate(src work.Source, defaultQueue string, triager func(string) string, args []string, out io.Writer) error {
 	const usage = `usage: herdr-docket task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>] [--ac "<criterion>"...]`
 	var title, body, assignee, queue string
 	var criteria []string
@@ -492,6 +518,17 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 	// words go instead of eating them.
 	if err := putCriteria("task create", src, id, criteria); err != nil {
 		return err
+	}
+	// An idea filed with nobody named goes to the queue's triager to be
+	// grilled (TASK-88); an assignee, or a queue with no triager, keeps the
+	// landing above (ADR-0012, amended). The card exists by now, so a failed
+	// move names it rather than inviting a second create.
+	if assignee == "" && triager != nil && triager(id) != "" {
+		if err := setPhase(src, id, work.PhaseTriage); err != nil {
+			return fmt.Errorf("task create: created %s but could not file it into %s: %w", id, work.PhaseTriage, err)
+		}
+		fmt.Fprintf(out, "created %s (in %s)\n", id, work.PhaseTriage)
+		return nil
 	}
 	// Say where the task landed honestly: the fleet's word when the fleet
 	// chose it, the queue's own default and an admission it did not choose
