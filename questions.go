@@ -28,7 +28,8 @@ func questionsCmd() error {
 	return answerQuestions(src, daemon.Liveness(time.Now()), os.Stdin, os.Stdout)
 }
 
-// questionCards lists the open cards waiting on the owner's answer.
+// questionCards lists the cards waiting on the owner's answer. Phase alone
+// decides: a Question card is parked, not Open, on Backlog.md.
 func questionCards(src work.Source) ([]work.Task, error) {
 	items, err := src.List()
 	if err != nil {
@@ -36,7 +37,7 @@ func questionCards(src work.Source) ([]work.Task, error) {
 	}
 	var cards []work.Task
 	for _, it := range items {
-		if it.Open && it.Phase == string(work.PhaseQuestion) {
+		if it.Phase == string(work.PhaseQuestion) {
 			cards = append(cards, it)
 		}
 	}
