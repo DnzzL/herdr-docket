@@ -266,7 +266,7 @@ func TestCreatePassesTheRoutingKeyToTheBackend(t *testing.T) {
 func TestCreateTodoFilesIntoTheProjectOwnPickupStatus(t *testing.T) {
 	t.Run("the fleet's own words", func(t *testing.T) {
 		f := &fakeClient{}
-		id, err := NewWith("", f, Vocabulary{}, nil).CreateTodo("Spec it", "why", "pm")
+		id, err := NewWith("", f, Vocabulary{}, nil).CreateIn(work.PhaseTodo, "Spec it", "why", "pm")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -274,14 +274,14 @@ func TestCreateTodoFilesIntoTheProjectOwnPickupStatus(t *testing.T) {
 			t.Fatalf("created %v, want %v", f.created, want)
 		}
 		if id != "TASK-9" {
-			t.Fatalf("CreateTodo must return the new id, got %q", id)
+			t.Fatalf("CreateIn must return the new id, got %q", id)
 		}
 	})
 
 	t.Run("a project's own words", func(t *testing.T) {
 		f := &fakeClient{}
 		v := Vocabulary{Todo: "Ready", InProgress: "WIP", Done: "Closed", Failed: "Broke", Blocked: "Held"}
-		if _, err := NewWith("", f, v, nil).CreateTodo("Spec it", "", "pm"); err != nil {
+		if _, err := NewWith("", f, v, nil).CreateIn(work.PhaseTodo, "Spec it", "", "pm"); err != nil {
 			t.Fatal(err)
 		}
 		if got := f.created[3]; got != "Ready" {
@@ -337,7 +337,7 @@ func TestCloseRejectsAnUnknownVerdict(t *testing.T) {
 func TestCreateTodoWorkComesBackClaimable(t *testing.T) {
 	v := Vocabulary{Todo: "Ready", InProgress: "WIP", Done: "Closed", Failed: "Broke", Blocked: "Held"}
 	s := NewWith("", &memClient{}, v, nil)
-	id, err := s.CreateTodo("Route me", "why", "reviewer")
+	id, err := s.CreateIn(work.PhaseTodo, "Route me", "why", "reviewer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -657,5 +657,22 @@ func TestAGrillPhaseWithNoWordIsRefused(t *testing.T) {
 	}
 	if len(c.stages) != 0 {
 		t.Fatalf("wrote %v, want nothing", c.stages)
+	}
+}
+
+// An idea for the triager is created in the project's triage word, in the
+// same one write: it never stands in To Do where the default agent claims it.
+func TestCreateInTriageFilesIntoTheProjectsTriageWord(t *testing.T) {
+	f := &fakeClient{}
+	v := Vocabulary{Todo: "t", Done: "d", Failed: "f", Blocked: "b", Triage: "needs-triage"}
+	if _, err := NewWith("", f, v, nil).CreateIn(work.PhaseTriage, "Idea", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.created[3]; got != "needs-triage" {
+		t.Fatalf("created in %q, want the project's needs-triage", got)
+	}
+	f = &fakeClient{}
+	if _, err := NewWith("", f, Vocabulary{Todo: "t", Done: "d", Failed: "f", Blocked: "b"}, nil).CreateIn(work.PhaseTriage, "Idea", "", ""); err == nil || f.created != nil {
+		t.Fatalf("a project with no triage word must refuse before writing: err %v, created %v", err, f.created)
 	}
 }

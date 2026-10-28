@@ -272,7 +272,7 @@ type bothCapabilitiesSource struct {
 	order        []string
 }
 
-func (f *bothCapabilitiesSource) CreateTodo(title, body, assignee string) (string, error) {
+func (f *bothCapabilitiesSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	f.started = true
 	f.order = append(f.order, "create")
 	return f.fakeSource.Create(title, body, assignee)
@@ -313,6 +313,7 @@ type multiSource struct {
 	names     []string
 	started   bool
 	createdIn []string
+	phase     work.Phase
 	err       error
 }
 
@@ -323,12 +324,13 @@ func (m *multiSource) Close(id string, v work.Verdict) error {
 	return m.err
 }
 func (m *multiSource) Create(title, body, assignee string) (string, error) {
-	_, _, err := m.CreateIn("", title, body, assignee)
+	_, _, err := m.CreateIn("", work.PhaseTodo, title, body, assignee)
 	return "", err
 }
 func (m *multiSource) Names() []string { return m.names }
-func (m *multiSource) CreateIn(source, title, body, assignee string) (string, bool, error) {
+func (m *multiSource) CreateIn(source string, phase work.Phase, title, body, assignee string) (string, bool, error) {
 	m.createdIn = []string{source, title, body, assignee}
+	m.phase = phase
 	return source + "/TASK-9", m.started, m.err
 }
 
@@ -339,7 +341,7 @@ type todoStarterSource struct {
 	started bool
 }
 
-func (f *todoStarterSource) CreateTodo(title, body, assignee string) (string, error) {
+func (f *todoStarterSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	f.started = true
 	return "TASK-9", nil
 }
@@ -844,8 +846,8 @@ func TestTaskCreateFilesUnassignedWorkIntoTriage(t *testing.T) {
 		if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.phases, want) {
 			t.Fatalf("phases %v, want %v", src.phases, want)
 		}
-		if want := "created TASK-9 (in Triage)"; !strings.Contains(got, want) {
-			t.Fatalf("output %q, want %q", got, want)
+		if want := "created TASK-9 (in Triage"; !strings.Contains(got, want) || !strings.Contains(got, "moved") {
+			t.Fatalf("output %q, want %q and a word that it was moved after the create", got, want)
 		}
 	})
 	t.Run("assigned, queue with a triager: To Do", func(t *testing.T) {
@@ -909,5 +911,46 @@ func TestTaskAnswerRefusesWhileARunHoldsTheCard(t *testing.T) {
 	}
 	if len(src.comments) != 0 || len(src.phases) != 0 {
 		t.Fatalf("nothing must be written: comments %v phases %v", src.comments, src.phases)
+	}
+}
+
+// statusSource is a queue that creates straight into a phase, recording
+// every status written to the card — at the create and after it.
+type statusSource struct {
+	fakeSource
+	written []work.Phase
+}
+
+func (s *statusSource) CreateIn(phase work.Phase, title, body, assignee string) (string, error) {
+	s.written = append(s.written, phase)
+	return "TASK-9", nil
+}
+
+func (s *statusSource) SetPhase(id string, phase work.Phase) error {
+	s.written = append(s.written, phase)
+	return nil
+}
+
+// An idea filed with nobody named is created in Triage, in one write: a card
+// that passed through To Do first could be claimed by the queue's
+// default_agent before it was moved.
+func TestTaskCreateWithATriagerNeverPassesThroughToDo(t *testing.T) {
+	src := &statusSource{}
+	got, err := runTaskTriaged(t, src, "tri", "create", "an idea")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.written, want) {
+		t.Fatalf("statuses written %v, want only %v", src.written, want)
+	}
+	if !strings.Contains(got, "created TASK-9 (in Triage)") {
+		t.Fatalf("output %q", got)
+	}
+	m := &multiSource{names: []string{"solo"}, started: true}
+	if _, err := runTaskTriaged(t, m, "tri", "create", "an idea"); err != nil {
+		t.Fatal(err)
+	}
+	if m.phase != work.PhaseTriage {
+		t.Fatalf("a queue of a composite was created in %q, want Triage", m.phase)
 	}
 }

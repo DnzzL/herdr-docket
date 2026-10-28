@@ -95,18 +95,22 @@ func (s *Source) Get(id string) (work.Task, error) {
 
 // Create adds a task to the project and returns its new id, filed wherever
 // the project's own default puts it — the behaviour that preceded the pickup
-// capability below. Callers that want the fleet-opted landing use CreateTodo.
+// capability below. Callers that want the fleet-opted landing use CreateIn.
 func (s *Source) Create(title, body, assignee string) (string, error) {
 	return s.client.Create(title, body, assignee, "")
 }
 
-// CreateTodo files a new task into the project's own pickup status — the
-// word this project's mapping calls To Do — in one backend write, so the
-// next tick can claim it (ADR-0012). A project with no word mapped is not
-// refused: a vocabulary that names no todo is refused at configuration, and
-// the empty word would arrive here only through one that slipped past.
-func (s *Source) CreateTodo(title, body, assignee string) (string, error) {
-	return s.client.Create(title, body, assignee, s.vocab.Todo)
+// CreateIn files a new task into a phase in this project's own word for it —
+// To Do so the next tick can claim it (ADR-0012), Triage for an idea to grill
+// — in one backend write. A grill phase the project has no word for is
+// refused before anything is written; a vocabulary that names no todo is
+// refused at configuration already.
+func (s *Source) CreateIn(phase work.Phase, title, body, assignee string) (string, error) {
+	word := s.vocab.Word(phase)
+	if word == "" && phase != work.PhaseTodo {
+		return "", fmt.Errorf("this project's statuses name no %s word — add `%s:` to the source's statuses", strings.ToLower(string(phase)), strings.ToLower(string(phase)))
+	}
+	return s.client.Create(title, body, assignee, word)
 }
 
 // WriteCriteria replaces a task's acceptance criteria, numbering them from

@@ -313,7 +313,7 @@ func taskCmd(args []string) error {
 		return err
 	}
 	cwd, _ := os.Getwd()
-	env := taskEnv{src: src, defaultQueue: queueFor(cwd, settings), pipeline: settings.PipelineFor, forge: gate.GH{}, triager: settings.Defaults().Triager}
+	env := taskEnv{src: src, defaultQueue: queueFor(cwd, settings), pipeline: settings.PipelineFor, forge: gate.GH{}, triager: settings.Defaults().TriagerIn}
 	return runTaskCmd(env, args, os.Stdout)
 }
 
@@ -325,8 +325,9 @@ type taskEnv struct {
 	// pipeline answers whether a task's queue verifies before it merges.
 	pipeline func(taskID string) fleet.Pipeline
 	forge    gate.Forge
-	// triager names a task's queue's triager; nil or "" means none.
-	triager func(taskID string) string
+	// triager names a queue's triager by queue name ("" for the one unnamed
+	// queue); nil or "" means none.
+	triager func(queue string) string
 }
 
 // writeQueues prints the fleet's queue names, one per line, for scripts that
@@ -501,7 +502,18 @@ func taskCreate(src work.Source, defaultQueue string, triager func(string) strin
 			return fmt.Errorf("task create: an empty acceptance criterion stores nothing — say what a run must show")
 		}
 	}
-	id, started, err := createTask(src, queue, defaultQueue, title, body, assignee)
+	queue, err := chooseQueue(src, queue, defaultQueue)
+	if err != nil {
+		return err
+	}
+	// An idea filed with nobody named goes to the queue's triager to be
+	// grilled (TASK-88); an assignee, or a queue with no triager, lands in
+	// To Do (ADR-0012, amended).
+	phase := work.PhaseTodo
+	if assignee == "" && triager != nil && triager(queue) != "" {
+		phase = work.PhaseTriage
+	}
+	id, started, err := createTask(src, queue, phase, title, body, assignee)
 	if err != nil {
 		return err
 	}
@@ -519,56 +531,40 @@ func taskCreate(src work.Source, defaultQueue string, triager func(string) strin
 	if err := putCriteria("task create", src, id, criteria); err != nil {
 		return err
 	}
-	// An idea filed with nobody named goes to the queue's triager to be
-	// grilled (TASK-88); an assignee, or a queue with no triager, keeps the
-	// landing above (ADR-0012, amended). The card exists by now, so a failed
-	// move names it rather than inviting a second create.
-	if assignee == "" && triager != nil && triager(id) != "" {
-		if err := setPhase(src, id, work.PhaseTriage); err != nil {
-			return fmt.Errorf("task create: created %s but could not file it into %s: %w", id, work.PhaseTriage, err)
-		}
-		fmt.Fprintf(out, "created %s (in %s)\n", id, work.PhaseTriage)
-		return nil
-	}
 	// Say where the task landed honestly: the fleet's word when the fleet
 	// chose it, the queue's own default and an admission it did not choose
 	// otherwise (ADR-0012) — the column a daemon will never read is exactly
 	// what a friend would want to know about.
-	if started {
-		fmt.Fprintf(out, "created %s (in To Do)\n", id)
-		return nil
+	switch {
+	case started:
+		fmt.Fprintf(out, "created %s (in %s)\n", id, phase)
+	case phase == work.PhaseTriage:
+		// A queue that cannot create into a column gets the card moved after
+		// the create, and says so: until the move, it stood where the queue's
+		// default put it. The card exists by now, so a failed move names it
+		// rather than inviting a second create.
+		if err := setPhase(src, id, work.PhaseTriage); err != nil {
+			return fmt.Errorf("task create: created %s but could not file it into %s: %w", id, work.PhaseTriage, err)
+		}
+		fmt.Fprintf(out, "created %s (in %s — this queue cannot create into a column, so it was moved there after the create)\n", id, work.PhaseTriage)
+	default:
+		fmt.Fprintf(out, "created %s (filed in the queue's own default — the fleet did not choose the column)\n", id)
 	}
-	fmt.Fprintf(out, "created %s (filed in the queue's own default — the fleet did not choose the column)\n", id)
 	return nil
 }
 
-// createTask chooses the queue a new task lands in, in one order: what -s
-// named, then the fleet's default_source, then the only queue there is. A
-// fleet with several queues and no default is the one case left that refuses,
-// because filing work into a queue nobody chose is worse than stopping.
-//
-// Where the task lands in that queue is the queue's own business and the
-// second answer records it: true when the queue filed it into its own pickup
-// status (as the fleet wanted, ADR-0012), false when the backend filed it by
-// its own default — so the caller's output can say which happened rather
-// than implying the fleet chose. Criteria are not this function's business:
-// the caller writes them through the returned id (ADR-0019), so every landing
-// path keeps one criteria seam instead of three.
-func createTask(src work.Source, queue, defaultQueue, title, body, assignee string) (string, bool, error) {
+// chooseQueue is the queue a new task lands in, in one order: what -s named,
+// then the fleet's default_source, then the only queue there is. A fleet with
+// several queues and no default is the one case left that refuses, because
+// filing work into a queue nobody chose is worse than stopping. A fleet with
+// one unnamed queue answers "".
+func chooseQueue(src work.Source, queue, defaultQueue string) (string, error) {
 	ms, ok := src.(work.MultiSource)
 	if !ok {
 		if queue != "" {
-			return "", false, fmt.Errorf("task create: -s/--source is only for a fleet with several queues")
+			return "", fmt.Errorf("task create: -s/--source is only for a fleet with several queues")
 		}
-		if st, can := src.(work.TodoStarter); can {
-			id, err := st.CreateTodo(title, body, assignee)
-			if err != nil {
-				return "", false, err
-			}
-			return id, true, nil
-		}
-		id, err := src.Create(title, body, assignee)
-		return id, false, err
+		return "", nil
 	}
 	if queue == "" {
 		queue = defaultQueue
@@ -576,11 +572,33 @@ func createTask(src work.Source, queue, defaultQueue, title, body, assignee stri
 	if queue == "" {
 		names := ms.Names()
 		if len(names) != 1 {
-			return "", false, fmt.Errorf("task create: this fleet has %d queues (%s) — name one with -s/--source, or set default_source in fleet.yaml", len(names), strings.Join(names, ", "))
+			return "", fmt.Errorf("task create: this fleet has %d queues (%s) — name one with -s/--source, or set default_source in fleet.yaml", len(names), strings.Join(names, ", "))
 		}
 		queue = names[0]
 	}
-	return ms.CreateIn(queue, title, body, assignee)
+	return queue, nil
+}
+
+// createTask creates the task in the chosen queue, in phase where the queue
+// can file it there itself. The second answer records where it landed: true
+// when the queue filed it into phase (ADR-0012), false when the backend filed
+// it by its own default — so the caller's output can say which happened
+// rather than implying the fleet chose. Criteria are not this function's
+// business: the caller writes them through the returned id (ADR-0019), so
+// every landing path keeps one criteria seam instead of three.
+func createTask(src work.Source, queue string, phase work.Phase, title, body, assignee string) (string, bool, error) {
+	if ms, ok := src.(work.MultiSource); ok {
+		return ms.CreateIn(queue, phase, title, body, assignee)
+	}
+	if st, can := src.(work.PhaseStarter); can {
+		id, err := st.CreateIn(phase, title, body, assignee)
+		if err != nil {
+			return "", false, err
+		}
+		return id, true, nil
+	}
+	id, err := src.Create(title, body, assignee)
+	return id, false, err
 }
 
 // putCriteria writes criteria onto a freshly created task. A source with no

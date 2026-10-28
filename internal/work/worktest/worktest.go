@@ -54,14 +54,14 @@ func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 
 	t.Run("starting new work in a pickup column is a capability, not a promise", func(t *testing.T) {
 		// TASK-40. A queue that can file a task it creates into its own claimable
-		// status carries work.TodoStarter, and a queue that cannot simply does
+		// status carries work.PhaseStarter, and a queue that cannot simply does
 		// not — the caller then creates through plain Create and says so. This
 		// suite only pins that the capability stays optional; the adapter's own
 		// tests answer for what one that has it files, and where.
-		if st, ok := newSource(t).(work.TodoStarter); ok {
+		if st, ok := newSource(t).(work.PhaseStarter); ok {
 			// Calling may fail (a status word the backend has not been told,
 			// say) but must not panic: a fallback exists for exactly that.
-			_, _ = st.CreateTodo("capability exerciser", "", "")
+			_, _ = st.CreateIn(work.PhaseTodo, "capability exerciser", "", "")
 		}
 	})
 

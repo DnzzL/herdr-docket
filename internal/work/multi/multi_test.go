@@ -103,10 +103,10 @@ func (p *phaserSource) SetPhase(id string, phase work.Phase) error {
 // own pickup status, beside a binary one that cannot.
 type starterSource struct {
 	*memSource
-	todo []string // "title|body|assignee" per CreateTodo call
+	todo []string // "title|body|assignee" per CreateIn call
 }
 
-func (s *starterSource) CreateTodo(title, body, assignee string) (string, error) {
+func (s *starterSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	s.todo = append(s.todo, title+"|"+body+"|"+assignee)
 	return s.memSource.Create(title, body, assignee)
 }
@@ -177,7 +177,7 @@ func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
 		ready := &starterSource{memSource: newMem()}
 		plain := newMem()
 		src := New(map[string]work.Source{"ready": ready, "plain": plain})
-		id, started, err := src.CreateIn("ready", "Wind it", "why", "dev")
+		id, started, err := src.CreateIn("ready", work.PhaseTodo, "Wind it", "why", "dev")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -192,11 +192,11 @@ func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
 		ready := &starterSource{memSource: newMem()}
 		plain := newMem()
 		src := New(map[string]work.Source{"ready": ready, "plain": plain})
-		_, started1, err := src.CreateIn("plain", "Wind it", "", "dev")
+		_, started1, err := src.CreateIn("plain", work.PhaseTodo, "Wind it", "", "dev")
 		if err != nil {
 			t.Fatal(err)
 		}
-		id, started, err := src.CreateIn("plain", "Wind it", "why", "dev")
+		id, started, err := src.CreateIn("plain", work.PhaseTodo, "Wind it", "why", "dev")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +212,7 @@ func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
 	})
 	t.Run("an unknown queue is refused", func(t *testing.T) {
 		src := New(map[string]work.Source{"alpha": newMem()})
-		if _, _, err := src.CreateIn("ghost", "T", "", ""); err == nil {
+		if _, _, err := src.CreateIn("ghost", work.PhaseTodo, "T", "", ""); err == nil {
 			t.Fatal("an unknown source must error, never create somewhere")
 		}
 	})
@@ -228,7 +228,7 @@ func (ghostSource) Create(string, string, string) (string, error) { return "", n
 // fabricated "docket/", which the CLI then announced as a creation.
 func TestCreateInRefusesAnEmptySubID(t *testing.T) {
 	src := New(map[string]work.Source{"docket": &ghostSource{memSource: newMem()}})
-	if id, _, err := src.CreateIn("docket", "T", "", ""); err == nil {
+	if id, _, err := src.CreateIn("docket", work.PhaseTodo, "T", "", ""); err == nil {
 		t.Fatalf("an empty id from the queue must be an error, got id %q", id)
 	}
 }
@@ -315,7 +315,7 @@ func TestCreateNeedsATargetWhenSeveralQueuesExist(t *testing.T) {
 	if _, err := src.Create("T", "b", "dev"); err == nil {
 		t.Fatal("a bare Create with several queues must refuse rather than guess")
 	}
-	id, _, err := src.CreateIn("beta", "T", "b", "dev")
+	id, _, err := src.CreateIn("beta", work.PhaseTodo, "T", "b", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestCreateNeedsATargetWhenSeveralQueuesExist(t *testing.T) {
 	if len(a.order) != 0 {
 		t.Errorf("CreateIn(beta) wrote to alpha: %v", a.order)
 	}
-	if _, _, err := src.CreateIn("ghost", "T", "b", "dev"); err == nil {
+	if _, _, err := src.CreateIn("ghost", work.PhaseTodo, "T", "b", "dev"); err == nil {
 		t.Fatal("CreateIn on an unknown source must error")
 	}
 }

@@ -161,7 +161,7 @@ type Assigner interface {
 // CriterionWriter is the optional capability of a source that can put
 // acceptance criteria on an existing task — the bar a run hands on writes
 // through the id Create returned (ADR-0019), beside the landing that ADR-0012
-// gave Create and CreateTodo: the landing decides whether the next tick can
+// gave Create and PhaseStarter: the landing decides whether the next tick can
 // claim the task, the criteria decide what the run has to show. Backlog.md
 // appends through its task edit's --ac, one flag per criterion; GitHub writes
 // them into the body's checklist; a backend with no place for them after
@@ -198,16 +198,19 @@ type BaseBrancher interface {
 	BaseBranch(id string) (string, error)
 }
 
-// TodoStarter is the optional capability of a source that files a task it
-// creates straight into its own pickup status — the word this queue maps to
-// To Do, the one status the next tick reads as claimable (see ADR-0012 for
-// the alternatives measured against it). Create keeps its three arguments:
-// a source that cannot start a new task in a column — one with no status
-// to land in — does not implement this, and its caller falls back
-// to Create while saying so, which is why the method answers nothing about
-// where the task landed: a caller that reached this method already knows.
-type TodoStarter interface {
-	CreateTodo(title, body, assignee string) (string, error)
+// PhaseStarter is the optional capability of a source that files a task it
+// creates straight into a phase, in the queue's own word for it, in one
+// write: To Do — the one status the next tick reads as claimable (see
+// ADR-0012 for the alternatives measured against it) — or Triage, for an
+// idea its triager grills (TASK-88). One write matters: a card created in
+// To Do and moved after can be claimed by the queue's default agent in
+// between. Create keeps its three arguments: a source that cannot start a
+// new task in a column — one with no status to land in — does not implement
+// this, and its caller falls back to Create while saying so, which is why the
+// method answers nothing about where the task landed: a caller that reached
+// this method already knows.
+type PhaseStarter interface {
+	CreateIn(phase Phase, title, body, assignee string) (string, error)
 }
 
 // Source is the port the fleet's queue lives behind. Picking, running and the
@@ -233,12 +236,13 @@ type MultiSource interface {
 	Source
 	// Names lists the configured queues, in a stable order.
 	Names() []string
-	// CreateIn creates work in the named queue, returning its prefixed id.
-	// The second answer records where it landed, so a caller's output says
-	// it honestly (ADR-0012): started is true when the queue filed the task
-	// into its own pickup status, false when the backend filed it by its own
-	// default and nothing above the queue chose the column.
-	CreateIn(source, title, body, assignee string) (id string, started bool, err error)
+	// CreateIn creates work in the named queue, in phase where that queue
+	// can say so, returning its prefixed id. The second answer records where
+	// it landed, so a caller's output says it honestly (ADR-0012): started is
+	// true when the queue filed the task into phase itself, false when the
+	// backend filed it by its own default and nothing above the queue chose
+	// the column.
+	CreateIn(source string, phase Phase, title, body, assignee string) (id string, started bool, err error)
 }
 
 // LocalOf reads the backend's own id off a prefixed one: the part after the
