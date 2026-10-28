@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/DnzzL/herdr-docket/internal/work"
@@ -620,17 +621,41 @@ func TestCliDefaultBranchReadsTheRemoteHead(t *testing.T) {
 	}
 }
 
-// The grill's phases route the card, so they are written, not dropped: until
-// the vocabulary names them, the status is the phase's own word.
-func TestTheGrillPhasesAreWritten(t *testing.T) {
-	c := &fakeClient{}
-	s := NewWith("", c, Vocabulary{}, nil)
-	for _, p := range []work.Phase{work.PhaseQuestion, work.PhaseTriage} {
-		if err := s.SetPhase("T-1", p); err != nil {
-			t.Fatal(err)
+// The grill's phases route the card, so they are written, not dropped — in
+// the project's own words. `task ask` on a default queue writes "Question".
+func TestTheGrillPhasesAreWrittenInTheProjectsWords(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v    Vocabulary
+		want []string
+	}{
+		{"default words", Vocabulary{}, []string{"Question", "Triage"}},
+		{"own words", Vocabulary{Todo: "t", Done: "d", Failed: "f", Blocked: "b", Triage: "needs-triage", Question: "asked"}, []string{"asked", "needs-triage"}},
+	} {
+		c := &fakeClient{}
+		s := NewWith("", c, tc.v, nil)
+		for _, p := range []work.Phase{work.PhaseQuestion, work.PhaseTriage} {
+			if err := s.SetPhase("T-1", p); err != nil {
+				t.Fatalf("%s: %v", tc.name, err)
+			}
+		}
+		if !reflect.DeepEqual(c.stages, tc.want) {
+			t.Errorf("%s: wrote %v, want %v", tc.name, c.stages, tc.want)
 		}
 	}
-	if want := []string{"question", "triage"}; !reflect.DeepEqual(c.stages, want) {
-		t.Fatalf("wrote %v, want %v", c.stages, want)
+}
+
+// A project with no grill words cannot hold a grill: saying so beats writing
+// a status its CLI refuses, or dropping the move and leaving the card where
+// the wrong agent picks it up.
+func TestAGrillPhaseWithNoWordIsRefused(t *testing.T) {
+	c := &fakeClient{}
+	s := NewWith("", c, Vocabulary{Todo: "t", Done: "d", Failed: "f", Blocked: "b"}, nil)
+	err := s.SetPhase("T-1", work.PhaseQuestion)
+	if err == nil || !strings.Contains(err.Error(), "question") {
+		t.Fatalf("got %v, want an error naming the missing question word", err)
+	}
+	if len(c.stages) != 0 {
+		t.Fatalf("wrote %v, want nothing", c.stages)
 	}
 }

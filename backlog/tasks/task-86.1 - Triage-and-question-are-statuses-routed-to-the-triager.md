@@ -1,9 +1,10 @@
 ---
 id: TASK-86.1
 title: 'Triage and question are statuses, routed to the triager'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:29'
+updated_date: '2026-10-28 13:35'
 labels: []
 dependencies: []
 parent_task_id: TASK-86

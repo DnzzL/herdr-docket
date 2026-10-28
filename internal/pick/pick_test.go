@@ -301,3 +301,49 @@ func TestATicketOfASpecIsNeverPicked(t *testing.T) {
 		t.Fatalf("a ticket was picked on its own: %+v", res.Task)
 	}
 }
+
+// triage is a card in the queue's triage status: an idea to grill, not work.
+func triage(id, assignee string) work.Task {
+	t := open(id, 0, assignee)
+	t.Triage = true
+	return t
+}
+
+// A triage card is the triager's, whatever its assignee says: the assignee is
+// the author it goes back to once the grill is over, not who grills it.
+func TestATriageCardRoutesToTheTriagerWhateverItsAssignee(t *testing.T) {
+	s := fleet.Settings{Source: fleet.SourceConfig{Triager: "tri"}}
+	for _, assignee := range []string{"dev", ""} {
+		res := Next([]work.Task{triage("T-1", assignee)}, agents("dev", "tri"), s.Defaults())
+		if res.Task == nil || res.Agent.Name != "tri" {
+			t.Fatalf("assignee %q: got %+v to %q, want T-1 to the triager", assignee, res.Task, res.Agent.Name)
+		}
+	}
+}
+
+// Each queue names its own triager: an idea is grilled by the agent of the
+// project it was filed in.
+func TestEachQueueHasItsOwnTriager(t *testing.T) {
+	s := fleet.Settings{Sources: map[string]fleet.SourceConfig{
+		"a": {Triager: "tri-a"},
+		"b": {},
+	}}
+	if got := AssigneeFor(triage("a/T-1", "dev"), s.Defaults()); got != "tri-a" {
+		t.Errorf("a/T-1 routes to %q, want tri-a", got)
+	}
+	if got := AssigneeFor(triage("b/T-1", "dev"), s.Defaults()); got != "" {
+		t.Errorf("b/T-1 routes to %q, want nobody: queue b names no triager", got)
+	}
+}
+
+// No triager, no grill: the card waits, rather than its assignee building an
+// idea nobody has made clear yet. It is not reported unknown either.
+func TestATriageCardWithNoTriagerIsNotPicked(t *testing.T) {
+	res := Next([]work.Task{triage("T-1", "dev")}, agents("dev"), defaults("dev"))
+	if res.Task != nil {
+		t.Fatalf("picked %+v with no triager configured", res.Task)
+	}
+	if len(res.Unknown) != 0 {
+		t.Fatalf("a triage card with no triager is not an unknown agent: %v", res.Unknown)
+	}
+}

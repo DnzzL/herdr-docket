@@ -33,11 +33,12 @@ func TestPhasesOfKeepsTheEmptyPhase(t *testing.T) {
 	}
 }
 
-// The three endings are one vocabulary: the board stands a closed task under
+// Ideas in their grill come first, then work. The three endings are one
+// vocabulary: the board stands a closed task under
 // the same words the fleet writes its verdicts in. The order is built from the
 // verdicts rather than retyped beside them, so the two cannot drift.
 func TestPhaseOrderIsTheOpenPhasesThenTheVerdicts(t *testing.T) {
-	want := []string{"To Do", "In Progress", "Blocked", "Failed", "Done"}
+	want := []string{"Triage", "Question", "To Do", "In Progress", "Blocked", "Failed", "Done"}
 	if !reflect.DeepEqual(phaseOrder, want) {
 		t.Fatalf("phaseOrder = %v, want %v", phaseOrder, want)
 	}

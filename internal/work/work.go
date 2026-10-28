@@ -33,13 +33,16 @@ import (
 // as text is enough, and parsing it would only add a way for a bad date to lose
 // a task.
 type Task struct {
-	ID        string
-	Title     string
-	Body      string
-	Notes     string
-	Assignee  string
-	Open      bool
-	Blocked   bool
+	ID       string
+	Title    string
+	Body     string
+	Notes    string
+	Assignee string
+	Open     bool
+	Blocked  bool
+	// Triage is true for an open card in the queue's triage status: an idea
+	// to grill, routed to the queue's triager whatever its assignee says.
+	Triage    bool
 	Phase     string
 	Verdict   Verdict
 	Priority  int
@@ -119,13 +122,10 @@ const (
 	// PhaseInProgress is work a run has in hand right now, and the one phase
 	// the fleet writes.
 	PhaseInProgress Phase = "In Progress"
-)
-
-// The grill's two phases (spec TASK-86): a card waiting on its owner's answers,
-// and one waiting on the triager. Written by `task ask` and `task answer`.
-const (
-	PhaseQuestion Phase = "question"
-	PhaseTriage   Phase = "triage"
+	// PhaseTriage is an idea waiting for the queue's triager to grill it.
+	PhaseTriage Phase = "Triage"
+	// PhaseQuestion is a card whose grill waits on the owner's answer.
+	PhaseQuestion Phase = "Question"
 )
 
 // Phaser is the optional capability of a source that can show a task as
@@ -287,7 +287,7 @@ var closedOrder = []Verdict{Blocked, Failed, Done}
 var phaseOrder = buildPhaseOrder()
 
 func buildPhaseOrder() []string {
-	order := []string{string(PhaseTodo), string(PhaseInProgress)}
+	order := []string{string(PhaseTriage), string(PhaseQuestion), string(PhaseTodo), string(PhaseInProgress)}
 	for _, v := range closedOrder {
 		order = append(order, v.Label())
 	}

@@ -50,6 +50,8 @@ const (
 	statusBlocked    = "Blocked"
 	statusFailed     = "Failed"
 	statusDone       = "Done"
+	statusTriage     = "Triage"
+	statusQuestion   = "Question"
 )
 
 // Statuses is that lifecycle as a list, for whoever has to write it down.
