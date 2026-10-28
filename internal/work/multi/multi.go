@@ -1,6 +1,6 @@
 // Package multi is a work.Source over several named queues. It is how one
-// fleet works more than one project — a Backlog.md repo here, a Basecamp
-// project there — without anything above the port learning a new shape.
+// fleet works more than one project — a Backlog.md repo here, a GitHub
+// board there — without anything above the port learning a new shape.
 //
 // A task from a sub-source is addressed by a prefixed id: the source's name,
 // a slash, then the id the backend gave it (myapp/TASK-12, bc/987654). The

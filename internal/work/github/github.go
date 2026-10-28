@@ -26,10 +26,9 @@ const (
 	defaultInProgress  = "In Progress"
 )
 
-// verdictPrefix marks the comment that carries a task's verdict. It is spelled
-// exactly as Basecamp's is: the word is read by a person as often as by the
-// fleet, and two adapters disagreeing about it would be two dialects for one
-// idea.
+// verdictPrefix marks the comment that carries a task's verdict. The word is
+// read by a person as often as by the fleet, and two adapters disagreeing
+// about it would be two dialects for one idea.
 const verdictPrefix = "Verdict: "
 
 // stateOpen is GitHub's word for an issue nobody has closed.
@@ -87,7 +86,7 @@ func parseRepo(s string) (repo, error) {
 }
 
 // Source is the adapter. Its fields are unexported so a test can swap the API
-// client for one that talks to a fake, exactly as basecamp's does.
+// client for one that talks to a fake.
 type Source struct {
 	cfg  Config
 	repo repo

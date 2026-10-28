@@ -751,7 +751,7 @@ func TestTaskCreateStatesWhatADegradingQueueCannotStore(t *testing.T) {
 	}
 }
 
-// bareSource is a queue with no criteria place — the Basecamp shape.
+// bareSource is a queue with no criteria place — a backend with nowhere to write them.
 type bareSource struct{ work.Source }
 
 func (f bareSource) Create(title, body, assignee string) (string, error) {

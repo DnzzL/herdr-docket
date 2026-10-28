@@ -22,7 +22,7 @@ import (
 //
 // newSource must return a Source over a fresh, empty backend on every call:
 // the suite runs as subtests and each one needs somewhere clean to work. A
-// backend that cannot be emptied between calls — a shared Basecamp project,
+// backend that cannot be emptied between calls — a shared hosted project,
 // say — should hand back a Source scoped to a workspace of its own.
 func Run(t *testing.T, newSource func(t *testing.T) work.Source) {
 	t.Helper()

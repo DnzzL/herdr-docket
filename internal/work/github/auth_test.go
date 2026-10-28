@@ -49,7 +49,7 @@ func TestGHTokenSaysWhenThereIsNoGH(t *testing.T) {
 }
 
 // inTempConfigDir puts the credentials file somewhere disposable, the way
-// Basecamp's own tests do.
+// every adapter's own tests do.
 func inTempConfigDir(t *testing.T) {
 	t.Helper()
 	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", t.TempDir())

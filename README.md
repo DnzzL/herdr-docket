@@ -87,7 +87,7 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
 ## Features
 
 - **Your queue, where it already lives** — a [Backlog.md](https://backlog.md)
-  project in git, Basecamp, or a GitHub Projects board, and several at once
+  project in git or a GitHub Projects board, and several at once
   ([where the queue lives](docs/queues.md)).
 - **Agents are markdown** — one `AGENT.md` each: run parameters plus a persona
   ([writing an agent](docs/agents.md), [worked examples](docs/examples.md)).

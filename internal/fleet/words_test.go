@@ -14,14 +14,14 @@ func vocab(todo, inProgress, done, failed, blocked string) backlogmd.Vocabulary 
 // not have to speak the same language — that is the whole point of statuses:.
 func TestWordsFollowTheTasksQueue(t *testing.T) {
 	s := Settings{Sources: map[string]SourceConfig{
-		"notara": {Statuses: vocab("ready-for-agent", "", "done", "ready-for-human", "needs-info")},
-		"plain":  {}, // no statuses block: the fleet's own words
-		"bc":     {Kind: kindBasecamp},
+		"notionalt": {Statuses: vocab("ready-for-agent", "", "done", "ready-for-human", "needs-info")},
+		"plain":     {}, // no statuses block: the fleet's own words
+		"gh":        {Kind: kindGithub},
 	}}
-	if got := s.WordsFor("notara/NOT-92").Todo; got != "ready-for-agent" {
-		t.Errorf("notara todo = %q", got)
+	if got := s.WordsFor("notionalt/NOT-92").Todo; got != "ready-for-agent" {
+		t.Errorf("notionalt todo = %q", got)
 	}
-	if got := s.WordsFor("notara/NOT-92").InProgress; got != "" {
+	if got := s.WordsFor("notionalt/NOT-92").InProgress; got != "" {
 		t.Errorf("a project with no word for work in hand teaches none, got %q", got)
 	}
 	if got := s.WordsFor("plain/TASK-1").Todo; got != "To Do" {
@@ -29,8 +29,8 @@ func TestWordsFollowTheTasksQueue(t *testing.T) {
 	}
 	// A backend with no status words has nothing to teach, and the prompt must
 	// not invent Backlog.md's words for it.
-	if w := s.WordsFor("bc/987"); w.Known() {
-		t.Errorf("basecamp has no vocabulary, got %+v", w)
+	if w := s.WordsFor("gh/987"); w.Known() {
+		t.Errorf("github has no vocabulary, got %+v", w)
 	}
 	if w := s.WordsFor("nosuch/TASK-1"); w.Known() {
 		t.Errorf("an unknown queue teaches nothing, got %+v", w)
@@ -60,20 +60,5 @@ func TestPipelineIsReadFromTheTasksOwnQueue(t *testing.T) {
 		if got := s.PipelineFor(id); got != want {
 			t.Errorf("%s: %+v, want %+v", id, got, want)
 		}
-	}
-}
-
-// A Notara database speaks its own words exactly like a Backlog.md project:
-// the prompt teaches them, and never the fleet's defaults in their place.
-func TestANotaraQueueTeachesItsOwnWords(t *testing.T) {
-	s := Settings{Sources: map[string]SourceConfig{
-		"notara": {Kind: kindNotara, Statuses: vocab("ready-for-agent", "in-progress", "done", "failed", "blocked")},
-		"empty":  {Kind: kindNotara},
-	}}
-	if got := s.WordsFor("notara/NOT-92"); got.Todo != "ready-for-agent" || got.Blocked != "blocked" {
-		t.Errorf("notara words = %+v", got)
-	}
-	if w := s.WordsFor("empty/NOT-1"); w.Known() {
-		t.Errorf("a notara source with no statuses must not be taught Backlog.md's, got %+v", w)
 	}
 }

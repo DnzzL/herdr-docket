@@ -9,13 +9,13 @@ func TestAnUnassignedTaskFallsToItsOwnProjectsAgent(t *testing.T) {
 	d := Settings{
 		DefaultAgent: "dev",
 		Sources: map[string]SourceConfig{
-			"notara":  {DefaultAgent: "notara-pm"},
-			"dishnow": {DefaultAgent: "dishnow-pm"},
-			"legacy":  {}, // names none: the fleet's own default still applies
+			"notionalt": {DefaultAgent: "notionalt-pm"},
+			"dishnow":   {DefaultAgent: "dishnow-pm"},
+			"legacy":    {}, // names none: the fleet's own default still applies
 		},
 	}.Defaults()
 	for _, tc := range []struct{ id, want string }{
-		{"notara/NOT-92", "notara-pm"},
+		{"notionalt/NOT-92", "notionalt-pm"},
 		{"dishnow/TASK-19", "dishnow-pm"},
 		{"legacy/TASK-1", "dev"},
 		{"TASK-1", "dev"}, // one queue, no prefix
@@ -31,8 +31,8 @@ func TestAnUnassignedTaskFallsToItsOwnProjectsAgent(t *testing.T) {
 // still drafting, and the fleet leaves it alone. Adding per-source defaults
 // must not invent one for a fleet that never asked.
 func TestNoDefaultAnywhereLeavesUnassignedWorkAlone(t *testing.T) {
-	d := Settings{Sources: map[string]SourceConfig{"notara": {}}}.Defaults()
-	if got := d.For("notara/NOT-92"); got != "" {
+	d := Settings{Sources: map[string]SourceConfig{"notionalt": {}}}.Defaults()
+	if got := d.For("notionalt/NOT-92"); got != "" {
 		t.Errorf("default = %q, want none", got)
 	}
 	if got := (Settings{}).Defaults().For("TASK-1"); got != "" {

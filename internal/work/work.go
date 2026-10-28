@@ -1,6 +1,6 @@
 // Package work is the backend-blind task queue the fleet speaks. A Source is
-// wherever work actually lives — a Backlog.md project, a Basecamp list, a
-// GitHub Projects board, or something not written yet — and a Task is one unit
+// wherever work actually lives — a Backlog.md project, a GitHub
+// Projects board, or something not written yet — and a Task is one unit
 // of it, in the fleet's own vocabulary. Nothing above an adapter knows which
 // backend answered.
 package work
@@ -13,7 +13,7 @@ import (
 // Task is one unit of work as the fleet sees it.
 //
 // Open is the only state the fleet reads: a task stays open until a verdict
-// closes it, which is all a binary backend (a Basecamp to-do) can express.
+// closes it, which is all a binary backend can express.
 // Blocked is the one parked state pick reads: true when the task sits in a
 // column that means "waits on a human" — the queue's own blocked word —
 // while still open. Route nothing to it; the run cannot answer the question
@@ -123,7 +123,7 @@ const (
 
 // Phaser is the optional capability of a source that can show a task as
 // being worked on. Backlog.md has an In Progress state to write, a GitHub
-// board a Status column; a Basecamp to-do is simply done or not, and the run
+// board a Status column; a binary backend is simply done or not, and the run
 // lock is what actually keeps two runs apart — so a source without this is
 // not a lesser source, just a quieter one.
 type Phaser interface {
@@ -135,8 +135,8 @@ type Phaser interface {
 // alternative — close this one, create a follow-up — splits one subject
 // across two ids and loses the thread.
 //
-// Optional because not every backend has an assignee to write. Basecamp
-// routes by which list a to-do is in, so re-routing there is a move, not a
+// Optional because not every backend has an assignee to write: one
+// that routes by which list a task is in re-routes with a move, not a
 // field; a GitHub board routes by a single-select field, so it is a write.
 // Unlike Phaser, a source that cannot do this says so: a re-route that
 // silently did nothing would leave the task with the wrong agent and look
@@ -151,8 +151,8 @@ type Assigner interface {
 // gave Create and CreateTodo: the landing decides whether the next tick can
 // claim the task, the criteria decide what the run has to show. Backlog.md
 // appends through its task edit's --ac, one flag per criterion; GitHub writes
-// them into the body's checklist; a Basecamp to-do has no step endpoint
-// after the create, so it says so rather than taking the words.
+// them into the body's checklist; a backend with no place for them after
+// the create says so rather than taking the words.
 //
 // Optional, like Phaser and unlike Assigner: criteria with no place to live
 // are lost wherever a source cannot speak them at all, so a refusal is a
@@ -189,8 +189,8 @@ type BaseBrancher interface {
 // creates straight into its own pickup status — the word this queue maps to
 // To Do, the one status the next tick reads as claimable (see ADR-0012 for
 // the alternatives measured against it). Create keeps its three arguments:
-// a source that cannot start a new task in a column — a Basecamp to-do has
-// no status to land in — does not implement this, and its caller falls back
+// a source that cannot start a new task in a column — one with no status
+// to land in — does not implement this, and its caller falls back
 // to Create while saying so, which is why the method answers nothing about
 // where the task landed: a caller that reached this method already knows.
 type TodoStarter interface {

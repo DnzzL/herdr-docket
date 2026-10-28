@@ -192,21 +192,21 @@ func TestClosedWorkIsLeftAlone(t *testing.T) {
 
 // Two projects behind one fleet means two intakes. An agent carries its own
 // workdir, so a single default would hand dishnow's work to an agent that
-// opens the notara checkout — the routing has to follow the task's queue.
+// opens the notionalt checkout — the routing has to follow the task's queue.
 func TestUnassignedWorkGoesToItsOwnProjectsIntake(t *testing.T) {
 	d := fleet.Settings{
 		DefaultAgent: "dev",
 		Sources: map[string]fleet.SourceConfig{
-			"notara":  {DefaultAgent: "notara-pm"},
-			"dishnow": {DefaultAgent: "dishnow-pm"},
+			"notionalt": {DefaultAgent: "notionalt-pm"},
+			"dishnow":   {DefaultAgent: "dishnow-pm"},
 		},
 	}.Defaults()
 	for _, tc := range []struct{ id, want string }{
 		{"dishnow/TASK-19", "dishnow-pm"},
-		{"notara/NOT-92", "notara-pm"},
+		{"notionalt/NOT-92", "notionalt-pm"},
 		{"loose/TASK-1", "dev"}, // a queue with no intake of its own
 	} {
-		res := Next([]work.Task{open(tc.id, 0, "")}, agents("dev", "notara-pm", "dishnow-pm"), d)
+		res := Next([]work.Task{open(tc.id, 0, "")}, agents("dev", "notionalt-pm", "dishnow-pm"), d)
 		if res.Task == nil || res.Agent.Name != tc.want {
 			t.Errorf("%s: routed to %+v, want %s", tc.id, res.Agent.Name, tc.want)
 		}

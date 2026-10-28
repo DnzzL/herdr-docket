@@ -1,7 +1,7 @@
 # herdr-docket
 
 A shared task queue worked by your coding agents. The queue lives in a backend
-(a Backlog.md project, a Basecamp project or a GitHub Projects project) and the
+(a Backlog.md project or a GitHub Projects project) and the
 fleet keeps no copy of it.
 
 ## The queue

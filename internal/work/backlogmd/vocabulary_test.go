@@ -12,7 +12,7 @@ func TestAProjectsOwnWordsMapOntoTheFleetsPhases(t *testing.T) {
 		Todo:   "ready-for-agent",
 		Done:   "done",
 		Failed: "ready-for-human",
-		// no in_progress, no blocked: notara has neither
+		// no in_progress, no blocked: this project has neither
 	}
 	s := NewWith("", &fakeClient{tasks: []task{
 		{ID: "T-1", Status: "ready-for-agent"},

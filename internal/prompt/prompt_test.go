@@ -227,7 +227,7 @@ func TestNoRoleChangesNothing(t *testing.T) {
 func TestThePromptNamesTheQueuesOwnWords(t *testing.T) {
 	got := assemble(
 		fleet.Agent{Name: "pm", Persona: "P"},
-		work.Task{ID: "notara/NOT-92", Title: "T"},
+		work.Task{ID: "notionalt/NOT-92", Title: "T"},
 		"", "/fleet",
 		fleet.Words{Todo: "ready-for-agent", Done: "done", Failed: "ready-for-human", Blocked: "needs-info"},
 	)
@@ -243,7 +243,7 @@ func TestThePromptNamesTheQueuesOwnWords(t *testing.T) {
 	}
 }
 
-// A backend with no status words — a Basecamp to-do is done or not — is not
+// A backend with no status words — a binary to-do is done or not — is not
 // given Backlog.md's vocabulary by accident.
 func TestAQueueWithoutWordsIsToldSo(t *testing.T) {
 	got := assemble(fleet.Agent{Name: "pm", Persona: "P"}, work.Task{ID: "bc/987"}, "", "/fleet", fleet.Words{})

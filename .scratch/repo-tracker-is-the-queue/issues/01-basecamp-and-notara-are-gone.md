@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `internal/work/basecamp` and `internal/work/notara` are deleted
-- [ ] `kind: notara` fails `LoadSettings` naming `backlogmd` and `github`
-- [ ] `main.go` usage and `auth` help name only `github`
-- [ ] `docs/queues.md`, `docs/commands.md`, `README.md` no longer mention them; ADR 0022 status says superseded by 0023
-- [ ] A changelog file says what a Basecamp or Notara user must do
+- [x] `internal/work/basecamp` and `internal/work/notara` are deleted
+- [x] `kind: notara` fails `LoadSettings` naming `backlogmd` and `github`
+- [x] `main.go` usage and `auth` help name only `github`
+- [x] `docs/queues.md`, `docs/commands.md`, `README.md` no longer mention them; ADR 0022 status says superseded by 0023
+- [x] A changelog file says what a Basecamp or Notara user must do
 
 **Done when:** no Go file names basecamp or notara and the suite is green.
 

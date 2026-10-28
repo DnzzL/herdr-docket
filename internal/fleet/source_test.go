@@ -11,9 +11,7 @@ import (
 
 	"github.com/DnzzL/herdr-docket/internal/work"
 	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
-	"github.com/DnzzL/herdr-docket/internal/work/basecamp"
 	"github.com/DnzzL/herdr-docket/internal/work/github"
-	"github.com/DnzzL/herdr-docket/internal/work/notara"
 )
 
 // A fleet that names no source at all still works: Backlog.md in the fleet
@@ -78,7 +76,6 @@ func TestOnlyALocalQueueIsScaffolded(t *testing.T) {
 	}{
 		{"", true}, // no block at all: the default, Backlog.md
 		{"backlogmd", true},
-		{"basecamp", false},
 		{"github", false},
 	} {
 		if got := (SourceConfig{Kind: tc.kind}).local(); got != tc.want {
@@ -91,8 +88,8 @@ func TestOnlyALocalQueueIsScaffolded(t *testing.T) {
 		t.Error("a source naming its own project is not the fleet's to scaffold")
 	}
 	if q := (Settings{Dir: "/tmp/fleet", Sources: map[string]SourceConfig{
-		"notara":  {Dir: "/srv/notion-alt"},
-		"dishnow": {Dir: "/srv/dishnow-v2"},
+		"notionalt": {Dir: "/srv/notion-alt"},
+		"dishnow":   {Dir: "/srv/dishnow-v2"},
 	}}).ownQueues(); len(q) != 0 {
 		t.Errorf("a fleet whose every queue is elsewhere creates none, got %d", len(q))
 	}
@@ -141,47 +138,6 @@ func TestAGithubFleetWithNoBoardIsRefused(t *testing.T) {
 	}
 	if _, err := NewSource(s); err == nil || !strings.Contains(err.Error(), "owner") {
 		t.Fatalf("err = %v, want it to name the field that is missing", err)
-	}
-}
-
-// A source block that names Basecamp carries a block of its own, and the
-// adapter owns that block's shape — this package only hands it over.
-func TestASourceBlockCarriesTheBasecampConfig(t *testing.T) {
-	writeFleetYAML(t, `source:
-  kind: basecamp
-  basecamp:
-    account_id: "999"
-    lists:
-      dev: "111"
-      pm: "222"
-`)
-	s, err := LoadSettings()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := s.Source.Basecamp.AccountID; got != "999" {
-		t.Fatalf("account_id = %q, want 999", got)
-	}
-	if got := s.Source.Basecamp.Lists["pm"]; got != "222" {
-		t.Fatalf("lists.pm = %q, want 222", got)
-	}
-	if src, err := NewSource(s); err != nil {
-		t.Fatal(err)
-	} else if _, ok := src.(*basecamp.Source); !ok {
-		t.Fatalf("got %T", src)
-	}
-}
-
-// A Basecamp fleet that names no lists has no routing table at all, so it can
-// only be misrouted. Better to refuse it at startup than at the first poll.
-func TestABasecampFleetWithNothingToRouteWithIsRefused(t *testing.T) {
-	writeFleetYAML(t, "source:\n  kind: basecamp\n  basecamp:\n    account_id: \"999\"\n")
-	s, err := LoadSettings()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewSource(s); err == nil {
-		t.Fatal("want an error for a Basecamp fleet with no lists")
 	}
 }
 
@@ -238,8 +194,8 @@ func TestAuthingNamesTheQueueItMeans(t *testing.T) {
 	if got := one.authSubject("github"); got.Github.Owner != "acme" {
 		t.Errorf("authSubject(\"github\") = %+v, want the configured board", got)
 	}
-	if got := one.authSubject("basecamp"); got.Github.Owner != "" {
-		t.Errorf("authSubject(\"basecamp\") = %+v, want nothing of the board", got)
+	if got := one.authSubject("backlogmd"); got.Github.Owner != "" {
+		t.Errorf("authSubject(\"backlogmd\") = %+v, want nothing of the board", got)
 	}
 }
 
@@ -254,17 +210,6 @@ func TestAuthingKnowsTheFleetsAgents(t *testing.T) {
 	}
 	if got := agentNames(Settings{Dir: t.TempDir()}); len(got) != 0 {
 		t.Errorf("agentNames of a fleet with no agents = %v, want none", got)
-	}
-}
-
-// basecamp is routed to the real flow, which refuses before it opens a
-// listener when there is no application to authorize against.
-func TestAuthingBasecampReachesTheBasecampFlow(t *testing.T) {
-	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", t.TempDir())
-	t.Setenv("HERDR_DOCKET_BASECAMP_CLIENT_ID", "")
-	err := Auth(Settings{}, "basecamp", "", io.Discard)
-	if err == nil || !strings.Contains(err.Error(), "Launchpad client id") {
-		t.Fatalf("err = %v, want the missing-client-id message from the basecamp flow", err)
 	}
 }
 
@@ -285,12 +230,9 @@ func TestSeveralSourcesBecomeAComposite(t *testing.T) {
 	writeFleetYAML(t, `sources:
   myapp:
     kind: backlogmd
-  bc:
-    kind: basecamp
-    basecamp:
-      account_id: "999"
-      lists:
-        dev: "111"
+  other:
+    kind: backlogmd
+    dir: /srv/other
 `)
 	s, err := LoadSettings()
 	if err != nil {
@@ -304,8 +246,8 @@ func TestSeveralSourcesBecomeAComposite(t *testing.T) {
 	if !ok {
 		t.Fatalf("several sources must be a composite, got %T", src)
 	}
-	if names := ms.Names(); len(names) != 2 || names[0] != "bc" || names[1] != "myapp" {
-		t.Fatalf("Names = %v, want the sorted [bc myapp]", names)
+	if names := ms.Names(); len(names) != 2 || names[0] != "myapp" || names[1] != "other" {
+		t.Fatalf("Names = %v, want the sorted [myapp other]", names)
 	}
 }
 
@@ -380,7 +322,7 @@ func TestALocalSourceCanNameItsOwnProject(t *testing.T) {
 func TestAHalfWrittenVocabularyIsRefused(t *testing.T) {
 	writeFleetYAML(t, `dir: /tmp/fleet
 sources:
-  notara:
+  notionalt:
     kind: backlogmd
     dir: /srv/notion-alt
     statuses:
@@ -395,7 +337,7 @@ sources:
 	if err == nil {
 		t.Fatal("want an error for a vocabulary with no word for a failed run")
 	}
-	for _, want := range []string{"notara", "failed"} {
+	for _, want := range []string{"notionalt", "failed"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error must name %q, got %q", want, err)
 		}
@@ -407,7 +349,7 @@ sources:
 func TestSeveralSourcesEachCarryTheirOwnProjectAndWords(t *testing.T) {
 	writeFleetYAML(t, `dir: /tmp/fleet
 sources:
-  notara:
+  notionalt:
     kind: backlogmd
     dir: /srv/notion-alt
     statuses:
@@ -429,16 +371,16 @@ sources:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := s.Sources["notara"].Dir; got != "/srv/notion-alt" {
-		t.Errorf("notara dir = %q", got)
+	if got := s.Sources["notionalt"].Dir; got != "/srv/notion-alt" {
+		t.Errorf("notionalt dir = %q", got)
 	}
-	if got := s.Sources["notara"].Statuses.Todo; got != "ready-for-agent" {
-		t.Errorf("notara todo = %q", got)
+	if got := s.Sources["notionalt"].Statuses.Todo; got != "ready-for-agent" {
+		t.Errorf("notionalt todo = %q", got)
 	}
-	// notara has no word for work in hand, and that is allowed: the phase is
+	// notionalt has no word for work in hand, and that is allowed: the phase is
 	// display only.
-	if got := s.Sources["notara"].Statuses.InProgress; got != "" {
-		t.Errorf("notara in_progress = %q, want none", got)
+	if got := s.Sources["notionalt"].Statuses.InProgress; got != "" {
+		t.Errorf("notionalt in_progress = %q, want none", got)
 	}
 	if got := s.Sources["dishnow"].Statuses.Blocked; got != "needs human validation" {
 		t.Errorf("dishnow blocked = %q", got)
@@ -451,7 +393,7 @@ sources:
 	if !ok {
 		t.Fatalf("several sources must be one MultiSource, got %T", src)
 	}
-	if want := []string{"dishnow", "notara"}; !reflect.DeepEqual(ms.Names(), want) {
+	if want := []string{"dishnow", "notionalt"}; !reflect.DeepEqual(ms.Names(), want) {
 		t.Fatalf("names = %v, want %v", ms.Names(), want)
 	}
 }
@@ -531,27 +473,26 @@ func gitRepoWithDefault(t *testing.T) string {
 	return dir
 }
 
-// kind: notara builds the Notara adapter from its own block and the source's
-// statuses: and worktree_base:, and refuses a source that names no words.
-func TestANotaraSourceIsBuiltFromItsBlock(t *testing.T) {
-	c := SourceConfig{
-		Kind:         kindNotara,
-		Notara:       notara.Config{URL: "http://localhost:3100", Workspace: "w", Database: "d"},
-		Statuses:     vocab("ready-for-agent", "in-progress", "done", "failed", "blocked"),
-		WorktreeBase: "origin/main",
-	}
-	src, err := NewSource(Settings{Source: c})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := src.(*notara.Source); !ok {
-		t.Fatalf("kind notara built a %T", src)
-	}
-	if got := work.BaseBranchOf(src, "NOT-1"); got != "origin/main" {
-		t.Errorf("base branch = %q, want the source's worktree_base", got)
-	}
-	c.Statuses = backlogmd.Vocabulary{}
-	if _, err := NewSource(Settings{Source: c}); err == nil || !strings.Contains(err.Error(), "statuses") {
-		t.Errorf("a notara source with no statuses: err = %v", err)
+// Basecamp and Notara were queues once (ADR 0023 retired them). A fleet still
+// naming one is refused with the kinds that are left, so its owner learns what
+// to move to rather than that a word is unknown.
+func TestARetiredQueueIsRefusedNamingTheKindsLeft(t *testing.T) {
+	for _, kind := range []string{"basecamp", "notara"} {
+		t.Run(kind, func(t *testing.T) {
+			writeFleetYAML(t, "source:\n  kind: "+kind+"\n")
+			s, err := LoadSettings()
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = NewSource(s)
+			if err == nil {
+				t.Fatalf("want kind %s refused", kind)
+			}
+			for _, want := range []string{kind, "backlogmd", "github"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("err %q does not name %q", err, want)
+				}
+			}
+		})
 	}
 }
