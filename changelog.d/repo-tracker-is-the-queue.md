@@ -41,3 +41,7 @@
 - **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
   tick 3s ago`, `daemon down for 4 min` once no tick has run for three
   intervals, or `daemon never started`.
+- **The pane reads from a phone.** `herdr-docket pane` opens on the daemon
+  line, then "Your turn" — question cards (`?`), Blocked cards (`!`) and PRs
+  verified PASS that wait on your merge (`⇡`) — then runs in flight and the
+  last 5 settled runs, every line cut to the terminal width.

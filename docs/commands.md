@@ -26,7 +26,7 @@
 | `herdr-docket status` | whether the daemon is alive: `daemon live · tick 3s ago`, `daemon down for 4 min` (no tick for 3 intervals), or `daemon never started` |
 | `herdr-docket stop TASK-12` | stop a task's run in flight |
 | `herdr-docket pause [--now]` / `resume` | pause the whole fleet — no new runs, no pipeline stages (`--now` stops runs in flight) |
-| `herdr-docket pane` | the runs overlay (the plugin opens it for you) |
+| `herdr-docket pane` | the overlay (the plugin opens it for you): the daemon line, Your turn (questions, Blocked cards, merges held for you), runs in flight, the last 5 settled; cut to the terminal width |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
 | `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |

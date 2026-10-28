@@ -1,10 +1,10 @@
 ---
 id: TASK-87.3
 title: The runs pane opens on the daemon line and Your turn
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:30'
-updated_date: '2026-10-28 13:30'
+updated_date: '2026-10-28 13:40'
 labels: []
 dependencies:
   - TASK-87.1
