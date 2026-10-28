@@ -23,6 +23,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
 	"github.com/DnzzL/herdr-docket/internal/pick"
+	_ "github.com/DnzzL/herdr-docket/internal/quietterm" // before bubbletea's init: no terminal query
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/skill"
 	"github.com/DnzzL/herdr-docket/internal/text"
