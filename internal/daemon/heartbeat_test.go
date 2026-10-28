@@ -47,7 +47,7 @@ func TestLivenessOldHeartbeatIsDown(t *testing.T) {
 func TestATickWritesTheHeartbeat(t *testing.T) {
 	ownStateDir(t)
 	withFleet(t, nil, newMemSource())
-	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), fakeHost{}, map[string]bool{})
 	if got := Liveness(time.Now()); !strings.HasPrefix(got, "daemon live") {
 		t.Errorf("Liveness after a tick = %q, want daemon live …", got)
 	}

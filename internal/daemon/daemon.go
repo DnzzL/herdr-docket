@@ -67,7 +67,8 @@ func Run() error {
 	if _, err := fleet.NewSource(settings); err != nil {
 		return err
 	}
-	runs := runner.New(host.New(), settings)
+	h := host.New()
+	runs := runner.New(h, settings)
 	binary := binaryStamp()
 	reported := map[string]bool{}
 
@@ -76,7 +77,7 @@ func Run() error {
 	tick := time.NewTicker(tickInterval)
 	defer tick.Stop()
 
-	evaluate(runs, reported) // don't wait a tick to notice what is already To Do
+	evaluate(runs, h, reported) // don't wait a tick to notice what is already To Do
 
 	for {
 		select {
@@ -84,7 +85,7 @@ func Run() error {
 			if stamp := binaryStamp(); stamp != binary && stamp != "" {
 				restart(release, runs)
 			}
-			evaluate(runs, reported)
+			evaluate(runs, h, reported)
 		case s := <-sigs:
 			log.Printf("received %v, shutting down", s)
 			return nil
@@ -101,36 +102,16 @@ const pausedKey = "\x00paused"
 // reported keeps the unknown-assignee noise down to one comment per task per
 // daemon lifetime: re-noting an unfixed typo every 15 seconds would bury the
 // task in comments.
-func evaluate(runs *runner.Runner, reported map[string]bool) {
+func evaluate(runs *runner.Runner, h host.Host, reported map[string]bool) {
 	// A paused tick is still a tick: the heartbeat says the daemon is alive,
 	// not that it is starting work.
 	if err := beat(time.Now()); err != nil {
 		log.Printf("heartbeat: %v", err)
 	}
-	// A paused fleet starts nothing, so it has nothing to read the queue for.
-	// The log says so once per pause, not once per tick.
-	if runner.Paused() {
-		if !reported[pausedKey] {
-			reported[pausedKey] = true
-			log.Printf("fleet paused — no new runs until `herdr-docket resume`")
-		}
-		return
-	}
-	if reported[pausedKey] {
-		delete(reported, pausedKey)
-		log.Printf("fleet resumed")
-	}
 	settings, err := loadSettings()
 	if err != nil {
 		log.Printf("fleet.yaml error, skipping this tick: %v", err)
 		return
-	}
-	agents, diags := loadAgents(settings.Dir)
-	for _, d := range diags {
-		if !reported[d.String()] {
-			reported[d.String()] = true
-			log.Printf("agent not loaded — %s", d)
-		}
 	}
 
 	// One source per evaluation: the tasks picked from below and the queue
@@ -145,6 +126,32 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 	if err != nil {
 		log.Printf("queue poll failed: %v", err)
 		return
+	}
+
+	// A card in Question waits on a human, not on a run: the popup speaks
+	// whether or not the fleet is scheduling, so this pass sits above the
+	// pause deliberately (TASK-93).
+	announceQuestions(h, src, tasks)
+
+	// A paused fleet starts nothing. The log says so once per pause, not once
+	// per tick.
+	if runner.Paused() {
+		if !reported[pausedKey] {
+			reported[pausedKey] = true
+			log.Printf("fleet paused — no new runs until `herdr-docket resume`")
+		}
+		return
+	}
+	if reported[pausedKey] {
+		delete(reported, pausedKey)
+		log.Printf("fleet resumed")
+	}
+	agents, diags := loadAgents(settings.Dir)
+	for _, d := range diags {
+		if !reported[d.String()] {
+			reported[d.String()] = true
+			log.Printf("agent not loaded — %s", d)
+		}
 	}
 
 	// A hold settles with its pull request (TASK-70): every few minutes the
