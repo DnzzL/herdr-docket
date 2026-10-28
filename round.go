@@ -129,9 +129,9 @@ func (m roundModel) mouse(msg tea.MouseMsg) (roundModel, tea.Cmd) {
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelDown:
-		m.top += 2
+		m.top += wheelStep
 	case tea.MouseButtonWheelUp:
-		m.top -= 2
+		m.top -= wheelStep
 	case tea.MouseButtonLeft:
 		for _, h := range m.hits {
 			if msg.Y >= h.y0 && msg.Y <= h.y1 && msg.X >= h.x0 && msg.X < h.x1 {

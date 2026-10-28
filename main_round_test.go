@@ -268,3 +268,22 @@ func TestFrenchPunctuationNeverStartsALine(t *testing.T) {
 		}
 	}
 }
+
+// One wheel notch moves Home and the Round by the same number of lines.
+func TestTheWheelStepsTheSameOnHomeAndRound(t *testing.T) {
+	scrolled := func(m paneModel) int {
+		before := strings.Split(m.View(), "\n")
+		after := strings.Split(send(m, tea.MouseMsg{Y: 1, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}).View(), "\n")
+		for n := range before {
+			if before[n] == after[0] {
+				return n
+			}
+		}
+		return -1
+	}
+	round, _ := roundPane(t, 45, 8)
+	home := paneAt(t, paneFixture(), 45, 4)
+	if r, h := scrolled(round), scrolled(home); r != h || r < 1 {
+		t.Fatalf("a notch scrolls the Round %d lines, Home %d", r, h)
+	}
+}

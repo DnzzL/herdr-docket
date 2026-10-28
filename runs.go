@@ -219,6 +219,9 @@ func runPane(m paneModel) error {
 // slower clock (queueEvery).
 const paneEvery = 2 * time.Second
 
+// wheelStep is how many lines one wheel notch scrolls, Home and Round alike.
+const wheelStep = 2
+
 // paneTick carries the frame's clock, so a test drives time by sending one.
 type paneTick time.Time
 
@@ -310,9 +313,9 @@ func (m paneModel) mouse(msg tea.MouseMsg) (paneModel, tea.Cmd) {
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelDown:
-		m.top++
+		m.top += wheelStep
 	case tea.MouseButtonWheelUp:
-		m.top--
+		m.top -= wheelStep
 	case tea.MouseButtonLeft:
 		for i, r := range m.rows {
 			if r.Line != m.top+msg.Y {
