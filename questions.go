@@ -48,8 +48,8 @@ func questionsCmd() error {
 func terminal(f *os.File) bool { return term.IsTerminal(f.Fd()) }
 
 // questionsPane is the pane `questions` opens: straight on the Round of the
-// one card waiting, on Home among the `?` rows when several wait. ok is
-// false when none waits, for the line prompt to say so.
+// one Question card, on Home among the `?` rows when there are several. ok
+// is false when there is none, for the line prompt to say so.
 func questionsPane(src work.Source) (paneModel, bool, error) {
 	cards, err := questionCards(src)
 	if err != nil || len(cards) == 0 {
@@ -62,8 +62,8 @@ func questionsPane(src work.Source) (paneModel, bool, error) {
 	return m, true, nil
 }
 
-// questionCards lists the cards waiting on the owner's answer: the Question
-// flag decides, whatever the queue says about Open. A card a live run still
+// questionCards lists the Question cards, the owner's turn to answer: the
+// Question flag decides, whatever the queue says about Open. A card a live run still
 // holds is not the owner's turn yet, and `task answer` would refuse it.
 func questionCards(src work.Source) ([]work.Task, error) {
 	items, err := src.List()

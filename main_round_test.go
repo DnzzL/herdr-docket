@@ -202,7 +202,7 @@ func opens(m paneModel) string {
 	return ""
 }
 
-// `questions` on a TTY: one card waiting goes straight to its Round, several
+// `questions` on a TTY: one Question card goes straight to its Round, several
 // start on Home with their `?` rows.
 func TestQuestionsOnATerminalOpensTheRoundOfTheOneCard(t *testing.T) {
 	src := questionSource("Voice notes")
@@ -217,7 +217,7 @@ func TestQuestionsOnATerminalOpensTheRoundOfTheOneCard(t *testing.T) {
 	}
 	src.items = nil
 	if _, ok, _ = questionsPane(src); ok {
-		t.Fatal("no card waiting: the line prompt says so, no pane")
+		t.Fatal("no Question card: the line prompt says so, no pane")
 	}
 }
 

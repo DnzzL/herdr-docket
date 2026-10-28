@@ -151,7 +151,8 @@ The fleet's own runs in flight are `herdr-docket runs`, or the plugin's
 **Herdr-Docket: runs** overlay pane — select a row with `j`/`k` or a
 click (a tap in Termux), `x` stops the selected run, `p` pauses the fleet, the
 wheel scrolls. A stopped run ends cancelled and leaves its task Blocked.
-A question card tapped twice (or Enter on it) opens its **Round**: the round's
+A tap on the selected question card (the highlighted first row counts), or
+Enter on it, opens its **Round**: the round's
 context, each question's options as buttons with the `(reco)` preselected
 (one per line under 60 columns, inline when they fit), an "or in plain
 words…" button for a free answer, and a footer `1.A 2.– 3.–  [ Send ]`.
