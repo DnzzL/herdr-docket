@@ -25,3 +25,6 @@
   `herdr-docket init <repo> --github <owner>/<project-number>` writes the
   GitHub tracker doc and a `kind: github` source whose `repo` is read from
   `origin`, with no Backlog.md project.
+- **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
+  tick 3s ago`, `daemon down for 4 min` once no tick has run for three
+  intervals, or `daemon never started`.
