@@ -175,7 +175,16 @@ anywhere.
 
 A GitHub Projects v2 board is a queue too — useful when the work is already
 issues in a repo, and the board is how you and a human colleague already look
-at it:
+at it. One command prepares the repo, reading `repo` from its `origin`:
+
+```sh
+herdr-docket init ~/Projects/app --github your-org/3   # owner/project-number
+```
+
+It writes a GitHub `docs/agents/issue-tracker.md` (a Spec is an issue on the
+board with its Agent set, a Ticket a sub-issue of it) and appends the block
+below to `fleet.yaml` — or prints it, if `fleet.yaml` already names a queue.
+No `backlog/` is created. By hand, the block is:
 
 ```yaml
 source:

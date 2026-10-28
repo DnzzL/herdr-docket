@@ -37,6 +37,7 @@ Usage:
   herdr-docket daemon           Run the worker (started by the plugin startup hook)
   herdr-docket init             Bootstrap the fleet dir: example agent, dev/reviewer roles, FLEET.md
   herdr-docket init <repo>      Make a project repo the queue: Backlog.md, issue-tracker doc, fleet.yaml source
+  herdr-docket init <repo> --github <owner>/<n>   The same for a repo tracked on GitHub project board n
   herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials ([--token <pat>])
   herdr-docket list             List the queue, grouped by phase
   herdr-docket run <task-id>    Run one open task now, whatever its phase
@@ -75,11 +76,7 @@ func main() {
 	case "daemon":
 		err = daemon.Run()
 	case "init":
-		arg := ""
-		if len(os.Args) > 2 {
-			arg = os.Args[2]
-		}
-		err = initCmd(arg)
+		err = initCmd(os.Args[2:])
 	case "auth":
 		err = authCmd(os.Args[2:])
 	case "list":
@@ -159,19 +156,32 @@ func changelogCmd(args []string, out io.Writer) error {
 	return nil
 }
 
-func initCmd(arg string) error {
+func initCmd(args []string) error {
+	arg, board := "", ""
+	if len(args) > 0 {
+		arg = args[0]
+	}
 	switch {
+	case len(args) == 3 && args[1] == "--github" && !strings.HasPrefix(arg, "-"):
+		board = args[2]
+	case len(args) > 1:
+		return fmt.Errorf("init: unexpected %q — run `herdr-docket init [<repo> [--github <owner>/<project-number>]]`", strings.Join(args[1:], " "))
 	case arg == "--factory":
 		return errors.New("init: --factory was removed with the factory loop — run `herdr-docket init`, which writes the dev and reviewer roles")
 	case strings.HasPrefix(arg, "-"):
-		return fmt.Errorf("init: unknown flag %q — run `herdr-docket init [<repo>]`", arg)
+		return fmt.Errorf("init: unknown flag %q — run `herdr-docket init [<repo> [--github <owner>/<project-number>]]`", arg)
 	}
 	settings, err := fleet.LoadSettings()
 	if err != nil {
 		return err
 	}
 	if arg != "" {
-		if err := fleet.InitRepo(settings, arg, os.Stdout); err != nil {
+		if board != "" {
+			err = fleet.InitGithubRepo(settings, arg, board, os.Stdout)
+		} else {
+			err = fleet.InitRepo(settings, arg, os.Stdout)
+		}
+		if err != nil {
 			return err
 		}
 		fmt.Printf("%s is prepared: publish specs with to-spec + to-tickets\n", arg)

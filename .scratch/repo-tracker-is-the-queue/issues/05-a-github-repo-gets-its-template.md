@@ -4,11 +4,11 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `init <repo> --github org/3` writes the GitHub template and a github source with owner, project and repo (repo read from the repo's `origin`)
-- [ ] No `backlog/` is created
-- [ ] `docs/queues.md` GitHub section shows the command
+- [x] `init <repo> --github org/3` writes the GitHub template and a github source with owner, project and repo (repo read from the repo's `origin`)
+- [x] No `backlog/` is created
+- [x] `docs/queues.md` GitHub section shows the command
 
 **Done when:** a GitHub-tracked repo is prepared with one command.
 
