@@ -15,7 +15,7 @@ agents work the queue in parallel, in workspaces you can watch, join or close.
 ```text
  idea (unclear) ──► grill ──► spec + tickets ──┐
                                                ├──► card ──► author ──► one PR ──► verifier ──► gate ──► merged
- idea (clear) ─────────────────────────────────┘   (the spec + its subtasks, or its own Done when / Verify by)
+ idea (clear) ─────────────────────────────────┘   (the spec + its tickets, or its own Done when / Verify by)
                                                                           ▲           │ FAIL       │
                                                                           └───────────┘            └──► held: your Blocked column
 ```
@@ -37,12 +37,17 @@ work too — and `gh` for pull requests.
 ```bash
 herdr plugin install DnzzL/herdr-docket
 herdr-docket init ~/Projects/myapp         # the repo's Backlog.md is the queue; agents in ~/fleet
-$EDITOR ~/fleet/agents/example/AGENT.md     # point it at the same repo
+$EDITOR ~/fleet/agents/example/AGENT.md     # set workdir: ~/Projects/myapp
 herdr-docket task create "Search ignores accents" -a example \
   -d "Users who type « creme » find none of the « crème » products.
 Done when: a query matches with or without accents.
 Verify by: a search test for « creme » that is red on main, green after."
 ```
+
+`init` runs `backlog init` in the repo when it has no `backlog/`, which also
+writes Backlog.md's agent guidelines into the repo's `AGENTS.md`. The agent's
+`workdir` is not optional: a run works in that checkout, so it must be the repo
+whose queue the task is in.
 
 Within 15 seconds Herdr opens a workspace on the agent's repo and starts the
 agent with its persona and the task. It reports back through the CLI, closes
@@ -53,8 +58,8 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 1. **A grill** turns an unclear idea into a spec and its tickets, committed
    in the repo's own tracker — each says what to do and how a stranger proves
    it is done.
-2. **A card** either is the spec — its body the spec, its subtasks the
-   tickets — or, when the task is clear, carries its own *Done when* and
+2. **A card** either is the spec — its body the spec, with its tickets under
+   it — or, when the task is clear, carries its own *Done when* and
    *Verify by* and is worked as one ticket's worth of work.
 3. **The daemon** routes the card to the agent it names and starts a run in a
    Herdr workspace — one run per agent, agents in parallel.
@@ -102,7 +107,7 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
   decide *when*, the fleet decides *what* and *who*.
 - **Not a workflow engine.** A card is one unit of work, spec or not; its only
   fixed sequence is author → verifier → gate. The ticket graph is the author's
-  plan, not the queue's: a subtask triggers nothing.
+  plan, not the queue's: a ticket triggers nothing.
 - **Not an environment.** An agent needs a repo it can run, test data and a
   way to check a fix the way a user would; that lives in your repo, and the
   `AGENT.md` points at it.

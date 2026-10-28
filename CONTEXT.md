@@ -64,8 +64,8 @@ _Avoid_: subtask, issue
 
 **Card**:
 The task with no parent, and the only thing that triggers a run. The card is
-the spec: its body is the spec, its subtasks are the tickets. A card with no
-subtasks is still a card: its body carries its own _Done when_ and
+the spec: its body is the spec, and its tickets hang off it. A card with no
+tickets is still a card: its body carries its own _Done when_ and
 _Verify by_, and its run works it as one ticket's worth of work.
 _Avoid_: story, epic
 

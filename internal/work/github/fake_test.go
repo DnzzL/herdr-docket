@@ -572,7 +572,16 @@ func (f *fakeBoard) issueNode(number int, vars map[string]any) any {
 		Labels:       labelNodes(issue.labels),
 		Comments:     &gqlNodes[gqlComment]{Nodes: issue.comments},
 		ProjectItems: f.itemsNode(number),
+		Parent:       f.parentNode(issue),
 	}
+}
+
+// parentNode is Issue.parent as GitHub answers it.
+func (f *fakeBoard) parentNode(issue *fakeIssue) *gqlIssue {
+	if issue.parent == 0 {
+		return nil
+	}
+	return &gqlIssue{Number: issue.parent}
 }
 
 func (f *fakeBoard) targetData(vars map[string]any) map[string]any {

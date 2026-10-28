@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
 	"github.com/DnzzL/herdr-docket/internal/work/backlogmd"
+	"github.com/DnzzL/herdr-docket/internal/work/github"
 )
 
 // statusesYAML writes a status list as the one-line form Backlog.md's own
@@ -95,9 +97,10 @@ const exampleFleet = `# FLEET.md — the fleet's shared brief
 `
 
 // Init bootstraps the fleet directory: a git repo, an example agent and the
-// pipeline's two roles. No queue: that lives in a project repo (InitRepo). Safe to re-run: existing pieces are left alone. What it
-// does to those two roles is reported to out: they are the files an owner
-// edits, and a re-run must say it kept them.
+// pipeline's two roles. No queue: that lives in a project repo (InitRepo).
+// Safe to re-run: existing pieces are left alone. What it does to those two
+// roles is reported to out: they are the files an owner edits, and a re-run
+// must say it kept them.
 func Init(s Settings, out io.Writer) error {
 	dir := s.Dir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -178,18 +181,23 @@ var issueTracker string
 // repo named as a source in fleet.yaml. Safe to re-run: a second run changes
 // nothing. What it did, and what it left, is reported to out.
 func InitRepo(s Settings, repo string, out io.Writer) error {
-	repo, err := filepath.Abs(expandHome(repo))
+	repo, err := repoDir(repo)
 	if err != nil {
 		return err
-	}
-	if fi, err := os.Stat(repo); err != nil || !fi.IsDir() {
-		return fmt.Errorf("init: %s is not a directory", repo)
 	}
 	if err := Init(s, out); err != nil {
 		return err
 	}
-	known, statuses := s.sourceFor(repo)
-	if err := initBacklog(repo, statuses); err != nil {
+	c, known := s.find(func(c SourceConfig) bool {
+		return c.kind() == kindBacklogmd && c.Dir != "" && filepath.Clean(c.dirFrom(s.Dir)) == repo
+	})
+	if !known {
+		// A Backlog.md source with no dir is a fleet from before ADR 0023,
+		// whose queue lived in the fleet dir: this repo is where it goes,
+		// statuses and all.
+		c, _ = s.find(func(c SourceConfig) bool { return c.kind() == kindBacklogmd && c.Dir == "" })
+	}
+	if err := initBacklog(repo, c.Statuses, out); err != nil {
 		return err
 	}
 	if err := initTrackerDoc(repo, issueTracker, out); err != nil {
@@ -199,7 +207,7 @@ func InitRepo(s Settings, repo string, out io.Writer) error {
 		fmt.Fprintf(out, "fleet.yaml already names %s\n", repo)
 		return nil
 	}
-	return addSource(s, filepath.Base(repo), fmt.Sprintf("kind: backlogmd\ndir: %s\n", repo), out)
+	return addSource(filepath.Base(repo), newSource{Kind: kindBacklogmd, Dir: repo}, out)
 }
 
 // issueTrackerGithub is the GitHub flavour of the tracker doc: Specs and
@@ -214,65 +222,62 @@ var issueTrackerGithub string
 // naming board ("owner/number") and the repo its origin remote points at.
 // No Backlog.md project: the issues are the queue. Safe to re-run.
 func InitGithubRepo(s Settings, repo, board string, out io.Writer) error {
-	owner, number, ok := strings.Cut(board, "/")
-	project, err := strconv.Atoi(number)
-	if !ok || owner == "" || err != nil || project <= 0 {
-		return fmt.Errorf("init: --github wants <owner>/<project-number>, as in acme/3 — got %q", board)
+	b, err := github.ParseBoard(board)
+	if err != nil {
+		return fmt.Errorf("init: --github: %w", err)
 	}
-	repo, err = filepath.Abs(expandHome(repo))
+	repo, err = repoDir(repo)
 	if err != nil {
 		return err
-	}
-	if fi, err := os.Stat(repo); err != nil || !fi.IsDir() {
-		return fmt.Errorf("init: %s is not a directory", repo)
 	}
 	url, err := command(repo, "git", "remote", "get-url", "origin")
 	if err != nil {
 		return fmt.Errorf("init: %s has no origin remote to name its GitHub repo: %s", repo, url)
 	}
-	name, err := githubRepo(url)
+	name, err := github.RepoFromOrigin(url)
 	if err != nil {
-		return err
+		return fmt.Errorf("init: %w", err)
 	}
 	if err := Init(s, out); err != nil {
 		return err
 	}
-	doc := strings.NewReplacer("{{owner}}", owner, "{{project}}", number, "{{repo}}", name).Replace(issueTrackerGithub)
+	doc := strings.NewReplacer("{{owner}}", b.Owner, "{{project}}", strconv.Itoa(b.Project), "{{repo}}", name).Replace(issueTrackerGithub)
 	if err := initTrackerDoc(repo, doc, out); err != nil {
 		return err
 	}
-	for _, c := range append([]SourceConfig{s.Source}, slices.Collect(maps.Values(s.Sources))...) {
-		if c.kind() == kindGithub && c.Github.Owner == owner && c.Github.Project == project && c.Github.Repo == name {
-			fmt.Fprintf(out, "fleet.yaml already names %s on %s\n", name, board)
-			return nil
-		}
+	if _, found := s.find(func(c SourceConfig) bool { return c.kind() == kindGithub && b.Works(c.Github, name) }); found {
+		fmt.Fprintf(out, "fleet.yaml already names %s on %s\n", name, b)
+		return nil
 	}
-	block := fmt.Sprintf("kind: github\ngithub:\n  owner: %s\n  project: %d\n  repo: %s\n", owner, project, name)
-	return addSource(s, filepath.Base(repo), block, out)
+	cfg := b.Config(name)
+	return addSource(filepath.Base(repo), newSource{Kind: kindGithub, Github: &cfg}, out)
 }
 
-// githubRepo reads "owner/name" from an origin URL, ssh or https.
-func githubRepo(url string) (string, error) {
-	m := regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$`).FindStringSubmatch(strings.TrimSpace(url))
-	if m == nil {
-		return "", fmt.Errorf("init: origin %q is not a GitHub repository", url)
+// repoDir is the absolute path of the project repo init was given, which must
+// be a directory.
+func repoDir(repo string) (string, error) {
+	repo, err := filepath.Abs(expandHome(repo))
+	if err != nil {
+		return "", err
 	}
-	return m[1] + "/" + m[2], nil
+	if fi, err := os.Stat(repo); err != nil || !fi.IsDir() {
+		return "", fmt.Errorf("init: %s is not a directory", repo)
+	}
+	return repo, nil
 }
 
-// sourceFor reports whether a Backlog.md source of s already works repo, and
-// the status words it speaks there.
-func (s Settings) sourceFor(repo string) (bool, backlogmd.Vocabulary) {
-	all := s.Sources
-	if len(all) == 0 {
-		all = map[string]SourceConfig{"": s.Source}
+// find is a source block of s that match accepts, one queue or several.
+func (s Settings) find(match func(SourceConfig) bool) (SourceConfig, bool) {
+	all := []SourceConfig{s.Source}
+	if len(s.Sources) > 0 {
+		all = slices.Collect(maps.Values(s.Sources))
 	}
 	for _, c := range all {
-		if c.kind() == kindBacklogmd && c.Dir != "" && filepath.Clean(c.dirFrom(s.Dir)) == repo {
-			return true, c.Statuses
+		if match(c) {
+			return c, true
 		}
 	}
-	return false, backlogmd.Vocabulary{}
+	return SourceConfig{}, false
 }
 
 // initTrackerDoc writes the tracker doc the skills read. One the repo already
@@ -294,54 +299,177 @@ func initTrackerDoc(repo, body string, out io.Writer) error {
 	return nil
 }
 
-// addSource names a repo as the fleet's queue in fleet.yaml, block being its
-// source fields, one per line, unindented. A fleet.yaml with
-// no queue yet gets a source: block appended, the rest of the file untouched.
-// One that already names another queue is the owner's YAML: rewriting it
-// (source: into sources:) would lose its comments and layout, so the block to
-// paste is printed instead and the file is left as it is.
-func addSource(s Settings, name, block string, out io.Writer) error {
+// newSource is the source block init writes: only what init knows, so the
+// owner's fleet.yaml gains no empty fields.
+type newSource struct {
+	Kind   string         `yaml:"kind"`
+	Dir    string         `yaml:"dir,omitempty"`
+	Github *github.Config `yaml:"github,omitempty"`
+}
+
+// addSource names src as one of the fleet's queues in fleet.yaml, editing the
+// owner's YAML in place so its comments and order survive:
+//   - no queue yet: a source: block;
+//   - a Backlog.md source with no dir (before ADR 0023) and src a Backlog.md
+//     repo: the dir is set on that source;
+//   - one source: it becomes sources:, each entry named after its repo, and
+//     the old one stays default_source so new tasks land where they did;
+//   - sources: one more entry, named name or, when that is taken, name-2…
+func addSource(name string, src newSource, out io.Writer) error {
 	path := filepath.Join(hostpath.ConfigDir(), "fleet.yaml")
-	if len(s.Sources) > 0 || s.Source != (SourceConfig{}) {
-		fmt.Fprintf(out, "fleet.yaml already names another queue; left it as it is. To add this repo, list it under sources: (turning a source: block into one entry of it):\n\nsources:\n  %s:\n%s\n", name, indent(block, "    "))
-		return nil
-	}
 	raw, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	if len(raw) > 0 && raw[len(raw)-1] != '\n' {
-		raw = append(raw, '\n')
+	var doc yaml.Node
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
 	}
-	raw = append(raw, "source:\n"+indent(block, "  ")...)
+	if len(doc.Content) == 0 {
+		doc = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode, Tag: "!!map"}}}
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("%s: not a mapping of settings", path)
+	}
+	var block yaml.Node
+	if err := block.Encode(src); err != nil {
+		return err
+	}
+	var said string
+	single, many := value(root, "source"), value(root, "sources")
+	switch {
+	case many != nil:
+		if entry := legacy(values(many), src); entry != nil {
+			setKey(entry, "dir", src.Dir)
+			said = "named " + src.Dir + " on the source that had no dir"
+			break
+		}
+		name = freeName(many, name)
+		many.Content = append(many.Content, str(name), &block)
+		said = "added " + name + " to sources"
+	case single != nil && single.Kind == yaml.MappingNode && len(single.Content) > 0:
+		if legacy([]*yaml.Node{single}, src) != nil {
+			setKey(single, "dir", src.Dir)
+			said = "named " + src.Dir + " on the source that had no dir"
+			break
+		}
+		var old SourceConfig
+		if err := single.Decode(&old); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		oldName := sourceName(old)
+		sources := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Content: []*yaml.Node{str(oldName), single}}
+		name = freeName(sources, name)
+		sources.Content = append(sources.Content, str(name), &block)
+		key := root.Content[slices.Index(root.Content, single)-1]
+		key.Value = "sources"
+		root.Content[slices.Index(root.Content, single)] = sources
+		if value(root, "default_source") == nil {
+			root.Content = append(root.Content, str("default_source"), str(oldName))
+		}
+		said = "turned source: into sources: " + oldName + " and " + name
+	case single != nil:
+		root.Content[slices.Index(root.Content, single)] = &block
+		said = "named " + name + " as the queue"
+	default:
+		root.Content = append(root.Content, str("source"), &block)
+		said = "named " + name + " as the queue"
+	}
+	var buf strings.Builder
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(buf.String()), 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "named %s as the queue in %s\n", name, path)
+	fmt.Fprintf(out, "%s in %s\n", said, path)
 	return nil
 }
 
-// indent prefixes every line of block with pad.
-func indent(block, pad string) string {
-	lines := strings.SplitAfter(block, "\n")
-	for i, l := range lines {
-		if l != "" {
-			lines[i] = pad + l
+// value is the node mapping m holds under key, nil when it has none.
+func value(m *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i+1]
 		}
 	}
-	return strings.Join(lines, "")
+	return nil
+}
+
+// setKey sets key to v in mapping m, adding it when m has none.
+func setKey(m *yaml.Node, key, v string) {
+	if n := value(m, key); n != nil {
+		*n = *str(v)
+		return
+	}
+	m.Content = append(m.Content, str(key), str(v))
+}
+
+// str is a string scalar: the encoder quotes it when YAML would misread it.
+func str(v string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v} }
+
+// values is every value of mapping m, in order.
+func values(m *yaml.Node) []*yaml.Node {
+	var vs []*yaml.Node
+	for i := 1; i < len(m.Content); i += 2 {
+		vs = append(vs, m.Content[i])
+	}
+	return vs
+}
+
+// legacy is the first of blocks that is a Backlog.md source with no dir, when
+// src is a Backlog.md repo to name on it; nil otherwise.
+func legacy(blocks []*yaml.Node, src newSource) *yaml.Node {
+	if src.Dir == "" {
+		return nil
+	}
+	for _, b := range blocks {
+		var c SourceConfig
+		if b.Kind == yaml.MappingNode && b.Decode(&c) == nil && c.kind() == kindBacklogmd && c.Dir == "" {
+			return b
+		}
+	}
+	return nil
+}
+
+// sourceName is what an existing source is called once it has neighbours:
+// the repo it works.
+func sourceName(c SourceConfig) string {
+	switch {
+	case c.kind() == kindGithub && c.Github.Repo != "":
+		return path.Base(c.Github.Repo)
+	case c.kind() == kindBacklogmd && c.Dir != "":
+		return filepath.Base(c.Dir)
+	}
+	return c.kind()
+}
+
+// freeName is name, or name-2, name-3… when sources already has it.
+func freeName(sources *yaml.Node, name string) string {
+	for i, n := 2, name; ; i++ {
+		if value(sources, n) == nil {
+			return n
+		}
+		n = name + "-" + strconv.Itoa(i)
+	}
 }
 
 // initBacklog lays down the repo's Backlog.md project when it has none, and
-// makes sure its config knows the fleet's lifecycle.
-func initBacklog(dir string, vocab backlogmd.Vocabulary) error {
+// makes sure its config knows the fleet's lifecycle. backlog init also writes
+// its agent guidelines into the repo's AGENTS.md: a file in the human's repo,
+// so it is said.
+func initBacklog(dir string, vocab backlogmd.Vocabulary, out io.Writer) error {
 	if _, err := os.Stat(filepath.Join(dir, "backlog")); os.IsNotExist(err) {
-		if out, err := command(dir, "backlog", "init", filepath.Base(dir), "--defaults"); err != nil {
-			return fmt.Errorf("backlog init: %s", out)
+		if msg, err := command(dir, "backlog", "init", filepath.Base(dir), "--defaults"); err != nil {
+			return fmt.Errorf("backlog init: %s", msg)
 		}
+		fmt.Fprintln(out, "ran backlog init: wrote backlog/ and Backlog.md's guidelines into AGENTS.md")
 	}
 	return patchStatusesTo(filepath.Join(dir, "backlog", "config.yml"), backlogmd.OrDefault(vocab).List())
 }

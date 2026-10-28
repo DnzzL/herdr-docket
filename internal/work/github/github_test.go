@@ -628,3 +628,37 @@ func TestARepositoryIsAnOwnerAndAName(t *testing.T) {
 		}
 	}
 }
+
+// A repo's origin, in any form git writes it, names the repository the
+// source block reads; anything not on GitHub is refused.
+func TestRepoFromOrigin(t *testing.T) {
+	for _, url := range []string{"git@github.com:org/app.git", "https://github.com/org/app", "https://github.com/org/app.git", "ssh://git@github.com/org/app.git"} {
+		if got, err := RepoFromOrigin(url); err != nil || got != "org/app" {
+			t.Errorf("RepoFromOrigin(%q) = %q, %v; want org/app", url, got, err)
+		}
+	}
+	if _, err := RepoFromOrigin("git@gitlab.com:org/app.git"); err == nil {
+		t.Error("a non-GitHub origin must be refused")
+	}
+}
+
+// Get and List agree: a sub-issue read on its own is still a ticket of its
+// spec, or `run` and `task view` would treat it as a card.
+func TestGetCarriesASubIssuesParent(t *testing.T) {
+	f := newFakeBoard()
+	f.provisionAgent("dev")
+	spec := f.add("spec", "")
+	ticket := f.add("ticket", "")
+	f.issue(ticket).parent = spec
+
+	got, err := f.source(t).Get(strconv.Itoa(ticket))
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if want := strconv.Itoa(spec); got.Parent != want {
+		t.Errorf("the ticket reads parent %q, want %q", got.Parent, want)
+	}
+	if q := f.requests()[0].query; !strings.Contains(q, "parent { number }") {
+		t.Errorf("the issue query does not ask for the parent:\n%s", q)
+	}
+}

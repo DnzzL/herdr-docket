@@ -253,6 +253,12 @@ func list() error {
 		return err
 	}
 	agents, _ := fleet.LoadAgents(settings.Dir)
+	writeList(os.Stdout, items, agents, settings.Defaults())
+	return nil
+}
+
+// writeList prints the queue by phase, each task with who it routes to.
+func writeList(w io.Writer, items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defaults) {
 	for _, phase := range work.PhasesOf(items) {
 		var lines []string
 		for _, it := range items {
@@ -262,8 +268,10 @@ func list() error {
 			// The routed agent, not the written one: with a default the two
 			// differ, and a board that showed "-" would hide who is about to
 			// pick the task up.
-			who := pick.AssigneeFor(it, settings.Defaults())
+			who := pick.AssigneeFor(it, defaults)
 			switch _, known := agents[who]; {
+			case it.Parent != "":
+				who = "ticket of " + it.Parent
 			case who == "":
 				who = "-"
 			case !known:
@@ -278,10 +286,9 @@ func list() error {
 			if heading == "" {
 				heading = "(no phase)"
 			}
-			fmt.Printf("%s:\n%s\n", heading, strings.Join(lines, "\n"))
+			fmt.Fprintf(w, "%s:\n%s\n", heading, strings.Join(lines, "\n"))
 		}
 	}
-	return nil
 }
 
 // taskCmd resolves the fleet's queue through the configured adapter and runs
@@ -730,6 +737,9 @@ func runCmd(args []string) error {
 // explicit intent, so pausing an agent parks the scheduler without forbidding
 // the work. Every manual route goes through here, or the two drift apart.
 func routedAgent(agents map[string]fleet.Agent, it work.Task, defaults fleet.Defaults) (fleet.Agent, error) {
+	if it.Parent != "" {
+		return fleet.Agent{}, fmt.Errorf("a ticket of %s is never run on its own — run %s", it.Parent, it.Parent)
+	}
 	name := pick.AssigneeFor(it, defaults)
 	agent, ok := agents[name]
 	if !ok {

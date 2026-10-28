@@ -585,3 +585,31 @@ func TestMaxRunsPerProjectLeavesTheOtherProjectAlone(t *testing.T) {
 		t.Fatalf("started %d (app %d), want 2 with 1 from app", h.count(), app)
 	}
 }
+
+// A ticket of a spec is its implementer's plan, never routed on its own: the
+// misroute check must not talk to it either, or a spec's tickets would each
+// collect a "reassign it" comment their default agent can never act on.
+func TestATicketIsNeverCalledMisrouted(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	src := newMemSource(
+		work.Task{ID: "dishnow/TASK-1.1", Title: "a ticket", Open: true, Assignee: "plugin-dev", Parent: "dishnow/TASK-1"},
+	)
+	withFleet(t, map[string]fleet.Agent{
+		"plugin-dev": {Name: "plugin-dev", Workdir: "/w/docket", Workspace: "root", TimeoutMinutes: 1},
+	}, src)
+	loadSettings = func() (fleet.Settings, error) {
+		return fleet.Settings{Dir: "/fleet", Sources: map[string]fleet.SourceConfig{
+			"dishnow": {Dir: "/w/dishnow"},
+			"docket":  {Dir: "/w/docket"},
+		}}, nil
+	}
+
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+
+	if notes := src.notesFor(); len(notes) != 0 {
+		t.Fatalf("a ticket is not routed, so it is never misrouted: %v", notes)
+	}
+	if src.closed("dishnow/TASK-1.1") {
+		t.Fatal("a ticket must not be run")
+	}
+}

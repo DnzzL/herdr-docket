@@ -314,27 +314,6 @@ func TestInitRepoTwiceIsANoOpAndKeepsAnExistingTrackerDoc(t *testing.T) {
 	}
 }
 
-// A fleet.yaml that already names another queue is the owner's YAML: init
-// never rewrites it, it prints the block to paste and leaves the file as is.
-func TestInitRepoNeverRewritesAFleetYAMLThatNamesAnotherQueue(t *testing.T) {
-	s, repo := repoWithBacklog(t)
-	path := filepath.Join(os.Getenv("HERDR_PLUGIN_CONFIG_DIR"), "fleet.yaml")
-	mine := "dir: " + s.Dir + "\n# my fleet\nsource:\n  kind: github\n  github:\n    owner: acme\n    project: 3\n"
-	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var out bytes.Buffer
-	if err := InitRepo(loaded(t), repo, &out); err != nil {
-		t.Fatal(err)
-	}
-	if got := read(t, path); got != mine {
-		t.Errorf("fleet.yaml was rewritten:\n%s", got)
-	}
-	if !strings.Contains(out.String(), "dir: "+repo) {
-		t.Errorf("init must print the block to paste:\n%s", out.String())
-	}
-}
-
 // init <repo> --github org/3 prepares a GitHub-tracked repo: the GitHub
 // tracker doc, a github source naming the board and the repo read from its
 // origin, and no Backlog.md project.
@@ -375,13 +354,157 @@ func TestInitGithubRepoWritesTheGithubTemplateAndSource(t *testing.T) {
 	}
 }
 
-func TestGithubRepoFromOrigin(t *testing.T) {
-	for _, url := range []string{"git@github.com:org/app.git", "https://github.com/org/app", "https://github.com/org/app.git", "ssh://git@github.com/org/app.git"} {
-		if got, err := githubRepo(url); err != nil || got != "org/app" {
-			t.Errorf("githubRepo(%q) = %q, %v; want org/app", url, got, err)
+// fleetPath is fleet.yaml in the test's config dir.
+func fleetPath() string {
+	return filepath.Join(os.Getenv("HERDR_PLUGIN_CONFIG_DIR"), "fleet.yaml")
+}
+
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// githubRepoDir is a git repo whose origin is origin.
+func githubRepoDir(t *testing.T, origin string) string {
+	t.Helper()
+	repo := t.TempDir()
+	args := [][]string{{"init", "-q"}}
+	if origin != "" {
+		args = append(args, []string{"remote", "add", "origin", origin})
+	}
+	for _, a := range args {
+		if out, err := command(repo, "git", a...); err != nil {
+			t.Fatalf("git %v: %s", a, out)
 		}
 	}
-	if _, err := githubRepo("git@gitlab.com:org/app.git"); err == nil {
-		t.Error("a non-GitHub origin must be refused")
+	return repo
+}
+
+// A fleet.yaml from before ADR 0023 names a Backlog.md source with no dir: the
+// queue used to live in the fleet dir. init <repo> is the migration: it loads,
+// and names the repo on that very source, keeping its other fields and the
+// owner's comments.
+func TestInitRepoMigratesALegacySourceWithNoDir(t *testing.T) {
+	s, repo := repoWithBacklog(t)
+	writeFile(t, fleetPath(), "dir: "+s.Dir+"\n# our queue\nsource:\n  kind: backlogmd\n  verifier: rev # judges PRs\n")
+	if err := InitRepo(loaded(t), repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	got := loaded(t)
+	if got.Source.Dir != repo || got.Source.Verifier != "rev" || len(got.Sources) != 0 {
+		t.Fatalf("source = %+v, sources = %v; want the legacy source with dir %s", got.Source, got.Sources, repo)
+	}
+	raw := read(t, fleetPath())
+	for _, c := range []string{"# our queue", "# judges PRs"} {
+		if !strings.Contains(raw, c) {
+			t.Errorf("comment %q lost:\n%s", c, raw)
+		}
+	}
+}
+
+// A fleet.yaml that already names another queue gets this repo beside it:
+// source: becomes sources:, each named by its repo, the old one stays where
+// new tasks land, and the owner's comments survive.
+func TestInitRepoAddsTheRepoBesideAnotherQueue(t *testing.T) {
+	s, repo := repoWithBacklog(t)
+	writeFile(t, fleetPath(), "dir: "+s.Dir+"\n# my fleet\nsource:\n  kind: github # the board\n  github:\n    owner: acme\n    project: 3\n    repo: acme/app\n")
+	if err := InitRepo(loaded(t), repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	got := loaded(t)
+	if got.Source != (SourceConfig{}) || len(got.Sources) != 2 {
+		t.Fatalf("want two sources, got source %+v sources %+v", got.Source, got.Sources)
+	}
+	if c := got.Sources["app"]; c.Kind != kindGithub || c.Github.Repo != "acme/app" {
+		t.Errorf("the old queue is not sources.app: %+v", got.Sources)
+	}
+	if c := got.Sources[filepath.Base(repo)]; c.Dir != repo {
+		t.Errorf("the repo is not sources.%s: %+v", filepath.Base(repo), got.Sources)
+	}
+	if got.DefaultSource != "app" {
+		t.Errorf("default_source = %q, want the queue new tasks already landed in", got.DefaultSource)
+	}
+	raw := read(t, fleetPath())
+	for _, c := range []string{"# my fleet", "# the board"} {
+		if !strings.Contains(raw, c) {
+			t.Errorf("comment %q lost:\n%s", c, raw)
+		}
+	}
+	if _, err := NewSource(got); err != nil {
+		t.Errorf("the fleet does not build its queue: %v", err)
+	}
+	before := read(t, fleetPath())
+	if err := InitRepo(loaded(t), repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if after := read(t, fleetPath()); after != before {
+		t.Errorf("a second run changed fleet.yaml:\n%s\n---\n%s", before, after)
+	}
+}
+
+// sources: gets one more entry; a name already taken gets a suffix rather than
+// overwriting somebody's queue. A dir YAML would misread unquoted (# and : )
+// round-trips.
+func TestInitRepoAddsToSourcesUnderAFreeName(t *testing.T) {
+	s, _ := repoWithBacklog(t)
+	repo := filepath.Join(t.TempDir(), "a #b: c")
+	if err := os.MkdirAll(filepath.Join(repo, "backlog"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, "backlog", "config.yml"), "statuses: [\"To Do\"]\n")
+	name := filepath.Base(repo)
+	writeFile(t, fleetPath(), "dir: "+s.Dir+"\nsources:\n  \""+name+"\":\n    dir: /srv/other\n")
+	if err := InitRepo(loaded(t), repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	got := loaded(t).Sources
+	if got[name].Dir != "/srv/other" || got[name+"-2"].Dir != repo {
+		t.Fatalf("sources = %+v, want %q kept and %q-2 at %s", got, name, name, repo)
+	}
+}
+
+// The --github path adds beside an existing queue too.
+func TestInitGithubRepoAddsTheRepoBesideAnotherQueue(t *testing.T) {
+	s, other := repoWithBacklog(t)
+	writeFile(t, fleetPath(), "dir: "+s.Dir+"\nsource:\n  dir: "+other+"\n")
+	repo := githubRepoDir(t, "https://github.com/org/app.git")
+	if err := InitGithubRepo(loaded(t), repo, "org/3", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	got := loaded(t).Sources
+	if got[filepath.Base(other)].Dir != other || got[filepath.Base(repo)].Github.Repo != "org/app" {
+		t.Fatalf("sources = %+v, want the old repo and org/app", got)
+	}
+}
+
+// Every way init <repo> refuses says what is wrong.
+func TestInitRepoRefusals(t *testing.T) {
+	s, _ := repoWithBacklog(t)
+	gitlab := githubRepoDir(t, "git@gitlab.com:org/app.git")
+	noOrigin := githubRepoDir(t, "")
+	github := githubRepoDir(t, "git@github.com:org/app.git")
+	for _, c := range []struct {
+		name, repo, board, want string
+	}{
+		{"not a directory", filepath.Join(gitlab, "nope"), "", "is not a directory"},
+		{"not a directory, github", filepath.Join(gitlab, "nope"), "org/3", "is not a directory"},
+		{"board with no number", github, "org", "<owner>/<project-number>"},
+		{"board with a word for a number", github, "org/x", "<owner>/<project-number>"},
+		{"board with no owner", github, "/3", "<owner>/<project-number>"},
+		{"board zero", github, "org/0", "<owner>/<project-number>"},
+		{"origin elsewhere", gitlab, "org/3", "is not a GitHub repository"},
+		{"no origin", noOrigin, "org/3", "no origin remote"},
+	} {
+		var err error
+		if c.board == "" {
+			err = InitRepo(s, c.repo, io.Discard)
+		} else {
+			err = InitGithubRepo(s, c.repo, c.board, io.Discard)
+		}
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: err = %v, want %q", c.name, err, c.want)
+		}
 	}
 }

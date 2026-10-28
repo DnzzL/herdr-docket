@@ -42,13 +42,41 @@ const parkedOption = "Blocked"
 // own configuration, so this is the one place the board's coordinates are
 // named.
 type Config struct {
-	Owner       string `yaml:"owner"`        // the board's owner: an org or a user
-	Project     int    `yaml:"project"`      // the number in .../projects/3
-	Repo        string `yaml:"repo"`         // owner/name: where Create writes and what List reads
-	AgentField  string `yaml:"agent_field"`  // default Agent
-	StatusField string `yaml:"status_field"` // default Status
-	InProgress  string `yaml:"in_progress"`  // default "In Progress"
+	Owner       string `yaml:"owner,omitempty"`        // the board's owner: an org or a user
+	Project     int    `yaml:"project,omitempty"`      // the number in .../projects/3
+	Repo        string `yaml:"repo,omitempty"`         // owner/name: where Create writes and what List reads
+	AgentField  string `yaml:"agent_field,omitempty"`  // default Agent
+	StatusField string `yaml:"status_field,omitempty"` // default Status
+	InProgress  string `yaml:"in_progress,omitempty"`  // default "In Progress"
 }
+
+// Board is a Projects board as a human names it: owner/number, as in acme/3.
+type Board struct {
+	Owner   string
+	Project int
+}
+
+// ParseBoard reads "owner/number".
+func ParseBoard(s string) (Board, error) {
+	owner, number, ok := strings.Cut(s, "/")
+	project, err := strconv.Atoi(number)
+	if !ok || owner == "" || err != nil || project <= 0 {
+		return Board{}, fmt.Errorf("board %q: want <owner>/<project-number>, as in acme/3", s)
+	}
+	return Board{Owner: owner, Project: project}, nil
+}
+
+// Config is the source block for repo ("owner/name") worked from b.
+func (b Board) Config(repo string) Config {
+	return Config{Owner: b.Owner, Project: b.Project, Repo: repo}
+}
+
+// Works reports whether c is b's board read for repo.
+func (b Board) Works(c Config, repo string) bool {
+	return c.Owner == b.Owner && c.Project == b.Project && c.Repo == repo
+}
+
+func (b Board) String() string { return b.Owner + "/" + strconv.Itoa(b.Project) }
 
 func (c Config) agentField() string {
 	if c.AgentField == "" {
@@ -83,6 +111,19 @@ func parseRepo(s string) (repo, error) {
 		return repo{}, fmt.Errorf("github: source.github.repo is %q, want owner/name", s)
 	}
 	return repo{owner: owner, name: name}, nil
+}
+
+// originRepo matches the owner/name of a GitHub remote, ssh or https.
+var originRepo = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$`)
+
+// RepoFromOrigin reads "owner/name", the form Config.Repo takes, from a git
+// remote URL.
+func RepoFromOrigin(url string) (string, error) {
+	m := originRepo.FindStringSubmatch(strings.TrimSpace(url))
+	if m == nil {
+		return "", fmt.Errorf("origin %q is not a GitHub repository", url)
+	}
+	return m[1] + "/" + m[2], nil
 }
 
 // Source is the adapter. Its fields are unexported so a test can swap the API
@@ -169,10 +210,6 @@ func (s *Source) List() ([]work.Task, error) {
 			continue
 		}
 		open := n.Content.State == stateOpen
-		parent := ""
-		if n.Content.Parent != nil {
-			parent = strconv.Itoa(n.Content.Parent.Number)
-		}
 		tasks = append(tasks, work.Task{
 			ID:        strconv.Itoa(n.Content.Number),
 			Title:     n.Content.Title,
@@ -182,7 +219,7 @@ func (s *Source) List() ([]work.Task, error) {
 			Phase:     s.phase(n.Status.Name, open),
 			Ordinal:   float64(i), // the board's order is the queue's order
 			CreatedAt: n.Content.CreatedAt,
-			Parent:    parent,
+			Parent:    parentID(n.Content.Parent),
 		})
 	}
 	return tasks, nil
@@ -201,11 +238,12 @@ func (s *Source) Get(id string) (work.Task, error) {
 		User         *boardHalf `json:"user"`
 		Repository   struct {
 			Issue *struct {
-				Number    int    `json:"number"`
-				Title     string `json:"title"`
-				Body      string `json:"body"`
-				State     string `json:"state"`
-				CreatedAt string `json:"createdAt"`
+				Number    int       `json:"number"`
+				Title     string    `json:"title"`
+				Body      string    `json:"body"`
+				State     string    `json:"state"`
+				CreatedAt string    `json:"createdAt"`
+				Parent    parentRef `json:"parent"`
 				Labels    struct {
 					Nodes []struct {
 						Name string `json:"name"`
@@ -248,6 +286,7 @@ func (s *Source) Get(id string) (work.Task, error) {
 		Phase:     s.phase(item.Status.Name, open),
 		CreatedAt: issue.CreatedAt,
 		Criteria:  criteria(issue.Body),
+		Parent:    parentID(issue.Parent),
 	}
 	for _, l := range issue.Labels.Nodes {
 		task.Labels = append(task.Labels, l.Name)
