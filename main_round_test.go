@@ -4,10 +4,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -21,13 +23,18 @@ const contextRound = "## Round 2\n" +
 // way Home opens it: an openRoundMsg.
 func roundPane(t *testing.T, width, height int) (paneModel, *phasingSource) {
 	t.Helper()
-	card := work.Task{ID: "TASK-2", Title: "Voice notes", Question: true, Phase: string(work.PhaseQuestion), Notes: contextRound}
+	return roundPaneOn(t, contextRound, width, height)
+}
+
+func roundPaneOn(t *testing.T, notes string, width, height int) (paneModel, *phasingSource) {
+	t.Helper()
+	card := work.Task{ID: "TASK-2", Title: "Voice notes", Question: true, Phase: string(work.PhaseQuestion), Notes: notes}
 	src := &phasingSource{fakeSource: fakeSource{items: []work.Task{card}, item: card}}
 	m := paneModel{data: paneData{Queue: []work.Task{card}}, closer: &closer{},
 		source: func() (work.Source, error) { return src, nil }}
 	m = send(m, tea.WindowSizeMsg{Width: width, Height: height})
-	m = send(m, openRoundMsg{ID: "TASK-2"})
-	return m, src
+	next, cmd := m.Update(openRoundMsg{ID: "TASK-2"})
+	return drain(next.(paneModel), cmd), src
 }
 
 func send(m paneModel, msg tea.Msg) paneModel {
@@ -155,7 +162,7 @@ func TestSendOnACardALiveRunHoldsSaysSoAndStays(t *testing.T) {
 	}
 }
 
-func TestTappingAQuestionRowTwiceOnHomeOpensItsRound(t *testing.T) {
+func TestOneTapOnTheHighlightedQuestionRowOpensItsRound(t *testing.T) {
 	m, _ := roundPane(t, 45, 60)
 	m = send(m, tea.KeyMsg{Type: tea.KeyEsc})
 	m = drain(m, func() tea.Msg { return roundDoneMsg{} })
@@ -163,9 +170,8 @@ func TestTappingAQuestionRowTwiceOnHomeOpensItsRound(t *testing.T) {
 		t.Fatalf("Esc stayed on the Round:\n%s", m.View())
 	}
 	m = tap(t, m, "? TASK-2")
-	m = tap(t, m, "? TASK-2")
 	if !strings.Contains(m.View(), "TASK-2 Voice notes  round 2") {
-		t.Fatalf("two taps did not open the Round:\n%s", m.View())
+		t.Fatalf("one tap did not open the Round:\n%s", m.View())
 	}
 }
 
@@ -196,7 +202,7 @@ func opens(m paneModel) string {
 	return ""
 }
 
-// `questions` on a TTY: one card waiting goes straight to its Round, several
+// `questions` on a TTY: one Question card goes straight to its Round, several
 // start on Home with their `?` rows.
 func TestQuestionsOnATerminalOpensTheRoundOfTheOneCard(t *testing.T) {
 	src := questionSource("Voice notes")
@@ -211,6 +217,135 @@ func TestQuestionsOnATerminalOpensTheRoundOfTheOneCard(t *testing.T) {
 	}
 	src.items = nil
 	if _, ok, _ = questionsPane(src); ok {
-		t.Fatal("no card waiting: the line prompt says so, no pane")
+		t.Fatal("no Question card: the line prompt says so, no pane")
+	}
+}
+
+const wideRound = "## Round 1\n" +
+	"1. 音声はどこに保存しますか？ The audio goes where once the note is sent to the card?\n" +
+	"   A. 添付ファイルとしてカードに保存する 📎 (reco)\n   B. 東京のサーバー\n" +
+	"2. Keep it?\n   A. yes (reco)\n   B. no\n"
+
+// A CJK or emoji option is two cells a character: it stays inside the
+// screen, and its tap box is where it is drawn.
+func TestAWideOptionFitsAndItsTapLands(t *testing.T) {
+	for _, width := range []int{45, 120} {
+		m, src := roundPaneOn(t, wideRound, width, 40)
+		for _, line := range strings.Split(m.View(), "\n") {
+			if n := lipgloss.Width(line); n > width {
+				t.Errorf("at %d: %d cells: %q", width, n, line)
+			}
+		}
+		m = tap(t, m, "B 東京")
+		m = tap(t, m, "[ Send ]")
+		if want := []string{"## Answer 1\n1.B 2.A"}; !reflect.DeepEqual(src.comments, want) {
+			t.Fatalf("at %d: commented %q, want %q\n%s", width, src.comments, want, m.View())
+		}
+	}
+}
+
+// A wrapped question reads as one block: its continuation lines sit under
+// its text, not under its number.
+func TestAWrappedQuestionContinuesUnderItsText(t *testing.T) {
+	m, _ := roundPane(t, 30, 60)
+	lines := strings.Split(m.View(), "\n")
+	_, y := at(t, m, "1. What happens")
+	if next := lines[y+1]; !strings.HasPrefix(next, "   ") || strings.TrimSpace(next) == "" || strings.Contains(next, "[") {
+		t.Fatalf("continuation %q not indented under the text:\n%s", next, m.View())
+	}
+}
+
+// French puts a space before : ? ! ; — a wrap must not leave one alone at
+// the start of a line.
+func TestFrenchPunctuationNeverStartsALine(t *testing.T) {
+	q := "Où garde-t-on le son une fois envoyé"
+	q += strings.Repeat("x", 42-len([]rune(q))) // "1. " + q fills 45 cells
+	notes := "## Round 1\n1. " + q + " ?\n   A. oui (reco)\n2. Et ensuite : on le garde ; ou pas !\n   A. oui (reco)\n"
+	for _, width := range []int{45, 30, 21} {
+		m, _ := roundPaneOn(t, notes, width, 60)
+		for _, line := range strings.Split(m.View(), "\n") {
+			if f := strings.Fields(line); len(f) > 0 && strings.ContainsAny(f[0], ":?!;") && len([]rune(f[0])) == 1 {
+				t.Errorf("at %d a line starts with %q:\n%s", width, f[0], m.View())
+			}
+		}
+	}
+}
+
+// One wheel notch moves Home and the Round by the same number of lines.
+func TestTheWheelStepsTheSameOnHomeAndRound(t *testing.T) {
+	scrolled := func(m paneModel) int {
+		before := strings.Split(m.View(), "\n")
+		after := strings.Split(send(m, tea.MouseMsg{Y: 1, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}).View(), "\n")
+		for n := range before {
+			if before[n] == after[0] {
+				return n
+			}
+		}
+		return -1
+	}
+	round, _ := roundPane(t, 45, 8)
+	home := paneAt(t, paneFixture(), 45, 4)
+	if r, h := scrolled(round), scrolled(home); r != h || r < 1 {
+		t.Fatalf("a notch scrolls the Round %d lines, Home %d", r, h)
+	}
+}
+
+// The queue may be a GitHub board: Send, opening a card, the queue re-list
+// and a stop each run as a command, so the screen never freezes on them.
+// Update returns at once; the command's result updates the screen.
+func TestSlowWorkRunsOffTheUpdate(t *testing.T) {
+	// Send
+	m, src := roundPane(t, 45, 60)
+	x, y := at(t, m, "[ Send ]")
+	next, cmd := m.Update(tea.MouseMsg{X: x + 1, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	if len(src.comments) != 0 || cmd == nil {
+		t.Fatalf("Send ran in Update: comments %q, cmd %v", src.comments, cmd != nil)
+	}
+	m = drain(next.(paneModel), cmd)
+	if len(src.comments) != 1 {
+		t.Fatalf("the command did not send: %q", src.comments)
+	}
+	if strings.Contains(m.View(), "? TASK-2") {
+		t.Fatalf("the answered card is still in Your turn:\n%s", m.View())
+	}
+
+	// opening a card
+	gets := 0
+	m = paneAt(t, paneData{}, 45, 30)
+	m.source = func() (work.Source, error) { gets++; return src, nil }
+	next, cmd = m.Update(openRoundMsg{ID: "TASK-2"})
+	if gets != 0 || cmd == nil {
+		t.Fatalf("the card was fetched in Update")
+	}
+	if m = drain(next.(paneModel), cmd); !strings.Contains(m.View(), "round 2") {
+		t.Fatalf("the fetched card did not open:\n%s", m.View())
+	}
+
+	// the queue re-list
+	lists := 0
+	m = paneAt(t, paneData{}, 45, 30)
+	m.reader = &paneReader{list: func() ([]work.Task, error) {
+		lists++
+		return []work.Task{{ID: "TASK-7", Title: "listed", Question: true}}, nil
+	}}
+	next, cmd = m.Update(paneTick(time.Now()))
+	if lists != 0 || cmd == nil {
+		t.Fatalf("the queue was listed in Update")
+	}
+	if next, _ = next.(paneModel).Update(cmd()); !strings.Contains(next.View(), "? TASK-7") {
+		t.Fatalf("the listing did not reach the screen:\n%s", next.View())
+	}
+
+	// a stop
+	now := time.Now()
+	c := &closer{}
+	m = paneAt(t, paneData{Now: now, Runs: []history.Record{{RunID: "r1", Task: "TASK-1", Agent: "dev", Status: history.StatusRunning, At: now, WorkspaceID: "ws1"}}}, 80, 30)
+	m.closer = c
+	m, cmd = key(m, "x")
+	if len(c.closed) != 0 || cmd == nil {
+		t.Fatalf("x stopped the run in Update")
+	}
+	if m = drain(m, cmd); len(c.closed) != 1 || !strings.Contains(m.View(), "stopped TASK-1") {
+		t.Fatalf("the stop did not run: %+v\n%s", c.closed, m.View())
 	}
 }

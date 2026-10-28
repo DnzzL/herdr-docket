@@ -219,17 +219,38 @@ func runPane(m paneModel) error {
 // slower clock (queueEvery).
 const paneEvery = 2 * time.Second
 
+// wheelStep is how many lines one wheel notch scrolls, Home and Round alike.
+const wheelStep = 2
+
 // paneTick carries the frame's clock, so a test drives time by sending one.
 type paneTick time.Time
 
-// openRoundMsg asks for the Round screen of the question card ID: a click on
-// an already-selected `?` row, or Enter on it.
+// paneDataMsg is a read of Home's data, done off the Update; relisted says
+// the queue was listed afresh.
+type paneDataMsg struct {
+	data     paneData
+	relisted bool
+}
+
+// cardMsg is a card fetched for its Round, done off the Update.
+type cardMsg struct {
+	id   string
+	card work.Task
+	src  work.Source
+	err  error
+}
+
+// statusMsg is the line Home shows once a command finished.
+type statusMsg string
+
+// openRoundMsg asks for the Round screen of the question card ID: a tap on
+// the selected `?` row (the highlighted first row counts), or Enter on it.
 type openRoundMsg struct{ ID string }
 
 // paneModel is Home: the daemon line, Your turn, the runs in flight and the
 // last settled ones. Everything it does is stopRecord, SetPaused and
 // openRoundMsg; it only draws, scrolls and forwards keys and clicks. Clicks
-// map to rows by hand from layoutPane's row list: no zone library.
+// map to rows by hand from renderPane's row list: no zone library.
 // Keys: j/k or 1-9 select, Enter opens, x stops the selected run, p pauses or
 // resumes the fleet, q quits.
 type paneModel struct {
@@ -238,7 +259,6 @@ type paneModel struct {
 	data          paneData
 	width, height int
 	sel           int
-	chosen        bool // sel was picked by a key or a click, not the default
 	top           int
 	status        string
 
@@ -249,6 +269,16 @@ type paneModel struct {
 	// round is the Round screen while one is open; it takes the keys and
 	// clicks, Home keeps its clock.
 	round *roundModel
+
+	// relist makes the next read list the queue whatever its age, and hidden
+	// keeps the cards an answer just moved off Your turn until it does.
+	relist bool
+	hidden map[string]bool
+
+	// lines and rows are Home as last laid out: what View draws and where a
+	// tap lands, from the same pass.
+	lines []string
+	rows  []paneRow
 }
 
 func (m paneModel) Init() tea.Cmd {
@@ -260,28 +290,50 @@ func (m paneModel) Init() tea.Cmd {
 	return tick
 }
 
+// Update handles one message and lays Home out once, after it.
 func (m paneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case paneTick:
-		if m.reader != nil {
-			m.data = m.reader.read(time.Time(msg))
+		// The next tick waits for this read, so reads never overlap.
+		if m.reader == nil {
+			return m, nil
 		}
-		return m.clamped(), tea.Tick(paneEvery, func(t time.Time) tea.Msg { return paneTick(t) })
+		r, now, relist := m.reader, time.Time(msg), m.relist
+		m.relist = false
+		return m, func() tea.Msg { return paneDataMsg{data: r.read(now, relist), relisted: relist} }
+	case paneDataMsg:
+		m.data = msg.data
+		if msg.relisted {
+			m.hidden = nil
+		}
+		return m.laidOut(false), tea.Tick(paneEvery, func(t time.Time) tea.Msg { return paneTick(t) })
+	case statusMsg:
+		m.status = string(msg)
+		return m.laidOut(false), nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if m.round != nil {
 			r, _ := m.round.Update(msg)
 			m.round = &r
 		}
-		return m.clamped(), nil
+		return m.laidOut(false), nil
 	case openRoundMsg:
-		return m.openRound(msg.ID), nil
+		m.status = "opening " + msg.ID + "…"
+		return m.laidOut(false), fetchCard(m.source, msg.ID)
+	case cardMsg:
+		return m.openRound(msg).laidOut(false), nil
 	case roundDoneMsg:
 		m.round, m.status = nil, msg.status
-		if msg.status != "" && m.reader != nil {
-			m.reader.listed = time.Time{} // the answered card leaves Your turn on the next frame
+		if msg.answered != "" {
+			// Optimistic: the card leaves Your turn now; the next read,
+			// a fresh listing, confirms.
+			hidden := map[string]bool{msg.answered: true}
+			for id := range m.hidden {
+				hidden[id] = true
+			}
+			m.hidden, m.relist = hidden, true
 		}
-		return m.clamped(), nil
+		return m.laidOut(false), nil
 	}
 	if m.round != nil {
 		r, cmd := m.round.Update(msg)
@@ -290,59 +342,62 @@ func (m paneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
-		return m.mouse(msg)
+		m, cmd := m.mouse(msg)
+		return m.laidOut(false), cmd
 	case tea.KeyMsg:
-		return m.key(msg)
+		m, cmd := m.key(msg)
+		return m.laidOut(true), cmd
 	}
 	return m, nil
 }
 
-func (m paneModel) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+func (m paneModel) mouse(msg tea.MouseMsg) (paneModel, tea.Cmd) {
 	if msg.Action != tea.MouseActionPress {
 		return m, nil
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelDown:
-		m.top++
+		m.top += wheelStep
 	case tea.MouseButtonWheelUp:
-		m.top--
+		m.top -= wheelStep
 	case tea.MouseButtonLeft:
-		_, rows := m.layout()
-		for i, r := range rows {
+		for i, r := range m.rows {
 			if r.Line != m.top+msg.Y {
 				continue
 			}
-			if i == m.sel && m.chosen {
-				return m.act(rows)
+			if i == m.sel {
+				return m.act()
 			}
-			m.sel, m.chosen = i, true
+			m.sel = i
 		}
 	}
-	return m.clamped(), nil
+	return m, nil
 }
 
-func (m paneModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	_, rows := m.layout()
-	runs := rowsFrom(rows, 'r')
+func (m paneModel) key(msg tea.KeyMsg) (paneModel, tea.Cmd) {
+	rows := m.rows
+	runs := rowsFrom(rows, runRow)
 	k := msg.String()
 	switch {
 	case k == "q" || k == "ctrl+c":
 		return m, tea.Quit
 	case k == "j" || k == "down":
-		m.sel, m.chosen = m.sel+1, true
+		m.sel++
 	case k == "k" || k == "up":
-		m.sel, m.chosen = m.sel-1, true
+		m.sel--
 	case k == "enter":
-		return m.act(rows)
+		return m.act()
 	case len(k) == 1 && k[0] >= '1' && k[0] <= '9' && runs+int(k[0]-'1') < len(rows):
-		m.sel, m.chosen = runs+int(k[0]-'1'), true
+		m.sel = runs + int(k[0]-'1')
 	case k == "x" && m.sel < len(rows) && rows[m.sel].Run != nil:
-		r := *rows[m.sel].Run
-		var b strings.Builder
-		if err := stopRecord(m.closer, r, timeoutFor(m.data.Timeouts, r.Agent), &b); err != nil {
-			m.status = err.Error()
-		} else {
-			m.status = strings.TrimSpace(b.String())
+		r, c, timeout := *rows[m.sel].Run, m.closer, timeoutFor(m.data.Timeouts, rows[m.sel].Run.Agent)
+		m.status = "stopping " + r.Task + "…"
+		return m, func() tea.Msg {
+			var b strings.Builder
+			if err := stopRecord(c, r, timeout, &b); err != nil {
+				return statusMsg(err.Error())
+			}
+			return statusMsg(strings.TrimSpace(b.String()))
 		}
 	case k == "p":
 		paused := !runner.Paused()
@@ -354,23 +409,21 @@ func (m paneModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "resumed"
 		}
 	}
-	m = m.clamped()
-	m.follow(rows)
 	return m, nil
 }
 
-// act is Enter on the selected row: a question opens its Round. A run has no
-// Enter action; stopping one stays on x, never on a tap.
-func (m paneModel) act(rows []paneRow) (tea.Model, tea.Cmd) {
-	if m.sel < len(rows) && rows[m.sel].Kind == '?' {
-		id := rows[m.sel].ID
+// act is Enter, or a tap, on the selected row: a question opens its Round. A
+// run has no such action; stopping one stays on x, never on a tap.
+func (m paneModel) act() (paneModel, tea.Cmd) {
+	if m.sel < len(m.rows) && m.rows[m.sel].Kind == questionRow {
+		id := m.rows[m.sel].ID
 		return m, func() tea.Msg { return openRoundMsg{ID: id} }
 	}
 	return m, nil
 }
 
 // rowsFrom is the index of the first row of kind, len(rows) when none.
-func rowsFrom(rows []paneRow, kind rune) int {
+func rowsFrom(rows []paneRow, kind rowKind) int {
 	for i, r := range rows {
 		if r.Kind == kind {
 			return i
@@ -379,74 +432,90 @@ func rowsFrom(rows []paneRow, kind rune) int {
 	return len(rows)
 }
 
-func (m paneModel) layout() ([]string, []paneRow) {
+// laidOut lays Home out once for the model's state: the selection kept on a
+// row and marked, the scroll inside the frame (first moved to show the
+// selected row when follow).
+func (m paneModel) laidOut(follow bool) paneModel {
 	d := m.data
-	d.Sel, d.Status = m.sel, m.status
+	d.Status = m.status
+	if len(m.hidden) > 0 {
+		d.Queue = nil
+		for _, t := range m.data.Queue {
+			if !m.hidden[t.ID] {
+				d.Queue = append(d.Queue, t)
+			}
+		}
+	}
 	w := m.width
 	if w <= 0 {
 		w = 80
 	}
-	return renderPane(d, w)
-}
-
-// clamped keeps the selection on a row and the scroll inside the frame.
-func (m paneModel) clamped() paneModel {
-	lines, rows := m.layout()
+	lines, rows := renderPane(d, w)
 	m.sel = max(min(m.sel, len(rows)-1), 0)
+	if m.sel < len(rows) {
+		l := rows[m.sel].Line
+		lines[l] = "> " + strings.TrimPrefix(lines[l], "  ")
+		if follow && m.height > 0 {
+			if l < m.top {
+				m.top = l
+			} else if l >= m.top+m.height {
+				m.top = l - m.height + 1
+			}
+		}
+	}
 	m.top = max(min(m.top, len(lines)-m.height), 0)
+	m.lines, m.rows = lines, rows
 	return m
 }
 
-// follow scrolls the selected row into view after a key moved it.
-func (m *paneModel) follow(rows []paneRow) {
-	if m.height <= 0 || m.sel >= len(rows) {
-		return
-	}
-	line := rows[m.sel].Line
-	if line < m.top {
-		m.top = line
-	} else if line >= m.top+m.height {
-		m.top = line - m.height + 1
+// fetchCard reads card id off the Update: the queue may be a GitHub board.
+func fetchCard(source func() (work.Source, error), id string) tea.Cmd {
+	return func() tea.Msg {
+		if source == nil {
+			return cardMsg{id: id, err: fmt.Errorf("%s: no queue to read the card from", id)}
+		}
+		src, err := source()
+		if err != nil {
+			return cardMsg{id: id, err: err}
+		}
+		t, err := src.Get(id)
+		return cardMsg{id: id, card: t, src: src, err: err}
 	}
 }
 
-// openRound reads the card and opens its newest Round; a card that cannot
-// be read, or holds no round, stays on Home with the reason.
-func (m paneModel) openRound(id string) paneModel {
-	if m.source == nil {
-		m.status = id + ": no queue to read the card from"
+// openRound opens the fetched card's newest Round; a card that could not be
+// read, or holds no round, stays on Home with the reason.
+func (m paneModel) openRound(c cardMsg) paneModel {
+	if c.err != nil {
+		m.status = c.err.Error()
 		return m
 	}
-	src, err := m.source()
-	if err != nil {
-		m.status = err.Error()
-		return m
-	}
-	t, err := src.Get(id)
-	if err != nil {
-		m.status = err.Error()
-		return m
-	}
-	round, ok := grill.LatestRound(t.Notes)
+	round, ok := grill.LatestRound(c.card.Notes)
 	if !ok || len(round.Questions) == 0 {
-		m.status = id + ": no ## Round note to answer"
+		m.status = c.id + ": no ## Round note to answer"
 		return m
 	}
+	src, id := c.src, c.id
 	send := func(line string) (string, error) {
 		var b strings.Builder
 		err := taskAnswer(src, id, line, &b)
 		return b.String(), err
 	}
-	r := newRound(id, t.Title, round, send, m.width, m.height)
+	r := newRound(id, c.card.Title, round, send, m.width, m.height)
 	m.round, m.status = &r, ""
 	return m
 }
 
+// View draws nothing until the first WindowSizeMsg: a frame at a guessed
+// width would wrap on a narrower terminal and leave ghost lines.
 func (m paneModel) View() string {
+	if m.width <= 0 || m.height <= 0 {
+		return ""
+	}
 	if m.round != nil {
 		return m.round.View()
 	}
-	lines, _ := m.layout()
+	lines := m.lines
 	if m.height > 0 && len(lines) > m.height {
 		top := max(min(m.top, len(lines)-m.height), 0)
 		lines = lines[top : top+m.height]
@@ -464,7 +533,6 @@ type paneData struct {
 	Runs     []history.Record
 	Timeouts map[string]int
 	Now      time.Time
-	Sel      int
 	Status   string
 }
 
@@ -495,9 +563,9 @@ func listQueue() ([]work.Task, error) {
 }
 
 // read reads one frame at now: the heartbeat, the history file once, and the
-// queue when its listing is older than queueEvery.
-func (p *paneReader) read(now time.Time) paneData {
-	if p.listed.IsZero() || now.Sub(p.listed) >= queueEvery {
+// queue when its listing is older than queueEvery, or relist asks.
+func (p *paneReader) read(now time.Time, relist bool) paneData {
+	if relist || p.listed.IsZero() || now.Sub(p.listed) >= queueEvery {
 		p.queue, p.err = p.list()
 		p.listed = now
 	}
@@ -539,30 +607,35 @@ func heldMerges(runs []history.Record) map[string]string {
 	return out
 }
 
+// rowKind is what a selectable line of Home is, and so what acting on it
+// does.
+type rowKind int
+
+const (
+	questionRow rowKind = iota // `?` a Question card: a tap opens its Round
+	blockedRow                 // `!` a Blocked card
+	mergeRow                   // `⇡` a merge the gate held for a human
+	runRow                     // a run in flight: x stops it
+)
+
 // paneRow is a line of the frame a click or a key can select: a Your turn
-// card ('?' question, '!' Blocked, '⇡' held merge) or a run in flight ('r').
+// card or a run in flight.
 type paneRow struct {
 	Line int
-	Kind rune
+	Kind rowKind
 	ID   string
 	Run  *history.Record
 }
 
 // renderPane is one frame as lines, none wider than width: the daemon line,
 // Your turn (questions, Blocked cards, held merges), the runs in flight, then
-// the last settled runs. rows are its selectable lines, in order; d.Sel
-// indexes them.
+// the last settled runs. rows are its selectable lines, in order, each
+// starting with two spaces for the selection mark.
 func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 	add := func(s string) { lines = append(lines, text.Truncate(s, width)) }
-	mark := func() string {
-		if len(rows) == d.Sel {
-			return "> "
-		}
-		return "  "
-	}
-	row := func(kind rune, id string, run *history.Record, s string) {
+	row := func(kind rowKind, id string, run *history.Record, s string) {
 		rows = append(rows, paneRow{Line: len(lines), Kind: kind, ID: id, Run: run})
-		add(s)
+		add("  " + s)
 	}
 
 	state := "running"
@@ -590,11 +663,11 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 	for _, t := range turn {
 		switch {
 		case t.Question:
-			row('?', t.ID, nil, mark()+"? "+t.ID+" "+t.Title)
+			row(questionRow, t.ID, nil, "? "+t.ID+" "+t.Title)
 		case merges[t.ID] != "":
-			row('⇡', t.ID, nil, mark()+"⇡ "+t.ID+" "+merges[t.ID])
+			row(mergeRow, t.ID, nil, "⇡ "+t.ID+" "+merges[t.ID])
 		default:
-			row('!', t.ID, nil, mark()+"! "+t.ID+" "+t.Title)
+			row(blockedRow, t.ID, nil, "! "+t.ID+" "+t.Title)
 		}
 	}
 	if d.QueueErr != nil {
@@ -607,7 +680,7 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 	add("")
 	add(fmt.Sprintf("In flight (%d)", len(live)))
 	for i, r := range live {
-		row('r', r.Task, &live[i], fmt.Sprintf("%s%d %s", mark(), i+1, formatRun(r, timeoutFor(d.Timeouts, r.Agent), d.Now)))
+		row(runRow, r.Task, &live[i], fmt.Sprintf("%d %s", i+1, formatRun(r, timeoutFor(d.Timeouts, r.Agent), d.Now)))
 	}
 	if len(live) == 0 {
 		add("  no run in flight")
@@ -636,6 +709,6 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 		add(d.Status)
 	}
 	add("")
-	add("j/k/tap select · ⏎/tap again open · x stop · p pause · q quit")
+	add("j/k/tap select · ⏎/tap selected open · x stop · p pause · q quit")
 	return lines, rows
 }

@@ -2,12 +2,14 @@
 // how one task reads.
 package text
 
-// Truncate shortens s to at most n runes, ellipsis included. Rune-wise:
+import "github.com/charmbracelet/x/ansi"
+
+// Truncate shortens s to at most n terminal cells, ellipsis included. Cells,
+// not runes or bytes: a CJK character or an emoji is two cells wide, and
 // slicing bytes would cut an accented title mid-rune.
 func Truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
+	if ansi.StringWidth(s) <= n {
 		return s
 	}
-	return string(r[:n-1]) + "…"
+	return ansi.Truncate(s, n, "…")
 }

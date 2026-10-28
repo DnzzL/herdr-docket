@@ -23,6 +23,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
 	"github.com/DnzzL/herdr-docket/internal/pick"
+	_ "github.com/DnzzL/herdr-docket/internal/quietterm" // before bubbletea's init: no terminal query
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/skill"
 	"github.com/DnzzL/herdr-docket/internal/text"
@@ -58,7 +59,7 @@ Usage:
   herdr-docket stop <task-id>   Stop a task's run in flight (it ends cancelled, the task Blocked)
   herdr-docket pause [--now]    Pause the fleet: no new runs or pipeline stages (--now also stops runs in flight)
   herdr-docket resume           Resume the fleet
-  herdr-docket pane             The runs-in-flight overlay: select, stop, pause (the plugin's pane)
+  herdr-docket pane             The plugin's pane: Your turn, runs in flight; tap or keys to answer a round, stop, pause
   herdr-docket history [id]     Show recent runs
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
   herdr-docket changelog        Preview the next release's notes ([release <version>] to cut them)

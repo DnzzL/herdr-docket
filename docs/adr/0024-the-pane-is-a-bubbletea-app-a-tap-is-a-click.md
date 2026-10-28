@@ -15,9 +15,16 @@ questions with each option as a button, a free-text field, Send). A click or
 tap on a row or a button does what Enter does there; the wheel scrolls; every
 key that works today keeps working. Clicks map to rows by hand from the
 rendered layout: no zone library. Colours are the terminal's own.
+bubbletea v1's package init asks the terminal for its background (OSC 11)
+and waits up to 5 s for an answer, in every command the binary runs;
+`internal/quietterm` sets the background first, so no command queries the
+terminal.
 
 **The pane writes through the CLI's own paths only**: `task answer` and its
-lock check, nothing else. `herdr-docket questions` opens the Round screen on a
+lock check for a Round, `stop`'s close of a run's workspace (`x`), and
+`pause`/`resume`'s flag (`p`); nothing else. Queue reads and writes run as
+bubbletea commands, off the update loop: a GitHub board never freezes the
+screen. `herdr-docket questions` opens the Round screen on a
 TTY; without one it stays the line prompt, for scripts and tests.
 
 **The Round carries an optional context paragraph** between `## Round N` and
