@@ -10,6 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 var updateGolden = flag.Bool("update", false, "rewrite testdata/pane golden frames")
@@ -45,6 +47,21 @@ func TestGoldenFramesPinHomeAndRoundAt45And120Columns(t *testing.T) {
 		r, _ := roundPane(t, width, 40)
 		golden(t, fmt.Sprintf("round-%d", width), r.View())
 	}
+}
+
+// A Home taller than the pane keeps its hint in the scroll: pinned at the
+// bottom so it cannot fall below the View window again.
+func TestGoldenTallHomeShowsTheHintAtTheBottom(t *testing.T) {
+	d := paneFixture()
+	for i := 0; i < 16; i++ {
+		d.Queue = append(d.Queue, work.Task{ID: fmt.Sprintf("TASK-%d", 100+i), Title: "A question", Question: true, Phase: string(work.PhaseQuestion)})
+	}
+	m := paneAt(t, d, 45, 12)
+	for i := 0; i < 200 && !strings.Contains(m.View(), "q/^c quit"); i++ {
+		next, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+		m = next.(paneModel)
+	}
+	golden(t, "home-tall-45", m.View())
 }
 
 // No hint line, on any screen or state, is wider than the pane: a hint wraps

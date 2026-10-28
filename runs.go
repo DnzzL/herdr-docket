@@ -512,9 +512,13 @@ func (m paneModel) laidOut(follow bool) paneModel {
 			}
 		}
 	}
+	// The hint is content: appending it before the clamp keeps it inside the
+	// scroll, reachable at the bottom instead of falling below the View window.
+	// rows first: the hint reads them to know what is on screen.
+	m.rows = rows
+	lines = append(lines, hintLines(m.keyHints(), w)...)
 	m.top = max(min(m.top, len(lines)-m.height), 0)
-	m.lines, m.rows = lines, rows
-	m.lines = append(m.lines, hintLines(m.keyHints(), w)...)
+	m.lines = lines
 	return m
 }
 

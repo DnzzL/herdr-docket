@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -244,10 +246,10 @@ func TestNoFrameBeforeTheTerminalSize(t *testing.T) {
 	}
 }
 
-// hintLine is the last line of Home's frame: the hint as View draws it.
+// hintOf is Home's hint as View draws it: the lines after the content.
 func hintOf(m paneModel) string {
 	lines := strings.Split(m.View(), "\n")
-	return lines[len(lines)-1]
+	return strings.Join(lines[max(len(lines)-2, 0):], "\n")
 }
 
 // At 45 columns the old hint was cut after "x stop"; the new one wraps and
@@ -311,23 +313,96 @@ func paneHintText(m paneModel) string {
 	return strings.Join(out, " · ")
 }
 
-// Every key Home takes is on the hint it draws, and an undeclared key does
-// nothing: the handler gates on the same list the hint is built from.
+// Home's handler takes exactly the keys its hint names: each case presses a
+// key and reads the hint drawn in the state it was pressed in, so a key the
+// handler accepts but the hint forgot fails here.
 func TestEveryHomeKeyIsNamedOnTheHint(t *testing.T) {
-	m := paneAt(t, paneFixture(), 45, 40)
-	view := strings.Join(m.lines, "\n")
-	for _, h := range m.keyHints() {
-		if h.text == "" || !strings.Contains(view, h.text) {
-			t.Errorf("key %v handled but %q is not on the hint:\n%s", h.names, h.text, m.View())
-		}
-		for _, name := range h.names {
-			if got, ok := match(m.keyHints(), name); !ok || got.act != h.act {
-				t.Errorf("%q accepted by the hint list but not matched", name)
-			}
-		}
+	if err := runner.SetPaused(false); err != nil {
+		t.Fatal(err)
 	}
-	before := m.View()
-	if m, cmd := key(m, "z"); cmd != nil || m.View() != before {
-		t.Errorf("z is not on the hint but the handler took it:\n%s", m.View())
+	defer runner.SetPaused(false)
+
+	now := time.Now()
+	d := paneFixture()
+	d.Now = now
+	d.Runs = []history.Record{{RunID: "r1", Task: "TASK-1", Agent: "dev", Status: history.StatusRunning, At: now, WorkspaceID: "ws1"}}
+	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	moved := func(m paneModel) paneModel { m.sel = 1; return m.laidOut(false) }
+	runSelected := func(m paneModel) paneModel { m, _ = key(m, "1"); return m }
+
+	cases := map[string]struct {
+		key    tea.KeyMsg
+		phrase string
+		setup  func(paneModel) paneModel
+	}{
+		"j moves down":      {runes("j"), "j/k/↑↓ or 1-9 select", nil},
+		"down moves down":   {tea.KeyMsg{Type: tea.KeyDown}, "j/k/↑↓ or 1-9 select", nil},
+		"k moves up":        {runes("k"), "j/k/↑↓ or 1-9 select", moved},
+		"up moves up":       {tea.KeyMsg{Type: tea.KeyUp}, "j/k/↑↓ or 1-9 select", moved},
+		"1 selects a run":   {runes("1"), "1-9 select", nil},
+		"enter opens a row": {tea.KeyMsg{Type: tea.KeyEnter}, "⏎/tap open", nil},
+		"x stops a run":     {runes("x"), "x stop", runSelected},
+		"p pauses":          {runes("p"), "p pause", nil},
+		"q quits":           {runes("q"), "q/^c quit", nil},
+		"^c quits":          {tea.KeyMsg{Type: tea.KeyCtrlC}, "q/^c quit", nil},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := paneAt(t, d, 120, 40)
+			if c.setup != nil {
+				m = c.setup(m)
+			}
+			before, view := snapHome(m), m.View()
+			next, cmd := m.Update(c.key)
+			if cmd == nil && reflect.DeepEqual(snapHome(next.(paneModel)), before) {
+				t.Fatalf("%q did nothing, yet the hint names it:\n%s", c.key.String(), view)
+			}
+			if !strings.Contains(view, c.phrase) {
+				t.Errorf("handler took %q but the hint lost %q:\n%s", c.key.String(), c.phrase, view)
+			}
+		})
+	}
+
+	// A key nobody declared does nothing and is named nowhere.
+	m := paneAt(t, d, 120, 40)
+	before := snapHome(m)
+	if next, cmd := m.Update(runes("z")); cmd != nil || !reflect.DeepEqual(snapHome(next.(paneModel)), before) {
+		t.Fatalf("z is not on the hint but the handler took it:\n%s", m.View())
+	}
+}
+
+// homeSnap is what a key press can change on Home.
+type homeSnap struct {
+	sel, top int
+	status   string
+	hint     []string
+}
+
+func snapHome(m paneModel) homeSnap {
+	return homeSnap{sel: m.sel, top: m.top, status: m.status, hint: m.keyHintsText()}
+}
+
+func (m paneModel) keyHintsText() []string {
+	var out []string
+	for _, h := range m.keyHints() {
+		out = append(out, h.text+":"+strings.Join(h.names, ","))
+	}
+	return out
+}
+
+// Home's hint is part of the scroll, not below the View window: with content
+// taller than the pane it is reachable at the bottom.
+func TestHomeHintIsReachedByScrollingToTheBottom(t *testing.T) {
+	d := paneFixture()
+	for i := 0; i < 16; i++ {
+		d.Queue = append(d.Queue, work.Task{ID: fmt.Sprintf("TASK-%d", 100+i), Title: "A question", Question: true, Phase: string(work.PhaseQuestion)})
+	}
+	m := paneAt(t, d, 45, 12)
+	for i := 0; i < 200 && !strings.Contains(m.View(), "quit"); i++ {
+		next, _ := m.Update(tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+		m = next.(paneModel)
+	}
+	if !strings.Contains(m.View(), "q/^c quit") {
+		t.Fatalf("the hint never scrolled into view:\n%s", m.View())
 	}
 }

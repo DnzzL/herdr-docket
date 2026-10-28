@@ -194,6 +194,11 @@ func (m roundModel) submit() (roundModel, tea.Cmd) {
 
 func (m roundModel) key(msg tea.KeyMsg) (roundModel, tea.Cmd) {
 	k := msg.String()
+	// ^c quits whatever holds the keys, the plain-words field included: the
+	// hint names it on both, so the handler must take it before either.
+	if k == "ctrl+c" {
+		return m, tea.Quit
+	}
 	if m.editing {
 		a := &m.answers[m.at.q]
 		switch msg.Type {

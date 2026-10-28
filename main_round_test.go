@@ -403,18 +403,111 @@ func TestTheRoundHintShrinksToOneLineWhileTyping(t *testing.T) {
 	}
 }
 
-// Every key the Round takes is on the hint it draws, and an undeclared key
-// does nothing.
+// The Round's handler takes exactly the keys its hint names: each case
+// presses a key and reads the hint drawn in the state it was pressed in, so
+// a key the handler accepts but the hint forgot fails here.
 func TestEveryRoundKeyIsNamedOnTheHint(t *testing.T) {
+	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	option := func(r *roundModel) { r.at = focus{kind: optionButton, q: 1, opt: 1} }
+	words := func(r *roundModel) { r.at = focus{kind: wordsButton, q: 1} }
+
+	cases := map[string]struct {
+		key    tea.KeyMsg
+		phrase string
+		setup  func(*roundModel)
+	}{
+		"j asks the next question":      {runes("j"), "↑↓/jk question", option},
+		"down asks the next question":   {tea.KeyMsg{Type: tea.KeyDown}, "↑↓/jk question", option},
+		"k asks the previous question":  {runes("k"), "↑↓/jk question", option},
+		"up asks the previous question": {tea.KeyMsg{Type: tea.KeyUp}, "↑↓/jk question", option},
+		"h picks the left option":       {runes("h"), "←→/hl option", option},
+		"left picks the left option":    {tea.KeyMsg{Type: tea.KeyLeft}, "←→/hl option", option},
+		"l picks the right option":      {runes("l"), "←→/hl option", option},
+		"right picks the right option":  {tea.KeyMsg{Type: tea.KeyRight}, "←→/hl option", option},
+		"a letter picks its option":     {runes("B"), "a letter picks", words},
+		"tab opens plain words":         {tea.KeyMsg{Type: tea.KeyTab}, "tab words", words},
+		"enter picks":                   {tea.KeyMsg{Type: tea.KeyEnter}, "tap or ⏎ to pick", option},
+		"enter sends":                   {tea.KeyMsg{Type: tea.KeyEnter}, "tap or ⏎ to send", func(r *roundModel) { r.at = focus{kind: sendButton} }},
+		"esc goes back":                 {tea.KeyMsg{Type: tea.KeyEsc}, "esc back", nil},
+		"q quits":                       {runes("q"), "q/^c quit", nil},
+		"^c quits":                      {tea.KeyMsg{Type: tea.KeyCtrlC}, "q/^c quit", nil},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			m, _ := roundPane(t, 120, 40)
+			r := *m.round
+			if c.setup != nil {
+				c.setup(&r)
+			}
+			r = r.laidOut(false)
+			m.round = &r
+			before, view := snapRound(r), m.View()
+			next, cmd := m.Update(c.key)
+			if cmd == nil && reflect.DeepEqual(snapRound(*next.(paneModel).round), before) {
+				t.Fatalf("%q did nothing, yet the hint names it:\n%s", c.key.String(), view)
+			}
+			if !strings.Contains(view, c.phrase) {
+				t.Errorf("handler took %q but the hint lost %q:\n%s", c.key.String(), c.phrase, view)
+			}
+		})
+	}
+
+	// A key nobody declared does nothing and is named nowhere.
 	m, _ := roundPane(t, 120, 40)
-	view := m.View()
-	for _, h := range m.round.keyHints() {
-		if h.text == "" || !strings.Contains(view, h.text) {
-			t.Errorf("key %v handled but %q is not on the hint:\n%s", h.names, h.text, m.View())
-		}
+	before := snapRound(*m.round)
+	if next, cmd := m.Update(runes("z")); cmd != nil || !reflect.DeepEqual(snapRound(*next.(paneModel).round), before) {
+		t.Fatalf("z is not on the hint but the handler took it:\n%s", m.View())
 	}
-	before := m.View()
-	if m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")}); cmd != nil || m.(paneModel).View() != before {
-		t.Errorf("z is not on the hint but the handler took it:\n%s", m.(paneModel).View())
+}
+
+// While the plain-words field has the keys, the typing hint names exactly
+// what the editing branch takes, ^c quit included.
+func TestEveryTypingKeyIsNamedOnTheTypingHint(t *testing.T) {
+	runes := func(s string) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)} }
+	cases := map[string]struct {
+		key    tea.KeyMsg
+		phrase string
+	}{
+		"enter is done": {tea.KeyMsg{Type: tea.KeyEnter}, "⏎/tab done"},
+		"tab is done":   {tea.KeyMsg{Type: tea.KeyTab}, "⏎/tab done"},
+		"esc is done":   {tea.KeyMsg{Type: tea.KeyEsc}, "esc done"},
+		"a rune types":  {runes("a"), "typing"},
+		"^c quits":      {tea.KeyMsg{Type: tea.KeyCtrlC}, "^c quit"},
 	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			m, _ := roundPane(t, 120, 40)
+			r := *m.round
+			r.editing, r.at = true, focus{kind: wordsButton, q: 1}
+			r = r.laidOut(false)
+			m.round = &r
+			before, view := snapRound(r), m.View()
+			next, cmd := m.Update(c.key)
+			if cmd == nil && reflect.DeepEqual(snapRound(*next.(paneModel).round), before) {
+				t.Fatalf("%q did nothing while typing, yet the hint names it:\n%s", c.key.String(), view)
+			}
+			if !strings.Contains(view, c.phrase) {
+				t.Errorf("handler took %q but the typing hint lost %q:\n%s", c.key.String(), c.phrase, view)
+			}
+		})
+	}
+}
+
+// snapRound is what a key press can change on the Round.
+type snapRoundState struct {
+	at      focus
+	editing bool
+	sending bool
+	letters []string
+	texts   []string
+	status  string
+}
+
+func snapRound(r roundModel) snapRoundState {
+	s := snapRoundState{at: r.at, editing: r.editing, sending: r.sending, status: r.status}
+	for _, a := range r.answers {
+		s.letters = append(s.letters, a.Letter)
+		s.texts = append(s.texts, a.Text)
+	}
+	return s
 }
