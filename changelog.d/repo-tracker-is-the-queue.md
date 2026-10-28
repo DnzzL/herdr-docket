@@ -2,7 +2,9 @@
   `init` no longer creates a queue in the fleet dir; `init <repo>` prepares a
   project repo instead — its Backlog.md project with the fleet's statuses, a
   `docs/agents/issue-tracker.md` the skills publish through, and the repo named
-  as a source in `fleet.yaml`, beside any queue already there. To migrate, run
+  as a source in `fleet.yaml`, beside any queue already there. A second repo turns `source:` into
+  `sources:`, so task ids gain the queue's name as a prefix (`app/TASK-1`):
+  finish or stop runs in flight first. To migrate, run
   `herdr-docket init <repo>` on your existing `fleet.yaml`: it sets the repo as
   the `dir` of a Backlog.md source that had none. To keep the old open tasks,
   move `~/fleet/backlog/tasks/*` into the repo's `backlog/tasks/` and commit,

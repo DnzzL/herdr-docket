@@ -1,30 +1,48 @@
-# Issue tracker: Local Markdown
+# Issue tracker: Backlog.md
 
-Issues and specs for this repo live as markdown files in `.scratch/`.
+Specs and tickets for this repo live in its Backlog.md project, `backlog/`.
+Drive it with the `backlog` CLI, never by editing the task files by hand.
 
-## Conventions
-
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+A **Spec** is a parent task assigned to an agent: it is the card the fleet
+picks up. Each **Ticket** is a subtask of its Spec; the fleet never routes a
+subtask on its own.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+Publish the Spec first, then one Ticket per slice:
+
+```sh
+backlog task create "<spec title>" -d "<spec body>" -a <agent> -s "To Do"
+backlog task create "<ticket title>" --parent <spec-id> --dep <ticket-ids> \
+  --ac "<criterion>" --ac "<criterion>"
+```
+
+`--dep` names the Tickets this one is blocked by (comma-separated); leave it
+out when there are none. Each acceptance criterion is one `--ac`.
 
 ## When a skill says "fetch the relevant ticket"
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+```sh
+backlog task <id> --plain
+```
 
-## Wayfinding operations
+## When a skill says "resolve the ticket"
 
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
+Tick each acceptance criterion as it is met, then mark the task done:
 
-- **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+```sh
+backlog task edit <id> --check-ac <n>
+backlog task edit <id> -s Done
+```
+
+## Triage labels
+
+Triage roles are task labels: add one with `backlog task edit <id> --add-label <label>`.
+
+| Role in the skills | Here                                    |
+| ------------------ | --------------------------------------- |
+| `needs-triage`     | label `needs-triage`                    |
+| `needs-info`       | label `needs-info`                      |
+| `ready-for-agent`  | status `To Do` and an assignee (`-a`)   |
+| `ready-for-human`  | label `ready-for-human`                 |
+| `wontfix`          | label `wontfix`, then `-s Done`         |
