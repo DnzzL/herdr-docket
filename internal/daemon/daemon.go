@@ -102,6 +102,11 @@ const pausedKey = "\x00paused"
 // daemon lifetime: re-noting an unfixed typo every 15 seconds would bury the
 // task in comments.
 func evaluate(runs *runner.Runner, reported map[string]bool) {
+	// A paused tick is still a tick: the heartbeat says the daemon is alive,
+	// not that it is starting work.
+	if err := beat(time.Now()); err != nil {
+		log.Printf("heartbeat: %v", err)
+	}
 	// A paused fleet starts nothing, so it has nothing to read the queue for.
 	// The log says so once per pause, not once per tick.
 	if runner.Paused() {
