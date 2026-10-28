@@ -49,6 +49,10 @@ type Task struct {
 	// Labels are the task's tags, filled by Get where the backend has them.
 	// The merge gate reads one: `critical` keeps a PR for a human.
 	Labels []string
+	// Parent is the id of the spec this task is a ticket of, empty for a
+	// top-level task: a ticket of the spec named here; never picked. Read
+	// from the backend, never written by the fleet.
+	Parent string
 }
 
 // Criterion is one acceptance criterion of a task. Criteria are read-only to

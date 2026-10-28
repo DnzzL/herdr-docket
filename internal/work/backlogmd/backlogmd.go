@@ -185,6 +185,7 @@ func (s *Source) asTask(t task) work.Task {
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,
 		Labels:    t.Labels,
+		Parent:    t.ParentTaskID,
 	}
 }
 

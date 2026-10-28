@@ -36,10 +36,12 @@ type Result struct {
 // task to a second agent while the first is mid-run.
 func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defaults) Result {
 	// Blocked stays unrun: a parked task is standing in its own way, and the
-	// word reaches pick through the task — not a literal.
+	// word reaches pick through the task — not a literal. A ticket of a spec
+	// (Parent set) is the implementer's plan, not a card: the spec is routed,
+	// its tickets never are.
 	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
-		if it.Open && !it.Blocked {
+		if it.Open && !it.Blocked && it.Parent == "" {
 			open = append(open, it)
 		}
 	}
