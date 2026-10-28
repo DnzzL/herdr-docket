@@ -15,9 +15,9 @@ func TestLatestRoundReadsTheNewestRound(t *testing.T) {
 		"   B. text in a comment\n" +
 		"   T. try and show me\n" +
 		"2. Keep it how long?\n"
-	n, qs, ok := LatestRound(notes)
-	if !ok || n != 2 {
-		t.Fatalf("LatestRound = %d, %v, want round 2", n, ok)
+	r, ok := LatestRound(notes)
+	if !ok || r.N != 2 || r.Context != "" {
+		t.Fatalf("LatestRound = %+v, %v, want round 2 without context", r, ok)
 	}
 	want := []Question{
 		{N: 1, Text: "What happens to the audio when it is sent?", Options: []Option{
@@ -27,22 +27,45 @@ func TestLatestRoundReadsTheNewestRound(t *testing.T) {
 		}},
 		{N: 2, Text: "Keep it how long?"},
 	}
-	if !reflect.DeepEqual(qs, want) {
-		t.Fatalf("questions =\n%+v\nwant\n%+v", qs, want)
+	if !reflect.DeepEqual(r.Questions, want) {
+		t.Fatalf("questions =\n%+v\nwant\n%+v", r.Questions, want)
 	}
 }
 
 // A GitHub thread prefixes each comment with its author.
 func TestLatestRoundReadsAnAuthoredThread(t *testing.T) {
 	notes := "triager: ## Round 3\n1. Ship it?\n   A. yes (reco)\n\nowner: ## Answer 3\n1.A"
-	n, qs, ok := LatestRound(notes)
-	if !ok || n != 3 || len(qs) != 1 || len(qs[0].Options) != 1 {
-		t.Fatalf("LatestRound = %d, %+v, %v", n, qs, ok)
+	r, ok := LatestRound(notes)
+	if !ok || r.N != 3 || len(r.Questions) != 1 || len(r.Questions[0].Options) != 1 {
+		t.Fatalf("LatestRound = %+v, %v", r, ok)
+	}
+}
+
+// The lines between the heading and question 1 are the round's context:
+// blank lines dropped, each line trimmed, the author prefix ignored.
+func TestLatestRoundReadsItsContext(t *testing.T) {
+	notes := "triager: ## Round 4\n\n  The upload sends audio as text today.  \nFiles: upload.go, notes.go\n\n" +
+		"1. Ship it?\n   A. yes (reco)\n"
+	r, ok := LatestRound(notes)
+	if want := "The upload sends audio as text today.\nFiles: upload.go, notes.go"; !ok || r.Context != want {
+		t.Fatalf("Context = %q, want %q", r.Context, want)
+	}
+	if len(r.Questions) != 1 || r.Questions[0].Text != "Ship it?" {
+		t.Fatalf("questions = %+v", r.Questions)
 	}
 }
 
 func TestLatestRoundWithoutARoundIsNotOK(t *testing.T) {
-	if _, _, ok := LatestRound("just a note\n## Answer 1\n1.A"); ok {
+	if _, ok := LatestRound("just a note\n## Answer 1\n1.A"); ok {
 		t.Fatal("no Round heading must not be a round")
+	}
+}
+
+// An answer line is what `task answer` posts and the triager reads: a letter
+// sticks to its number, free text follows it after a space.
+func TestLineJoinsLettersAndFreeText(t *testing.T) {
+	got := Line([]Answer{{N: 1, Letter: "A"}, {N: 2, Text: "  only the owner \n"}, {N: 3, Letter: "T"}})
+	if want := "1.A 2. only the owner 3.T"; got != want {
+		t.Fatalf("Line = %q, want %q", got, want)
 	}
 }

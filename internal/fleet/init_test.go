@@ -182,8 +182,9 @@ func TestTheTriagerRoleCarriesTheGrill(t *testing.T) {
 	initFleet(t, dir)
 	role := read(t, filepath.Join(dir, "roles", "triager.md"))
 	for _, want := range []string{
-		"ASSUMPTIONS:",                                    // the clear/uncertain rule
-		"## Round 2\n1. ", "(reco)", "T. try and show me", // the Round format
+		"ASSUMPTIONS:",                                 // the clear/uncertain rule
+		"## Round 2\n", "(reco)", "T. try and show me", // the Round format
+		"lines of context",            // what the owner reads before question 1
 		"Build on these assumptions?", // the final confirm round
 		"`grill`",                     // the label that forces a round
 		"task ask <id>", "docs/agents/issue-tracker.md",
