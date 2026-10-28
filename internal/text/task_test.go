@@ -14,6 +14,7 @@ func TestTaskDetailRendersStateBodyCriteriaAndNotes(t *testing.T) {
 		Open:     true,
 		Phase:    "In Progress",
 		Assignee: "dev",
+		Labels:   []string{"grill", "mobile"},
 		Body:     "the numbers are not moving",
 		Criteria: []work.Criterion{
 			{Index: 1, Text: "a test fails first"},
@@ -31,6 +32,7 @@ func TestTaskDetailRendersStateBodyCriteriaAndNotes(t *testing.T) {
 		"- [x] #2 and then passes",
 		"## Notes",
 		"fleet: tried once",
+		"Labels: grill, mobile",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("detail is missing %q:\n%s", want, got)
@@ -44,6 +46,9 @@ func TestTaskDetailOmitsEmptySectionsAndSaysClosed(t *testing.T) {
 	got := TaskDetail(work.Task{ID: "T-1", Title: "Ship it", Phase: "Done"})
 	if strings.Contains(got, "##") {
 		t.Errorf("a bare task should render no sections:\n%s", got)
+	}
+	if strings.Contains(got, "Labels:") {
+		t.Errorf("a task with no labels must not get an empty Labels line:\n%s", got)
 	}
 	if !strings.Contains(got, "closed · Done · -") {
 		t.Errorf("got %q, want a closed state line with no assignee", got)
