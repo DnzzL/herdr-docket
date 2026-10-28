@@ -757,3 +757,66 @@ type bareSource struct{ work.Source }
 func (f bareSource) Create(title, body, assignee string) (string, error) {
 	return "T-1", nil
 }
+
+// phasingSource is a fakeSource that records the phases it is set to.
+type phasingSource struct {
+	fakeSource
+	phases []work.Phase
+}
+
+func (p *phasingSource) SetPhase(id string, phase work.Phase) error {
+	p.phases = append(p.phases, phase)
+	return p.err
+}
+
+// The triager posts its round as a note, then parks the card on its owner.
+func TestTaskAskMovesTheCardToQuestion(t *testing.T) {
+	src := &phasingSource{}
+	got, err := runTask(t, src, "ask", "TASK-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []work.Phase{work.PhaseQuestion}; !reflect.DeepEqual(src.phases, want) {
+		t.Fatalf("phases %v, want %v", src.phases, want)
+	}
+	if !strings.Contains(got, "TASK-2") || !strings.Contains(got, string(work.PhaseQuestion)) {
+		t.Fatalf("ask must say what it did, got %q", got)
+	}
+}
+
+func TestTaskAnswerPostsTheAnswerToTheLatestRoundAndSendsItBack(t *testing.T) {
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2",
+		Notes: "## Round 1\n1. a?\n\n## Answer 1\n1.A\n\n## Round 2\n1. b?\n   A. yes (reco)\n2. c?"}}}
+	got, err := runTask(t, src, "answer", "TASK-2", "1.A 2. keep it 30 days")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"## Answer 2\n1.A 2. keep it 30 days"}; !reflect.DeepEqual(src.comments, want) {
+		t.Fatalf("commented %q, want %q", src.comments, want)
+	}
+	if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.phases, want) {
+		t.Fatalf("phases %v, want %v", src.phases, want)
+	}
+	if !strings.Contains(got, "TASK-2") || !strings.Contains(got, "round 2") {
+		t.Fatalf("answer must say what it did, got %q", got)
+	}
+}
+
+func TestTaskAnswerWithoutARoundFailsNamingTheCard(t *testing.T) {
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Notes: "started"}}}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "TASK-2") {
+		t.Fatalf("err = %v, want an error naming TASK-2", err)
+	}
+	if len(src.comments) != 0 || len(src.phases) != 0 {
+		t.Fatalf("nothing must be written: comments %v phases %v", src.comments, src.phases)
+	}
+}
+
+func TestTaskAskAndAnswerNeedTheirArguments(t *testing.T) {
+	for _, args := range [][]string{{"ask"}, {"answer", "TASK-2"}} {
+		if _, err := runTask(t, &phasingSource{}, args...); err == nil {
+			t.Errorf("%v must be a usage error", args)
+		}
+	}
+}

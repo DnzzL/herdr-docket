@@ -33,6 +33,7 @@ agents work the queue in parallel, in workspaces you can watch, join or close.
 Requires Herdr ≥ 0.8 (Linux or macOS), an agent CLI Herdr can start — Claude
 Code by default; pi, Codex, Gemini, opencode and [others](docs/agents.md#running-a-post-on-another-agent-runtime)
 work too — and `gh` for pull requests.
+On a fresh always-on box (VPS), [`scripts/box-setup`](scripts/box-setup) walks you through all of it; `--dry-run` shows the commands first.
 
 ```bash
 herdr plugin install DnzzL/herdr-docket

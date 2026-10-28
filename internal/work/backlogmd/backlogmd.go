@@ -155,11 +155,23 @@ func (s *Source) BaseBranch(string) (string, error) {
 	return s.client.DefaultBranch(s.repo)
 }
 
-// SetPhase shows the task as being worked on. This is the only phase the
-// fleet ever writes, and it is display only — the run lock is what keeps two
-// runs apart, so nothing reads this back. A project with no word for it is
-// left alone: writing one its CLI rejects would fail a run over decoration.
+// SetPhase shows the task as being worked on. That phase is display only —
+// the run lock is what keeps two runs apart, so nothing reads this back. A
+// project with no word for it is left alone: writing one its CLI rejects
+// would fail a run over decoration. The grill's phases are the exception:
+// they route the card, so they are written in the project's word for them, and
+// a project with no such word is told so rather than silently skipped.
 func (s *Source) SetPhase(id string, phase work.Phase) error {
+	if phase == work.PhaseQuestion || phase == work.PhaseTriage {
+		word, role := s.vocab.Question, "question"
+		if phase == work.PhaseTriage {
+			word, role = s.vocab.Triage, "triage"
+		}
+		if word == "" {
+			return fmt.Errorf("%s: this project's statuses name no %s word — add `%s:` to the source's statuses", id, role, role)
+		}
+		return s.client.SetStatus(id, word)
+	}
 	if phase != work.PhaseInProgress {
 		return fmt.Errorf("phase %q: the backlogmd adapter does not know it", phase)
 	}

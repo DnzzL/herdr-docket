@@ -668,6 +668,10 @@ func (s *Source) phaseWord(p work.Phase) string {
 		return "Todo"
 	case work.PhaseInProgress:
 		return s.cfg.inProgress()
+	case work.PhaseTriage:
+		return triageOption
+	case work.PhaseQuestion:
+		return questionOption
 	default:
 		return string(p)
 	}

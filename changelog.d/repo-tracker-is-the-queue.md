@@ -30,3 +30,14 @@
   it waits), and a card in `Question` waits on your answer and is never picked.
   Re-run `herdr-docket init <repo>` to add both to `backlog/config.yml`; a
   project with its own `statuses:` names them as `triage:` and `question:`.
+- **A card is grilled through its notes.** `herdr-docket task ask <id>` moves a
+  card to `question`; `herdr-docket task answer <id> "1.A 2. free text"` posts
+  `## Answer N` for the card's newest `## Round N` note and moves it back to
+  `triage`, and fails naming the card when it has no round.
+- **`scripts/box-setup` sets up an always-on box**: a re-runnable wizard for
+  Tailscale, the Herdr server, `gh` and agent CLI logins, the plugin,
+  `init <repo>` per repo, one `intake` workspace per repo, and a `max_runs`
+  sized from RAM. `--dry-run` prints the commands without running them.
+- **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
+  tick 3s ago`, `daemon down for 4 min` once no tick has run for three
+  intervals, or `daemon never started`.
