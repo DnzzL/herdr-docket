@@ -1,0 +1,40 @@
+TASK-2 Voice notes  round 2
+
+Audio is sent as text today; upload.go builds
+the note, and the linked card TASK-7 waits on
+this.
+─────────────────────────────────────────────
+
+[36m1. [0mWhat happens to the audio when it is sent?
+  [7m[[36m✓[0mA attached as a file [36m(reco)[0m ][0m
+  [ B text in a comment ]
+  [ or in plain words… ]
+
+[36m2. [0mWho reads it first?
+  [[36m✓[0mA the triager [36m(reco)[0m ]
+  [ B the owner ]
+  [ or in plain words… ]
+
+[36m3. [0mHow long is it kept?
+  [[36m✓[0mA forever [36m(reco)[0m ]
+  [ B thirty days ]
+  [ or in plain words… ]
+
+tap or ⏎ pick · ↑↓ question · tab words · esc
+back · q quit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.A 2.A 3.A   [ Send ]
+[2m✓ picked · ✎ in words · – unanswered[0m

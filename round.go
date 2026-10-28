@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DnzzL/herdr-docket/internal/grill"
@@ -279,11 +278,6 @@ type roundHit struct {
 	at             focus
 }
 
-var (
-	focusStyle = lipgloss.NewStyle().Reverse(true)
-	offStyle   = lipgloss.NewStyle().Faint(true)
-)
-
 // frame is the Round laid out: the scrolling body and the footer kept at the
 // bottom, each with the hits of its buttons in its own lines. Hits come from
 // the same pass that draws, so a tap lands on what is drawn.
@@ -310,28 +304,32 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 	for qi, q := range m.round.Questions {
 		body = append(body, "")
 		num := fmt.Sprintf("%d. ", q.N)
+		indent := strings.Repeat(" ", len(num))
 		for i, l := range wrap(q.Text, w-len(num)) {
-			if i > 0 {
-				num = strings.Repeat(" ", len(num))
+			if i == 0 {
+				// The number is the question's handle; accent it after the
+				// text is wrapped and measured.
+				body = append(body, paneStyle.accent(num)+l)
+				continue
 			}
-			body = append(body, num+l)
+			body = append(body, indent+l)
 		}
 		editing := m.editing && m.at.q == qi
 		labels := make([]string, 0, len(q.Options)+1)
 		for _, o := range q.Options {
 			mark := " "
 			if m.answers[qi].Letter == o.Letter {
-				mark = "✓"
+				mark = paneStyle.accent("✓")
 			}
 			l := mark + o.Letter + " " + o.Text
 			if o.Reco {
-				l += " (reco)"
+				l += " " + paneStyle.accent("(reco)")
 			}
 			labels = append(labels, l)
 		}
 		plain := " or in plain words…"
 		if m.answers[qi].Letter == "" && (editing || m.answers[qi].Text != "") {
-			plain = "✓or in plain words…"
+			plain = paneStyle.accent("✓") + "or in plain words…"
 		}
 		labels = append(labels, plain)
 		bodyHits = append(bodyHits, m.buttons(&body, labels, qi, w)...)
@@ -366,9 +364,9 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 	sendDrawn := sendBtn
 	switch {
 	case m.at == send:
-		sendDrawn = focusStyle.Render(sendBtn)
+		sendDrawn = paneStyle.focus(sendBtn)
 	case !m.complete():
-		sendDrawn = offStyle.Render(sendBtn)
+		sendDrawn = paneStyle.off(sendBtn)
 	}
 	summary := wrap(strings.Join(marks, " "), w)
 	last := summary[len(summary)-1]
@@ -380,6 +378,11 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 		foot = append(foot, last)
 		footHits = append(footHits, roundHit{0, len(sendBtn), len(foot), len(foot), send})
 		foot = append(foot, sendDrawn)
+	}
+	// The legend sits under the summary that draws those marks, wrapped so
+	// a phone never cuts it.
+	for _, l := range wrap("✓ picked · ✎ in words · – unanswered", w) {
+		foot = append(foot, paneStyle.faint(l))
 	}
 	return body, bodyHits, foot, footHits
 }
@@ -397,7 +400,7 @@ func (m roundModel) buttons(body *[]string, labels []string, qi, w int) []roundH
 	}
 	focused := func(i int, s string) string {
 		if !m.editing && m.at == at(i) {
-			return focusStyle.Render(s)
+			return paneStyle.focus(s)
 		}
 		return s
 	}

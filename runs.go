@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
@@ -91,19 +92,24 @@ func stale(r history.Record, timeoutMinutes int, now time.Time) bool {
 // is marked stale: the runner writes timed_out at the deadline, so a running
 // record older than that is one a dead daemon never closed (ADR 0008).
 func formatRun(r history.Record, timeoutMinutes int, now time.Time) string {
-	elapsed := now.Sub(r.At)
-	age := fmt.Sprintf("%s / %dm", shortDuration(elapsed), timeoutMinutes)
+	trigger := string(r.Trigger)
+	if trigger == "" {
+		trigger = "-"
+	}
+	return fmt.Sprintf("%-10s %-12s %-8s %-18s %s", r.Task, r.Agent, trigger, runAge(r, timeoutMinutes, now), r.WorkspaceID)
+}
+
+// runAge is the age of one run in flight against its timeout, with the stale
+// or late qualifier the pane draws in attention.
+func runAge(r history.Record, timeoutMinutes int, now time.Time) string {
+	age := fmt.Sprintf("%s / %dm", shortDuration(now.Sub(r.At)), timeoutMinutes)
 	switch {
 	case stale(r, timeoutMinutes, now):
 		age += " stale?"
 	case r.Status == history.StatusTimedOut:
 		age += " late"
 	}
-	trigger := string(r.Trigger)
-	if trigger == "" {
-		trigger = "-"
-	}
-	return fmt.Sprintf("%-10s %-12s %-8s %-18s %s", r.Task, r.Agent, trigger, age, r.WorkspaceID)
+	return age
 }
 
 func shortDuration(d time.Duration) string {
@@ -454,7 +460,7 @@ func (m paneModel) laidOut(follow bool) paneModel {
 	m.sel = max(min(m.sel, len(rows)-1), 0)
 	if m.sel < len(rows) {
 		l := rows[m.sel].Line
-		lines[l] = "> " + strings.TrimPrefix(lines[l], "  ")
+		lines[l] = paneStyle.accent("> ") + strings.TrimPrefix(lines[l], "  ")
 		if follow && m.height > 0 {
 			if l < m.top {
 				m.top = l
@@ -632,20 +638,30 @@ type paneRow struct {
 // the last settled runs. rows are its selectable lines, in order, each
 // starting with two spaces for the selection mark.
 func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
+	// Text is wrapped or truncated plain first, then styled: an SGR sequence
+	// never reaches a width helper and no sequence is ever split (ADR 0025).
 	add := func(s string) { lines = append(lines, text.Truncate(s, width)) }
-	row := func(kind rowKind, id string, run *history.Record, s string) {
+	addStyled := func(s string, style func(string) string) {
+		lines = append(lines, style(text.Truncate(s, width)))
+	}
+	row := func(kind rowKind, id string, run *history.Record, mark, s string) {
 		rows = append(rows, paneRow{Line: len(lines), Kind: kind, ID: id, Run: run})
-		add("  " + s)
+		add("  " + mark + s)
 	}
 
 	state := "running"
 	if d.Paused {
 		state = "PAUSED"
 	}
-	add(fmt.Sprintf("%s · fleet %s", d.Daemon, state))
+	daemonLine := fmt.Sprintf("%s · fleet %s", d.Daemon, state)
+	if daemonDown(d.Daemon) {
+		addStyled(daemonLine, paneStyle.attention)
+	} else {
+		add(daemonLine)
+	}
 
 	add("")
-	add("Your turn")
+	addStyled("Your turn", paneStyle.accent)
 	merges := heldMerges(d.Runs)
 	var questions, blocked, held []work.Task
 	for _, t := range d.Queue {
@@ -660,30 +676,49 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 		}
 	}
 	turn := append(append(questions, blocked...), held...)
+	// A shared id column so every title in Your turn starts at one place.
+	idWidth := 0
 	for _, t := range turn {
+		idWidth = max(idWidth, ansi.StringWidth(t.ID))
+	}
+	for _, t := range turn {
+		id := t.ID + strings.Repeat(" ", idWidth-ansi.StringWidth(t.ID))
 		switch {
 		case t.Question:
-			row(questionRow, t.ID, nil, "? "+t.ID+" "+t.Title)
+			row(questionRow, t.ID, nil, "? ", id+" "+t.Title)
 		case merges[t.ID] != "":
-			row(mergeRow, t.ID, nil, "⇡ "+t.ID+" "+merges[t.ID])
+			row(mergeRow, t.ID, nil, "⇡ ", id+" "+merges[t.ID])
 		default:
-			row(blockedRow, t.ID, nil, "! "+t.ID+" "+t.Title)
+			row(blockedRow, t.ID, nil, "! ", id+" "+t.Title)
 		}
 	}
 	if d.QueueErr != nil {
 		add("  queue: " + d.QueueErr.Error())
 	} else if len(turn) == 0 {
-		add("  nothing: no Question, Blocked card or held merge")
+		addStyled("  nothing: no Question, Blocked card or held merge", paneStyle.faint)
+	}
+	if len(turn) > 0 {
+		// Where the marks are drawn is where they are explained, wrapped
+		// rather than cut on a phone.
+		for _, l := range wrap("  ? question · ! blocked · ⇡ merge held", width) {
+			addStyled(l, paneStyle.faint)
+		}
 	}
 
 	live := inFlight(d.Runs)
 	add("")
-	add(fmt.Sprintf("In flight (%d)", len(live)))
+	addStyled(fmt.Sprintf("In flight (%d)", len(live)), paneStyle.accent)
 	for i, r := range live {
-		row(runRow, r.Task, &live[i], fmt.Sprintf("%d %s", i+1, formatRun(r, timeoutFor(d.Timeouts, r.Agent), d.Now)))
+		rows = append(rows, paneRow{Line: len(lines), Kind: runRow, ID: r.Task, Run: &live[i]})
+		timeout := timeoutFor(d.Timeouts, r.Agent)
+		line := text.Truncate(fmt.Sprintf("  %d %s", i+1, formatRun(r, timeout, d.Now)), width)
+		if stale(r, timeout, d.Now) {
+			line = paintFirst(line, runAge(r, timeout, d.Now), paneStyle.attention)
+		}
+		lines = append(lines, line)
 	}
 	if len(live) == 0 {
-		add("  no run in flight")
+		addStyled("  no run in flight", paneStyle.faint)
 	}
 
 	var settled []string
@@ -698,9 +733,9 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 	}
 	if len(settled) > 0 {
 		add("")
-		add("Settled")
+		addStyled("Settled", paneStyle.accent)
 		for _, l := range settled {
-			add(l)
+			addStyled(l, paneStyle.faint)
 		}
 	}
 
@@ -711,4 +746,10 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 	add("")
 	add("j/k/tap select · ⏎/tap selected open · x stop · p pause · q quit")
 	return lines, rows
+}
+
+// daemonDown reports the liveness lines that mean nobody is routing: the
+// pane draws them in attention.
+func daemonDown(liveness string) bool {
+	return !strings.HasPrefix(liveness, "daemon live")
 }

@@ -1,0 +1,16 @@
+[33mdaemon down for 4 min · fleet running[0m
+
+[36mYour turn[0m
+[36m> [0m? TASK-1 Which store? a title far too long…
+  ! TASK-2 Parked a title far too long for a…
+  ⇡ TASK-3 https://github.com/o/r/pull/12
+[2m  ? question · ! blocked · ⇡ merge held[0m
+
+[36mIn flight (1)[0m
+  1 TASK-9-with-a-long-id a-long-agent-name …
+
+[36mSettled[0m
+[2m  TASK-3 verifier done 1h00m ago[0m
+[2m  TASK-8 dev failed 2h00m ago[0m
+
+j/k/tap select · ⏎/tap selected open · x sto…

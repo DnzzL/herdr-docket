@@ -6,7 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
@@ -54,8 +55,8 @@ func TestQuestionsFitsA45ColumnTerminal(t *testing.T) {
 	src := questionSource(strings.Repeat("a very long card title that goes on ", 4))
 	got := runQuestions(t, src, "\nb\nkeep it for as long as the law asks and not a day more\nn\n")
 	for _, l := range strings.Split(got, "\n") {
-		if utf8.RuneCountInString(l) > 45 {
-			t.Errorf("line over 45 columns (%d): %q", utf8.RuneCountInString(l), l)
+		if ansi.StringWidth(l) > 45 {
+			t.Errorf("line over 45 columns (%d): %q", ansi.StringWidth(l), l)
 		}
 	}
 	if len(src.comments) != 0 {
@@ -139,7 +140,7 @@ func TestQuestionsShowsTheRoundContextBeforeQuestion1(t *testing.T) {
 		t.Fatalf("context must come before question 1, got\n%s", got)
 	}
 	for _, l := range strings.Split(got, "\n") {
-		if utf8.RuneCountInString(l) > 45 {
+		if ansi.StringWidth(l) > 45 {
 			t.Errorf("line over 45 columns: %q", l)
 		}
 	}

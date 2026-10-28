@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/runner"
@@ -37,7 +37,7 @@ func paneFixture() paneData {
 func TestPaneNeverWrapsOnANarrowTerminal(t *testing.T) {
 	lines, _ := renderPane(paneFixture(), 45)
 	for _, line := range lines {
-		if n := utf8.RuneCountInString(line); n > 45 {
+		if n := ansi.StringWidth(line); n > 45 {
 			t.Errorf("%d columns: %q", n, line)
 		}
 	}
@@ -241,5 +241,60 @@ func TestNoFrameBeforeTheTerminalSize(t *testing.T) {
 	}
 	if v := send(m, tea.WindowSizeMsg{Width: 45, Height: 20}).View(); v == "" {
 		t.Fatal("nothing drawn once sized")
+	}
+}
+
+// A shared id column: a short id is padded to the longest one, so every
+// title in Your turn starts at the same place.
+func TestYourTurnCardIDsShareOneColumn(t *testing.T) {
+	d := paneFixture()
+	d.Queue = append(d.Queue, work.Task{ID: "TASK-10", Title: "Another question", Question: true, Phase: string(work.PhaseQuestion)})
+	lines, _ := renderPane(d, 120)
+	titleAt := func(row, title string) int {
+		t.Helper()
+		for _, line := range lines {
+			if i := strings.Index(line, row); i >= 0 {
+				if j := strings.Index(line, title); j >= 0 {
+					return ansi.StringWidth(line[:j])
+				}
+			}
+		}
+		t.Fatalf("%q / %q not drawn:\n%s", row, title, strings.Join(lines, "\n"))
+		return -1
+	}
+	a := titleAt("? TASK-1 ", "Which store?")
+	b := titleAt("? TASK-10 ", "Another question")
+	if a != b {
+		t.Fatalf("titles start at cells %d and %d:\n%s", a, b, strings.Join(lines, "\n"))
+	}
+}
+
+// Each legend sits where its marks are drawn, and a phone wraps it instead
+// of cutting one.
+func TestLegendsWrapWhereTheirMarksAppear(t *testing.T) {
+	home, _ := renderPane(paneFixture(), 30)
+	for _, l := range home {
+		if ansi.StringWidth(l) > 30 {
+			t.Errorf("home %d cells: %q", ansi.StringWidth(l), l)
+		}
+	}
+	flat := strings.Join(strings.Fields(strings.Join(home, "\n")), " ")
+	if !strings.Contains(flat, "? question · ! blocked · ⇡ merge held") {
+		t.Fatalf("home legend not wrapped whole:\n%s", strings.Join(home, "\n"))
+	}
+	turn, flight := strings.Join(home, "\n"), strings.Join(home, "\n")
+	if strings.Index(turn, "merge held") > strings.Index(flight, "In flight") {
+		t.Fatalf("home legend is not under Your turn:\n%s", strings.Join(home, "\n"))
+	}
+
+	m, _ := roundPane(t, 30, 40)
+	for _, l := range strings.Split(m.View(), "\n") {
+		if ansi.StringWidth(l) > 30 {
+			t.Errorf("round %d cells: %q", ansi.StringWidth(l), l)
+		}
+	}
+	flat = strings.Join(strings.Fields(m.View()), " ")
+	if !strings.Contains(flat, "✓ picked · ✎ in words · – unanswered") {
+		t.Fatalf("round legend not wrapped whole:\n%s", m.View())
 	}
 }
