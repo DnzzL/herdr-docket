@@ -1,6 +1,7 @@
 package fleet
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -19,12 +20,11 @@ const (
 )
 
 // SourceConfig is the `source:` block of fleet.yaml: which backend the queue
-// lives in. Absent, the fleet works the Backlog.md project in its own dir.
+// lives in: a project repo's own Backlog.md (Dir) or a GitHub board.
 type SourceConfig struct {
 	Kind string `yaml:"kind"`
-	// Dir points a local queue at a project other than the fleet's own —
-	// which is what a fleet working several projects' own backlogs is. Empty
-	// is the fleet dir; a relative path is read from it; ~ expands.
+	// Dir is the project repo whose Backlog.md is the queue. Required for
+	// backlogmd; a relative path is read from the fleet dir; ~ expands.
 	Dir string `yaml:"dir"`
 	// DefaultAgent picks up this queue's unassigned tasks, overriding the
 	// fleet's own. An agent carries its workdir, so the project a task came
@@ -62,27 +62,16 @@ func (c SourceConfig) kind() string {
 	return c.Kind
 }
 
-// local reports whether the queue lives in the fleet dir itself — which is
-// the only kind of queue the fleet has anything to scaffold. A source that
-// names a project of its own is somebody else's repo: the fleet works it, it
-// does not lay it down.
-func (c SourceConfig) local() bool { return c.kind() == kindBacklogmd && c.Dir == "" }
+// errNoRepo is the one wording for a Backlog.md queue that names no project
+// repo. The queue is the repo's own tracker (ADR 0023); the fleet dir holds
+// agents and roles, never a queue.
+var errNoRepo = errors.New("source.dir must name a project repo — run `herdr-docket init <repo>`")
 
-// ownQueues is the queues living in the fleet dir, which are the ones init
-// has anything to create. Several sources or one, a queue that points
-// somewhere else is not among them.
-func (s Settings) ownQueues() []SourceConfig {
-	if len(s.Sources) > 0 {
-		var own []SourceConfig
-		for _, c := range s.Sources {
-			if c.local() {
-				own = append(own, c)
-			}
-		}
-		return own
-	}
-	if s.Source.local() {
-		return []SourceConfig{s.Source}
+// check refuses a source block that cannot name a queue. Only what is knowable
+// from the block itself: whether the repo exists is the adapter's to say.
+func (c SourceConfig) check() error {
+	if c.kind() == kindBacklogmd && c.Dir == "" {
+		return errNoRepo
 	}
 	return nil
 }
@@ -114,6 +103,9 @@ func NewSource(s Settings) (work.Source, error) {
 func newQueue(c SourceConfig, dir string) (work.Source, error) {
 	switch c.kind() {
 	case kindBacklogmd:
+		if err := c.check(); err != nil {
+			return nil, err
+		}
 		if err := c.Statuses.Validate(); err != nil {
 			return nil, err
 		}
@@ -124,13 +116,9 @@ func newQueue(c SourceConfig, dir string) (work.Source, error) {
 	return nil, unknownQueue(c.Kind)
 }
 
-// dirFrom resolves the project this source works against. A source that names
-// no dir is the fleet's own queue, exactly as before; a relative one hangs off
-// the fleet dir, so a fleet directory stays movable in one edit.
+// dirFrom resolves the project this source works against. A relative dir
+// hangs off the fleet dir, so a fleet directory stays movable in one edit.
 func (c SourceConfig) dirFrom(fleetDir string) string {
-	if c.Dir == "" {
-		return fleetDir
-	}
 	dir := expandHome(c.Dir)
 	if filepath.IsAbs(dir) {
 		return dir

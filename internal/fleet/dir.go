@@ -13,13 +13,13 @@ import (
 // Settings is fleet.yaml in the plugin's config dir. Optional: the zero
 // value — everything under ~/fleet, no default agent — is a working setup.
 type Settings struct {
-	// Dir is where the platform lives: the Backlog.md project and agents/.
+	// Dir is where the fleet lives: agents/, roles/ and FLEET.md. No queue.
 	Dir string `yaml:"dir"`
 	// DefaultAgent picks up tasks that have no assignee. Empty means
 	// unassigned tasks are simply not the fleet's business.
 	DefaultAgent string `yaml:"default_agent"`
-	// Source is where the queue lives. Absent, it is the Backlog.md project
-	// in Dir.
+	// Source is where the queue lives: a project repo's tracker. Absent, the
+	// fleet has no queue yet — `herdr-docket init <repo>` names one.
 	Source SourceConfig `yaml:"source"`
 	// Sources is several queues at once, name → the same block Source takes.
 	// Each name becomes the prefix on its tasks' ids. Setting both Source and
@@ -59,8 +59,20 @@ func LoadSettings() (Settings, error) {
 		if hasSource && hasSources {
 			return Settings{}, fmt.Errorf("fleet.yaml sets both source: and sources: — use one arrangement of queues, not both")
 		}
+		// A fleet.yaml with no source: at all is a fleet with no queue yet,
+		// which init can still work on; a source: that names no repo is not.
+		if hasSource {
+			if err := s.Source.check(); err != nil {
+				return Settings{}, err
+			}
+		}
 	} else if !os.IsNotExist(err) {
 		return Settings{}, err
+	}
+	for name, c := range s.Sources {
+		if err := c.check(); err != nil {
+			return Settings{}, fmt.Errorf("source %q: %w", name, err)
+		}
 	}
 	if s.DefaultSource != "" {
 		if _, ok := s.Sources[s.DefaultSource]; !ok {

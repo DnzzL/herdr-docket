@@ -35,7 +35,8 @@ const usage = `herdr-docket — a task queue worked by your Herdr agents
 
 Usage:
   herdr-docket daemon           Run the worker (started by the plugin startup hook)
-  herdr-docket init             Bootstrap the fleet dir: Backlog.md project, example agent, dev/reviewer roles
+  herdr-docket init             Bootstrap the fleet dir: example agent, dev/reviewer roles, FLEET.md
+  herdr-docket init <repo>      Make a project repo the queue: Backlog.md, issue-tracker doc, fleet.yaml source
   herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials ([--token <pat>])
   herdr-docket list             List the queue, grouped by phase
   herdr-docket run <task-id>    Run one open task now, whatever its phase
@@ -159,23 +160,29 @@ func changelogCmd(args []string, out io.Writer) error {
 }
 
 func initCmd(arg string) error {
-	switch arg {
-	case "":
-	case "--factory":
+	switch {
+	case arg == "--factory":
 		return errors.New("init: --factory was removed with the factory loop — run `herdr-docket init`, which writes the dev and reviewer roles")
-	default:
-		return fmt.Errorf("init: unknown argument %q — init takes none; run `herdr-docket init`", arg)
+	case strings.HasPrefix(arg, "-"):
+		return fmt.Errorf("init: unknown flag %q — run `herdr-docket init [<repo>]`", arg)
 	}
 	settings, err := fleet.LoadSettings()
 	if err != nil {
 		return err
+	}
+	if arg != "" {
+		if err := fleet.InitRepo(settings, arg, os.Stdout); err != nil {
+			return err
+		}
+		fmt.Printf("%s is prepared: publish specs with to-spec + to-tickets\n", arg)
+		return nil
 	}
 	if err := fleet.Init(settings, os.Stdout); err != nil {
 		return err
 	}
 	fmt.Printf("fleet ready at %s\n", settings.Dir)
 	fmt.Println("- describe your agents in agents/<name>/AGENT.md")
-	fmt.Println("- add work: herdr-docket task create \"...\" -a <agent>")
+	fmt.Println("- name a project repo as the queue: herdr-docket init <repo>")
 	fmt.Println("- the daemon (or `herdr-docket daemon`) picks tasks up from there")
 	return nil
 }

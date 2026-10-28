@@ -14,26 +14,21 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/work/github"
 )
 
-// A fleet that names no source at all still works: Backlog.md in the fleet
-// dir is what every fleet was before there was a choice, and the choice must
-// not break it.
-func TestASourceBlockIsOptional(t *testing.T) {
+// A fleet that names no source yet still loads, so init can work on it; it
+// has no queue, and asking for one says how to get it.
+func TestAFleetWithNoSourceHasNoQueue(t *testing.T) {
 	writeFleetYAML(t, "dir: /tmp/somewhere\n")
 	s, err := LoadSettings()
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, err := NewSource(s)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := src.(*backlogmd.Source); !ok {
-		t.Fatalf("a fleet with no source block must mean Backlog.md, got %T", src)
+	if _, err := NewSource(s); err == nil || !strings.Contains(err.Error(), "source.dir must name a project repo") {
+		t.Fatalf("want the repo error, got %v", err)
 	}
 }
 
 func TestASourceBlockNamesTheKind(t *testing.T) {
-	writeFleetYAML(t, "dir: /tmp/somewhere\nsource:\n  kind: backlogmd\n")
+	writeFleetYAML(t, "dir: /tmp/somewhere\nsource:\n  kind: backlogmd\n  dir: /srv/acme\n")
 	s, err := LoadSettings()
 	if err != nil {
 		t.Fatal(err)
@@ -66,35 +61,15 @@ func TestAnUnknownSourceKindIsRefused(t *testing.T) {
 	}
 }
 
-// Only a queue that lives in the fleet dir is the fleet's to lay down. A
-// remote one is configured wherever it lives; creating a local project for it
-// would be scaffolding a queue nothing reads.
-func TestOnlyALocalQueueIsScaffolded(t *testing.T) {
-	for _, tc := range []struct {
-		kind string
-		want bool
-	}{
-		{"", true}, // no block at all: the default, Backlog.md
-		{"backlogmd", true},
-		{"github", false},
-	} {
-		if got := (SourceConfig{Kind: tc.kind}).local(); got != tc.want {
-			t.Errorf("kind %q: local = %v, want %v", tc.kind, got, tc.want)
-		}
+// The fleet dir holds agents and roles, never a queue (ADR 0023): plain init
+// on a fleet with no source lays down no Backlog.md project there.
+func TestPlainInitCreatesNoQueueInTheFleetDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := Init(Settings{Dir: dir}, io.Discard); err != nil {
+		t.Fatal(err)
 	}
-	// A Backlog.md project of its own is a repo that already exists. Laying
-	// one down there would scaffold over somebody else's backlog.
-	if (SourceConfig{Kind: "backlogmd", Dir: "/srv/notion-alt"}).local() {
-		t.Error("a source naming its own project is not the fleet's to scaffold")
-	}
-	if q := (Settings{Dir: "/tmp/fleet", Sources: map[string]SourceConfig{
-		"notionalt": {Dir: "/srv/notion-alt"},
-		"dishnow":   {Dir: "/srv/dishnow-v2"},
-	}}).ownQueues(); len(q) != 0 {
-		t.Errorf("a fleet whose every queue is elsewhere creates none, got %d", len(q))
-	}
-	if q := (Settings{Dir: "/tmp/fleet"}).ownQueues(); len(q) != 1 {
-		t.Errorf("a fleet with its own queue still creates it, got %d", len(q))
+	if _, err := os.Stat(filepath.Join(dir, "backlog")); !os.IsNotExist(err) {
+		t.Fatalf("plain init created backlog/ in the fleet dir (stat err %v)", err)
 	}
 }
 
@@ -230,6 +205,7 @@ func TestSeveralSourcesBecomeAComposite(t *testing.T) {
 	writeFleetYAML(t, `sources:
   myapp:
     kind: backlogmd
+    dir: /srv/myapp
   other:
     kind: backlogmd
     dir: /srv/other
@@ -254,7 +230,7 @@ func TestSeveralSourcesBecomeAComposite(t *testing.T) {
 // A composite is a composite even with one name: the prefix appears the
 // moment a queue has a name, and one name is still a name.
 func TestOneNamedSourceIsAComposite(t *testing.T) {
-	writeFleetYAML(t, "sources:\n  solo:\n    kind: backlogmd\n")
+	writeFleetYAML(t, "sources:\n  solo:\n    kind: backlogmd\n    dir: /srv/solo\n")
 	s, err := LoadSettings()
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +280,6 @@ func TestALocalSourceCanNameItsOwnProject(t *testing.T) {
 		dir  string
 		want string
 	}{
-		{"no dir is the fleet's own queue", "", "/tmp/fleet"},
 		{"absolute is taken as it stands", "/srv/notion-alt", "/srv/notion-alt"},
 		{"~ expands", "~/Projects/notion-alt", filepath.Join(home, "Projects/notion-alt")},
 		{"relative hangs off the fleet dir", "projects/dishnow", "/tmp/fleet/projects/dishnow"},
@@ -494,5 +469,20 @@ func TestARetiredQueueIsRefusedNamingTheKindsLeft(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The queue is a project repo's own tracker (ADR 0023): a Backlog.md source
+// that names no repo would be a queue in the fleet dir, which no longer exists.
+func TestABacklogmdSourceWithNoDirIsRefused(t *testing.T) {
+	for _, body := range []string{
+		"source:\n  kind: backlogmd\n",
+		"sources:\n  acme:\n    max_runs: 1\n",
+	} {
+		writeFleetYAML(t, body)
+		_, err := LoadSettings()
+		if err == nil || !strings.Contains(err.Error(), "source.dir must name a project repo") {
+			t.Errorf("%q: want the repo error, got %v", body, err)
+		}
 	}
 }

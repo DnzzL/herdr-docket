@@ -2,10 +2,22 @@
 
 [Back to the README](../README.md)
 
-By default the queue is the Backlog.md project in the fleet dir, and there is
-nothing to configure. Three things change that, in rising order of how much
-config they cost: a project you already have, several projects at once, and a
-hosted queue.
+The queue is a project repo's own tracker: its Backlog.md project, or a GitHub
+Projects board ([ADR 0023](adr/0023-the-repos-own-tracker-is-the-queue.md)).
+The fleet dir holds agents and roles, never a queue. One command makes a repo
+the queue:
+
+```sh
+herdr-docket init ~/Projects/myapp
+```
+
+It creates the fleet if it is missing, then in the repo: runs `backlog init`
+if there is no `backlog/`, adds the fleet's statuses to `backlog/config.yml`
+(the repo's own columns are kept), writes `docs/agents/issue-tracker.md` — how
+the skills publish, fetch and resolve Specs and Tickets there — unless the repo
+already has one, and names the repo as the source in `fleet.yaml`. Running it
+again changes nothing. A `fleet.yaml` that already names another queue is never
+rewritten: init prints the `sources:` block to paste instead.
 
 ## The file all of it goes in
 
@@ -15,14 +27,13 @@ Config is optional — `fleet.yaml` in the plugin config dir:
 dir: ~/somewhere/else     # fleet dir (default ~/fleet)
 default_agent: dev        # picks up unassigned tasks; unset = leave them alone
 source:
-  kind: backlogmd         # where the queue lives (default: the Backlog.md
-                          # project in the fleet dir — see "Work a project you
-                          # already have", below)
+  kind: backlogmd         # where the queue lives (the default kind)
+  dir: ~/Projects/myapp   # the repo whose Backlog.md is the queue (required)
 ```
 
 | Key | What it does |
 | --- | --- |
-| `dir` | Where the fleet lives: `agents/`, and the queue too unless a source names another. |
+| `dir` | Where the fleet lives: `agents/`, `roles/`, `FLEET.md`. Never the queue. |
 | `default_agent` | Who picks up a task with no assignee. Unset: nobody — unassigned work is left alone. |
 | `source` | One queue. |
 | `sources` | Several, as a map of name → the same block `source:` takes. Each name becomes the id prefix on that queue's tasks. |
@@ -36,7 +47,7 @@ And the block both of them take:
 | Key | What it does |
 | --- | --- |
 | `kind` | `backlogmd` (the default) or `github`. |
-| `dir` | A Backlog.md project other than the fleet's own: absolute, `~`, or relative to the fleet dir. |
+| `dir` | The project repo whose Backlog.md is the queue: absolute, `~`, or relative to the fleet dir. Required for `backlogmd`: a block without it fails to load with "source.dir must name a project repo". |
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
 | `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)). Unset: no pipeline, a run ends on the agent's own verdict. |
 | `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
@@ -47,12 +58,12 @@ And the block both of them take:
 
 ## Work a project you already have
 
-Point a source at your own repo with `dir:` — absolute, `~`, or relative to the
-fleet dir. Your project has its own status words, and there are two ways to
+`herdr-docket init <repo>` points a source at your repo, or write `dir:`
+yourself — absolute, `~`, or relative to the fleet dir. Your project has its own status words, and there are two ways to
 meet:
 
-**Let the fleet own the vocabulary.** Add its five statuses to your
-`backlog/config.yml` and there is nothing else to configure:
+**Let the fleet own the vocabulary.** `init <repo>` adds its five statuses to
+your `backlog/config.yml` and there is nothing else to configure:
 
 ```yaml
 statuses: ["To Do", "In Progress", "Blocked", "Failed", "Done"]
@@ -84,8 +95,9 @@ exactly how much of your board you are handing over.
 `todo`, `done`, `failed` and `blocked` are required — a queue the fleet can
 pick from but cannot close leaves every task open for the next tick to pick up
 again. `in_progress` is optional: it is display only, so a project with no word
-for it simply never shows one. A source with a `dir:` of its own is never
-scaffolded or patched by `herdr-docket init`; its config stays yours.
+for it simply never shows one. Plain `herdr-docket init` never touches a
+repo; `init <repo>` only adds missing statuses (the source's own words when it
+names them) and never removes one.
 
 Assignees are agent names. Backlog.md prints one as `@name` and accepts one
 written that way, so a task filed from its own interface carries the sigil into

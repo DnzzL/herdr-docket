@@ -4,13 +4,14 @@
 
 ## The model
 
-Everything lives in one **fleet dir** (default `~/fleet`) — a git repo you can
-read, diff, and back up:
+The fleet lives in one **fleet dir** (default `~/fleet`) — a git repo you can
+read, diff, and back up. The queue does not: it is the project repo's own
+tracker (see [Where the queue lives](queues.md)).
 
 ```
 ~/fleet/
-├── backlog/           # the Backlog.md project: one markdown file per task
-│                      # (the default queue — see "Where the queue lives")
+├── FLEET.md           # the brief every agent shares
+├── roles/             # methods agents share: dev, reviewer
 └── agents/
     ├── dev/AGENT.md       # who the agents are: an author…
     └── reviewer/AGENT.md  # …and the verifier its queue names

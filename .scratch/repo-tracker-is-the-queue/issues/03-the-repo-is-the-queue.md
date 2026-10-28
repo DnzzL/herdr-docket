@@ -6,13 +6,13 @@ The template tells Pocock's skills: a Spec is `backlog task create "<title>" -d 
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] backlogmd with an empty `dir` fails `LoadSettings` with the message above
-- [ ] plain `init` creates no `backlog/` in the fleet dir
-- [ ] `init <repo>` on a fresh git repo writes `backlog/config.yml` (fleet statuses), `docs/agents/issue-tracker.md`, and a `source`/`sources` entry with `dir`
-- [ ] `init <repo>` twice is a no-op the second time, and an existing `issue-tracker.md` is kept
-- [ ] `docs/queues.md`, `docs/commands.md`, README quick start updated; changelog says how to migrate a fleet-dir queue
+- [x] backlogmd with an empty `dir` fails `LoadSettings` with the message above
+- [x] plain `init` creates no `backlog/` in the fleet dir
+- [x] `init <repo>` on a fresh git repo writes `backlog/config.yml` (fleet statuses), `docs/agents/issue-tracker.md`, and a `source`/`sources` entry with `dir`
+- [x] `init <repo>` twice is a no-op the second time, and an existing `issue-tracker.md` is kept
+- [x] `docs/queues.md`, `docs/commands.md`, README quick start updated; changelog says how to migrate a fleet-dir queue
 
 **Done when:** a repo is ready for the factory with one command, and no queue lives in the fleet dir.
 
