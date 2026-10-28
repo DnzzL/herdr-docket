@@ -125,3 +125,22 @@ func TestQuestionsPicksTheCardByNumber(t *testing.T) {
 		t.Fatalf("commented %q, want %q — card 2's round 3", src.comments, want)
 	}
 }
+
+// The round's context is read before question 1, wrapped to the phone width.
+func TestQuestionsShowsTheRoundContextBeforeQuestion1(t *testing.T) {
+	ctx := "The upload sends audio as text today and the owner wants the file kept as is."
+	src := questionSource("Voice notes")
+	src.item.Notes = strings.Replace(threeQuestionRound, "## Round 2\n", "## Round 2\n"+ctx+"\nFiles: upload.go\n\n", 1)
+	src.items[0].Notes = src.item.Notes
+	got := runQuestions(t, src, "\n\n\nn\n")
+	flat := strings.Join(strings.Fields(got), " ")
+	at, q1 := strings.Index(flat, ctx+" Files: upload.go"), strings.Index(flat, "1. What happens")
+	if at < 0 || q1 < 0 || at > q1 {
+		t.Fatalf("context must come before question 1, got\n%s", got)
+	}
+	for _, l := range strings.Split(got, "\n") {
+		if utf8.RuneCountInString(l) > 45 {
+			t.Errorf("line over 45 columns: %q", l)
+		}
+	}
+}

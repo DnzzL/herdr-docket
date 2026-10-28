@@ -2,6 +2,7 @@
 // a note the triager posts and a human reads without a tool:
 //
 //	## Round 2
+//	Audio is sent as text today; upload.go builds the note.
 //	1. What happens to the audio when it is sent?
 //	   A. attached as a file (reco)
 //	   B. text in a comment
@@ -15,6 +16,16 @@ import (
 	"strconv"
 	"strings"
 )
+
+// Round is a card's newest round: its number, the context paragraph the
+// triager writes between the heading and question 1 (lines trimmed, blank
+// lines dropped, joined by newlines; empty when there is none), and its
+// questions.
+type Round struct {
+	N         int
+	Context   string
+	Questions []Question
+}
 
 // Question is one numbered question of a round, with its lettered options.
 // A question with no options takes a free-text answer.
@@ -42,34 +53,42 @@ var (
 const recoMark = "(reco)"
 
 // LatestRound finds the newest `## Round N` in a card's notes and parses its
-// questions, which run until the next `## ` heading. ok is false when the
-// notes hold no round.
-func LatestRound(notes string) (n int, questions []Question, ok bool) {
+// context and questions, which run until the next `## ` heading. ok is false
+// when the notes hold no round.
+func LatestRound(notes string) (r Round, ok bool) {
 	lines := strings.Split(notes, "\n")
 	start := -1
 	for i, l := range lines {
 		if m := heading.FindStringSubmatch(l); m != nil && m[1] == "Round" && m[2] != "" {
-			start, n = i, atoi(m[2])
+			start, r.N = i, atoi(m[2])
 		}
 	}
 	if start < 0 {
-		return 0, nil, false
+		return Round{}, false
 	}
+	var context []string
 	for _, l := range lines[start+1:] {
 		if heading.MatchString(l) {
 			break
 		}
 		if m := question.FindStringSubmatch(l); m != nil {
-			questions = append(questions, Question{N: atoi(m[1]), Text: m[2]})
+			r.Questions = append(r.Questions, Question{N: atoi(m[1]), Text: m[2]})
 			continue
 		}
-		if m := option.FindStringSubmatch(l); m != nil && len(questions) > 0 {
+		if len(r.Questions) == 0 {
+			if t := strings.TrimSpace(l); t != "" {
+				context = append(context, t)
+			}
+			continue
+		}
+		if m := option.FindStringSubmatch(l); m != nil {
 			text, reco := strings.CutSuffix(m[2], recoMark)
-			q := &questions[len(questions)-1]
+			q := &r.Questions[len(r.Questions)-1]
 			q.Options = append(q.Options, Option{Letter: m[1], Text: strings.TrimSpace(text), Reco: reco})
 		}
 	}
-	return n, questions, true
+	r.Context = strings.Join(context, "\n")
+	return r, true
 }
 
 func atoi(s string) int {
