@@ -26,7 +26,7 @@ to pick a task up.
 _Avoid_: unfinished, active, pending, in-progress
 
 **Phase**:
-Where a task stands, in the fleet's words: _To Do_ and _In Progress_, plus the
+Where a task stands, in the fleet's words: _Triage_, _Question_, _To Do_ and _In Progress_, plus the
 three endings it shares with Verdict. Display only — nothing about a phase
 decides what runs.
 _Avoid_: status, state, column
@@ -126,6 +126,22 @@ A verifier's _PASS_ or _FAIL_ on a delivery, pinned to the patch-id of the
 diff it judged. Not a Verdict: a verdict ends a task, a verification feeds
 the gate.
 _Avoid_: review, approval
+
+**Triage**:
+The status of a card whose idea is not yet a spec. The queue's triager gets
+it whatever its assignee says, and either publishes it as a spec back to the
+author in _To Do_ or asks a Question. No triager, the card waits.
+_Avoid_: inbox, draft, grooming
+
+**Question**:
+The status of a card whose grill waits on the owner's answer: a round of
+numbered questions in a note. Never picked; the answer sends it back to
+Triage.
+_Avoid_: blocked (a Verdict), waiting, needs-info
+
+**Triager**:
+The agent a queue names to grill its Triage cards.
+_Avoid_: groomer, PM
 
 **Gate**:
 The code that merges a verified delivery or holds it: PASS on the current

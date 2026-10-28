@@ -18,6 +18,8 @@ func DefaultVocabulary() Vocabulary {
 		Done:       statusDone,
 		Failed:     statusFailed,
 		Blocked:    statusBlocked,
+		Triage:     statusTriage,
+		Question:   statusQuestion,
 	}
 }
 

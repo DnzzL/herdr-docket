@@ -34,6 +34,9 @@ type SourceConfig struct {
 	// can merge (ADR 0013). Empty means no pipeline: a run ends on the
 	// agent's own verdict, as it always has.
 	Verifier string `yaml:"verifier"`
+	// Triager names the agent that grills a card in the triage status — it
+	// gets the card whatever its assignee. Empty means triage cards wait.
+	Triager string `yaml:"triager"`
 	// Merge is "auto" when the fleet may merge a verified PR on its own;
 	// anything else stops at a PASS and leaves the merge to a human.
 	Merge string `yaml:"merge"`
