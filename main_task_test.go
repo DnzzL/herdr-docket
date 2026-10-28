@@ -954,3 +954,56 @@ func TestTaskCreateWithATriagerNeverPassesThroughToDo(t *testing.T) {
 		t.Fatalf("a queue of a composite was created in %q, want Triage", m.phase)
 	}
 }
+
+// A queue with no way to move a card cannot hold a grill, and says so rather
+// than leaving the card where it stood.
+func TestTaskAskOnAQueueThatCannotMoveCardsSaysSo(t *testing.T) {
+	_, err := runTask(t, &fakeSource{}, "ask", "TASK-2")
+	if err == nil || !strings.Contains(err.Error(), "cannot move a card to Question") {
+		t.Fatalf("err = %v, want the queue cannot move a card", err)
+	}
+}
+
+// stuckSource creates, but its notes or its moves can fail.
+type stuckSource struct {
+	phasingSource
+	noteErr, moveErr error
+}
+
+func (s *stuckSource) Comment(id, text string) error {
+	if s.noteErr != nil {
+		return s.noteErr
+	}
+	return s.phasingSource.Comment(id, text)
+}
+
+func (s *stuckSource) SetPhase(id string, phase work.Phase) error {
+	s.phases = append(s.phases, phase)
+	return s.moveErr
+}
+
+// A queue that can only move a card after the create, and fails the move:
+// the card exists, so the error names it rather than inviting a second one.
+func TestTaskCreateNamesTheCardItCouldNotFileIntoTriage(t *testing.T) {
+	src := &stuckSource{moveErr: errors.New("no such status")}
+	_, err := runTaskTriaged(t, src, "tri", "create", "an idea")
+	if err == nil || !strings.Contains(err.Error(), "created TASK-9 but could not file it into Triage") {
+		t.Fatalf("err = %v, want it to name the created card", err)
+	}
+}
+
+// An answer that could not be posted moves nothing; one posted whose move
+// failed says the answer is on the card, so nobody posts it twice.
+func TestTaskAnswerReportsAFailedPostAndAFailedMove(t *testing.T) {
+	card := work.Task{ID: "TASK-2", Question: true, Notes: "## Round 1\n1. a?"}
+	src := &stuckSource{phasingSource: phasingSource{fakeSource: fakeSource{item: card}}}
+	src.noteErr = errors.New("disk full")
+	if _, err := runTask(t, src, "answer", "TASK-2", "1.A"); err == nil || !strings.Contains(err.Error(), "disk full") || len(src.phases) != 0 {
+		t.Fatalf("a failed post: err %v, moves %v — want an error and no move", err, src.phases)
+	}
+	src = &stuckSource{phasingSource: phasingSource{fakeSource: fakeSource{item: card}}, moveErr: errors.New("no such status")}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "posted, but the card did not move") || len(src.comments) != 1 {
+		t.Fatalf("a failed move: err %v, comments %v", err, src.comments)
+	}
+}
