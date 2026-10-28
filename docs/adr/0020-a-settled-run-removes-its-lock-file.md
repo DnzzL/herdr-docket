@@ -33,6 +33,16 @@ its file. From then on the steady state needs no sweep: a crash's leftover is
 removed by the next claim/release pair on that key, and a key never claimed
 again is a file the sweep already took.
 
+**`drop` unlinks only its own file.** The sweep has a window of its own: it
+opens each lock file and may be descheduled before it flocks; meanwhile the
+run settles, the file is unlinked, and a new run claims the fresh file at
+the same path. The sweep resumes holding a descriptor on a dead inode whose
+flock now takes — and unlinking by path there would remove the next run's
+live claim, handing the task to a third run while the second still holds
+it. So `drop` unlinks only while its descriptor is still the file at the
+path (the dev+inode check `claim` makes): a stale descriptor unlocks and
+closes without touching another run's file.
+
 **Alternatives rejected.** *Remove after unlock+close*: the gap where the
 file exists but nobody holds it invites a second descriptor onto a file about
 to be unlinked under a live claim — the exact window this must not open.

@@ -316,12 +316,18 @@ func TestASettledRunLeavesNoLockFileBehind(t *testing.T) {
 	<-started
 
 	// Mid-run the claim stands: the task's lock file is on disk and refuses a
-	// second run under any other routing.
+	// second run under any other routing — refused means refused: no claim,
+	// no comment, an error any route would return.
 	if _, err := os.Stat(filepath.Join(hostpath.StateDir(), "run-taskid-task-1.lock")); err != nil {
 		t.Fatalf("a live run must hold its lock file on disk: %v", err)
 	}
-	if err := New(&fakeHost{}, fleet.Settings{Dir: "/fleet"}).Run(b, work.Task{ID: "TASK-1", Open: true}, pm, "manual"); err == nil {
+	clamp := New(&fakeHost{}, fleet.Settings{Dir: "/fleet"})
+	claimed, noted := len(b.phaseSeen), len(b.notes) // the first run claimed once
+	if err := clamp.Run(b, work.Task{ID: "TASK-1", Open: true}, pm, "manual"); err == nil {
 		t.Fatal("a second run on a task whose lock is held must be refused")
+	}
+	if len(b.phaseSeen) != claimed || len(b.notes) != noted {
+		t.Errorf("a refused run must not claim or write: phases %v, notes %v", b.phaseSeen, b.notes)
 	}
 
 	close(release)
@@ -366,6 +372,54 @@ func TestSweepLocksTakesOnlyWhatNoRunHolds(t *testing.T) {
 	}
 	if _, err := os.Stat(held); err != nil {
 		t.Errorf("a lock file a live run holds must survive the sweep: %v", err)
+	}
+}
+
+// The sweep's window is its open-to-flock gap: it opens the lock file, then
+// may be descheduled before it flocks. Meanwhile the run holding that file
+// settles (drop unlinks it), a new run claims the fresh file at the same
+// path, and the sweep resumes holding a descriptor on a file that is no
+// longer the claim on disk. What it must not do is remove the next run's
+// file — the flock it takes is the dead inode's, so removal by path would
+// hand the task to a third run while the second still holds it.
+func TestASweepPausedBeforeItsFlockCannotRemoveTheNextRunsClaim(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	path := lockPath("taskid-task-1")
+
+	a, err := claim("taskid-task-1")
+	if err != nil {
+		t.Fatalf("run A must take the claim: %v", err)
+	}
+
+	// The sweep opens the file, then stops before its flock.
+	swept, err := os.OpenFile(path, os.O_RDWR, 0o644)
+	if err != nil {
+		t.Fatalf("the sweep opens the lock file: %v", err)
+	}
+	defer swept.Close()
+
+	// Run A settles: drop unlinks the file and lets go.
+	drop(path, a)
+
+	// Run B claims the fresh file at the same path and goes live.
+	b, err := claim("taskid-task-1")
+	if err != nil {
+		t.Fatalf("run B must take the fresh claim: %v", err)
+	}
+	defer drop(path, b)
+
+	// The sweep resumes: flock the descriptor it opened, retire what it
+	// holds — the sweep's exact steps.
+	if err := syscall.Flock(int(swept.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("the dead inode's flock must be free: %v", err)
+	}
+	drop(path, swept)
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("run B's claim must still stand on disk: %v", err)
+	}
+	if _, err := claim("taskid-task-1"); err == nil {
+		t.Fatal("run C must not take the task while run B still holds it")
 	}
 }
 
