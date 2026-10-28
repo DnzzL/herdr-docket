@@ -185,6 +185,12 @@ func TestAFailedNotifyRetriesOnTheNextTick(t *testing.T) {
 
 func TestALeavingQuestionForgetsAndAPopOnReturn(t *testing.T) {
 	ownStateDir(t)
+	// Paused: leaving Question makes the card routable, and a run starting
+	// beside the tick would claim and close it under the test. Pause blocks
+	// the scheduling, not the announcements this test is about.
+	if err := runner.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
 	src := newMemSource(questionCard(round2))
 	h := &notifyHost{}
 	runs, reported := daemonOver(t, h, src)
