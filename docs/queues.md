@@ -54,7 +54,7 @@ And the block both of them take:
 | `dir` | The project repo whose Backlog.md is the queue: absolute, `~`, or relative to the fleet dir. Required for `backlogmd`: a block without it fails to load with "source.dir must name a project repo". |
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
 | `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)). Unset: no pipeline, a run ends on the agent's own verdict. |
-| `triager` | The agent that grills a card in the `triage` status: it gets the card whatever its assignee says. Unset: triage cards wait. A card in `question` is never picked — it waits on the owner's answer. |
+| `triager` | The agent that grills a card in the `triage` status: it gets the card whatever its assignee says, and its run always works in the repo root (no worktree) whatever its `workspace` says, so its edits land in the queue the daemon reads. Unset: triage cards wait. A card in `question` is never picked — it waits on the owner's answer. |
 | `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
 | `max_runs` | This queue's cap, under the fleet's: a repo whose test suite cannot run twice at once says `1`. Unset or `0`: no cap. A run's verifier and rework stages count as the one run. |
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |

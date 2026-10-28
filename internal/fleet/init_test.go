@@ -543,3 +543,24 @@ func TestInitRepoRefusals(t *testing.T) {
 		}
 	}
 }
+
+// A triage run publishes a card that already exists: the tracker docs it
+// follows must say to edit that card's body, not create a second spec, and to
+// set it To Do with the tracker's own command. The repo's own copy of the
+// Backlog.md doc is the shipped one, byte for byte.
+func TestTheTrackerDocsSayATriageRunEditsTheCardItHas(t *testing.T) {
+	for path, wants := range map[string][]string{
+		"issue-tracker.md":        {"already exists", `backlog task edit <id> -d "<spec body>" -s "To Do" -a <agent>`},
+		"issue-tracker-github.md": {"already exists", "gh issue edit <n> -R {{repo}} --body-file", "--field Status --value Todo", "--field Agent --value <agent>"},
+	} {
+		doc := read(t, path)
+		for _, want := range wants {
+			if !strings.Contains(doc, want) {
+				t.Errorf("%s lacks %q", path, want)
+			}
+		}
+	}
+	if read(t, "issue-tracker.md") != read(t, "../../docs/agents/issue-tracker.md") {
+		t.Error("docs/agents/issue-tracker.md has drifted from the shipped issue-tracker.md")
+	}
+}

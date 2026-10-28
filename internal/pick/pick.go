@@ -107,6 +107,13 @@ func AssigneeFor(it work.Task, defaults fleet.Defaults) string {
 	if it.Triage {
 		return defaults.Triager(it.ID)
 	}
+	return AuthorFor(it, defaults)
+}
+
+// AuthorFor is who builds the task: its assignee, or its queue's default
+// agent when it has none. Outside triage it is the route itself; a triage run
+// hands the card back to it once the grill is over.
+func AuthorFor(it work.Task, defaults fleet.Defaults) string {
 	if it.Assignee != "" {
 		return it.Assignee
 	}

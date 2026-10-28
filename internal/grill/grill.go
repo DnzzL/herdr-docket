@@ -76,3 +76,15 @@ func atoi(s string) int {
 	v, _ := strconv.Atoi(s)
 	return v
 }
+
+// LatestAnswer is the number of the newest `## Answer N` in a card's notes,
+// 0 when the owner has answered nothing yet.
+func LatestAnswer(notes string) int {
+	n := 0
+	for _, l := range strings.Split(notes, "\n") {
+		if m := heading.FindStringSubmatch(l); m != nil && m[1] == "Answer" && m[2] != "" {
+			n = max(n, atoi(m[2]))
+		}
+	}
+	return n
+}
