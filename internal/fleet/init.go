@@ -97,9 +97,10 @@ const exampleFleet = `# FLEET.md — the fleet's shared brief
 `
 
 // Init bootstraps the fleet directory: a git repo, an example agent and the
-// pipeline's two roles. No queue: that lives in a project repo (InitRepo). Safe to re-run: existing pieces are left alone. What it
-// does to those two roles is reported to out: they are the files an owner
-// edits, and a re-run must say it kept them.
+// pipeline's two roles. No queue: that lives in a project repo (InitRepo).
+// Safe to re-run: existing pieces are left alone. What it does to those two
+// roles is reported to out: they are the files an owner edits, and a re-run
+// must say it kept them.
 func Init(s Settings, out io.Writer) error {
 	dir := s.Dir
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -192,7 +193,7 @@ func InitRepo(s Settings, repo string, out io.Writer) error {
 	c, found := s.find(func(c SourceConfig) bool {
 		return c.kind() == kindBacklogmd && (c.Dir == "" || filepath.Clean(c.dirFrom(s.Dir)) == repo)
 	})
-	if err := initBacklog(repo, c.Statuses); err != nil {
+	if err := initBacklog(repo, c.Statuses, out); err != nil {
 		return err
 	}
 	if err := initTrackerDoc(repo, issueTracker, out); err != nil {
@@ -452,12 +453,15 @@ func freeName(sources *yaml.Node, name string) string {
 }
 
 // initBacklog lays down the repo's Backlog.md project when it has none, and
-// makes sure its config knows the fleet's lifecycle.
-func initBacklog(dir string, vocab backlogmd.Vocabulary) error {
+// makes sure its config knows the fleet's lifecycle. backlog init also writes
+// its agent guidelines into the repo's AGENTS.md: a file in the human's repo,
+// so it is said.
+func initBacklog(dir string, vocab backlogmd.Vocabulary, out io.Writer) error {
 	if _, err := os.Stat(filepath.Join(dir, "backlog")); os.IsNotExist(err) {
-		if out, err := command(dir, "backlog", "init", filepath.Base(dir), "--defaults"); err != nil {
-			return fmt.Errorf("backlog init: %s", out)
+		if msg, err := command(dir, "backlog", "init", filepath.Base(dir), "--defaults"); err != nil {
+			return fmt.Errorf("backlog init: %s", msg)
 		}
+		fmt.Fprintln(out, "ran backlog init: wrote backlog/ and Backlog.md's guidelines into AGENTS.md")
 	}
 	return patchStatusesTo(filepath.Join(dir, "backlog", "config.yml"), backlogmd.OrDefault(vocab).List())
 }

@@ -13,7 +13,7 @@ import (
 // Task is one unit of work as the fleet sees it.
 //
 // Open is the only state the fleet reads: a task stays open until a verdict
-// closes it, which is all a binary backend can express.
+// closes it.
 // Blocked is the one parked state pick reads: true when the task sits in a
 // column that means "waits on a human" — the queue's own blocked word —
 // while still open. Route nothing to it; the run cannot answer the question
@@ -50,8 +50,8 @@ type Task struct {
 	// The merge gate reads one: `critical` keeps a PR for a human.
 	Labels []string
 	// Parent is the id of the spec this task is a ticket of, empty for a
-	// top-level task: a ticket of the spec named here; never picked. Read
-	// from the backend, never written by the fleet.
+	// card. A ticket is never routed. Read from the backend, never written by
+	// the fleet.
 	Parent string
 }
 
@@ -123,9 +123,8 @@ const (
 
 // Phaser is the optional capability of a source that can show a task as
 // being worked on. Backlog.md has an In Progress state to write, a GitHub
-// board a Status column; a binary backend is simply done or not, and the run
-// lock is what actually keeps two runs apart — so a source without this is
-// not a lesser source, just a quieter one.
+// board a Status column. The run lock is what actually keeps two runs apart,
+// so a source without this is not a lesser source, just a quieter one.
 type Phaser interface {
 	SetPhase(id string, phase Phase) error
 }
@@ -135,9 +134,9 @@ type Phaser interface {
 // alternative — close this one, create a follow-up — splits one subject
 // across two ids and loses the thread.
 //
-// Optional because not every backend has an assignee to write: one
-// that routes by which list a task is in re-routes with a move, not a
-// field; a GitHub board routes by a single-select field, so it is a write.
+// Optional because not every backend has an assignee to write. Backlog.md
+// writes its assignee; a GitHub board routes by a single-select field, so
+// re-routing there is a field write.
 // Unlike Phaser, a source that cannot do this says so: a re-route that
 // silently did nothing would leave the task with the wrong agent and look
 // like it worked.

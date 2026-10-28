@@ -12,7 +12,8 @@ herdr-docket init ~/Projects/myapp
 ```
 
 It creates the fleet if it is missing, then in the repo: runs `backlog init`
-if there is no `backlog/`, adds the fleet's statuses to `backlog/config.yml`
+if there is no `backlog/` (which also writes Backlog.md's agent guidelines into
+the repo's `AGENTS.md`), adds the fleet's statuses to `backlog/config.yml`
 (the repo's own columns are kept), writes `docs/agents/issue-tracker.md` — how
 the skills publish, fetch and resolve Specs and Tickets there — unless the repo
 already has one, and names the repo as the source in `fleet.yaml`. Running it

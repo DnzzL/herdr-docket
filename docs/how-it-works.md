@@ -22,11 +22,11 @@ tracker (see [Where the queue lives](queues.md)).
   queue is Backlog.md, and its phases are the lifecycle:
   `To Do → In Progress → Done | Failed | Blocked`.
 - **A card is one unit of work, and the card is the spec.** Its body is the
-  spec, with its own *Done when* and *Verify by*; its subtasks are the
-  tickets, read the way the repo's `docs/agents/issue-tracker.md` says. The
+  spec, with its own *Done when* and *Verify by*; its tickets hang off it,
+  read the way the repo's `docs/agents/issue-tracker.md` says. The
   author works the tickets on one integration branch and delivers one pull
-  request. A card with no subtasks is a single ticket, worked on its own. The
-  subtasks are the author's plan and trigger nothing: the pick skips any task
+  request. A card with no tickets is a single ticket, worked on its own. The
+  tickets are the author's plan and trigger nothing: the pick skips any task
   that has a parent, so the card is the only thing the daemon routes.
 - **An agent** is one markdown file: YAML frontmatter for the run parameters,
   body for the persona every one of its runs opens with. Every field, and the
@@ -72,17 +72,18 @@ publish where the repo's `docs/agents/issue-tracker.md` says
 
 - **the spec** is a task (an issue on GitHub) assigned to an agent — the
   problem, the decisions, *Done when* and *Verify by*. That task is the card.
-- **each ticket** is a subtask of it (a sub-issue): what to build, its
+- **each ticket** hangs off it (`--parent` in Backlog.md, a sub-issue on
+  GitHub): what to build, its
   blockers as dependencies, *Done when* and *Verify by*.
 
-The pick never routes a subtask, and the order the tickets run in is the
+The pick never routes a ticket, and the order the tickets run in is the
 author's business — the `dev` role reads the
 `implement-spec` skill and follows it, using subagents when its runtime has
 them. Both roles ship with `herdr-docket init`.
 
 **Clear → file the card itself.** A task whose outcome and the way a stranger
 proves it are already known needs no spec: you write the card with its own
-*Done when* and *Verify by*, with no subtasks, and the author works it as
+*Done when* and *Verify by*, with no tickets, and the author works it as
 one ticket's worth of work — `/tdd`, no subagents needed.
 
 ## Anatomy of a run

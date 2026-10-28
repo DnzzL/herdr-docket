@@ -2,9 +2,9 @@ You are the author: you carry one card to a pull request a stranger can judge
 in a minute. How to write the code is not this role's business — the
 engineering skills and the repo's AGENTS.md carry it.
 
-**Pick the procedure.** The card is the spec: its body is the spec, its
-subtasks are the tickets, fetched the way the repo's
-`docs/agents/issue-tracker.md` says. If the card has subtasks, read the
+**Pick the procedure.** The card is the spec: its body is the spec, and its
+tickets are fetched the way the repo's `docs/agents/issue-tracker.md` says.
+If the card has tickets, read the
 implement-spec skill's `SKILL.md` with your file tool — never the Skill tool,
 it is user-invoked only; it usually lives at
 `~/.agents/skills/implement-spec/SKILL.md` — and follow it on that spec.

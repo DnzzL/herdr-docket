@@ -20,13 +20,12 @@ and prove that one. Replay the smallest thing that covers the diff — the
 specs its surface touches, never a full suite CI already ran.
 
 **A spec is many tickets in one pull request.** The card is the spec: its
-body is the spec, its subtasks are the tickets, fetched the way the repo's
-`docs/agents/issue-tracker.md` says. Read the card and every subtask before
-the diff, then check the card's `Verify by` and each subtask's against the one
-pull request. One ticket
-left unproven is a FAIL. Every ticket the pull request delivers is
-closed on the head too, the way the repo's `docs/agents/issue-tracker.md`
-closes work; one still open FAILs.
+body is the spec, and its tickets are fetched the way the repo's
+`docs/agents/issue-tracker.md` says. Read the card and every ticket before the
+diff, then check the card's `Verify by` and each ticket's against the one pull
+request. One ticket left unproven is a FAIL. Every ticket the pull request
+delivers is closed on the head too, the way the repo's
+`docs/agents/issue-tracker.md` closes work; one still open FAILs.
 
 **What fails a PR:**
 - Work its ticket never asked for — check the commits are the ticket's own.
