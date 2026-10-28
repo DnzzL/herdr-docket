@@ -146,12 +146,12 @@ func initFleet(t *testing.T, dir string) string {
 func TestInitWritesTheTwoPipelineRoles(t *testing.T) {
 	dir := t.TempDir()
 	out := initFleet(t, dir)
-	for _, name := range []string{"dev", "reviewer", "example"} {
+	for _, name := range []string{"dev", "reviewer", "triager", "example"} {
 		if got := read(t, filepath.Join(dir, "roles", name+".md")); got == "" {
 			t.Errorf("roles/%s.md is empty", name)
 		}
 	}
-	for _, name := range []string{"dev", "reviewer"} {
+	for _, name := range []string{"dev", "reviewer", "triager"} {
 		if !strings.Contains(out, "wrote roles/"+name+".md") {
 			t.Errorf("output must say it wrote roles/%s.md:\n%s", name, out)
 		}
@@ -166,9 +166,29 @@ func TestTheRolesInitWritesAreTheOnesTheDocsShow(t *testing.T) {
 	examples := read(t, "../../docs/examples.md")
 	dir := t.TempDir()
 	initFleet(t, dir)
-	for _, name := range []string{"dev", "reviewer"} {
+	for _, name := range []string{"dev", "reviewer", "triager"} {
 		if !strings.Contains(examples, read(t, filepath.Join(dir, "roles", name+".md"))) {
 			t.Errorf("role %s is not in docs/examples.md verbatim — one of the two has drifted", name)
+		}
+	}
+}
+
+// The triager's role is the grill's whole method (TASK-86): when to ask,
+// how a round reads, the confirm round that alone publishes, and the label
+// that forces a round.
+func TestTheTriagerRoleCarriesTheGrill(t *testing.T) {
+	dir := t.TempDir()
+	initFleet(t, dir)
+	role := read(t, filepath.Join(dir, "roles", "triager.md"))
+	for _, want := range []string{
+		"ASSUMPTIONS:",                                    // the clear/uncertain rule
+		"## Round 2\n1. ", "(reco)", "T. try and show me", // the Round format
+		"Build on these assumptions?", // the final confirm round
+		"`grill`",                     // the label that forces a round
+		"task ask <id>", "docs/agents/issue-tracker.md",
+	} {
+		if !strings.Contains(role, want) {
+			t.Errorf("roles/triager.md lacks %q", want)
 		}
 	}
 }

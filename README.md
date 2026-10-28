@@ -58,7 +58,11 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 
 1. **A grill** turns an unclear idea into a spec and its tickets, committed
    in the repo's own tracker — each says what to do and how a stranger proves
-   it is done.
+   it is done. The grill is a card state: an idea filed in `Triage` goes to
+   the queue's `triager`, which posts a round of questions and moves it to
+   `Question`; you answer from anywhere with `herdr-docket task answer <id>
+   "1.A 2.B"`, and once you confirm its assumptions it publishes the spec in
+   `To Do` for the author.
 2. **A card** either is the spec — its body the spec, with its tickets under
    it — or, when the task is clear, carries its own *Done when* and
    *Verify by* and is worked as one ticket's worth of work.

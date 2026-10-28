@@ -11,7 +11,7 @@ tracker (see [Where the queue lives](queues.md)).
 ```
 ~/fleet/
 ├── FLEET.md           # the brief every agent shares
-├── roles/             # methods agents share: dev, reviewer
+├── roles/             # methods agents share: dev, reviewer, triager
 └── agents/
     ├── dev/AGENT.md       # who the agents are: an author…
     └── reviewer/AGENT.md  # …and the verifier its queue names

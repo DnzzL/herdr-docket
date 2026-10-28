@@ -54,6 +54,10 @@ const (
 	// to it with the verifier's notes.
 	TriggerVerify Trigger = "verify"
 	TriggerRework Trigger = "rework"
+	// TriggerTriage: the queue's triager grilling a card in triage (TASK-86).
+	// It ends when the card is published to To Do or asked to Question,
+	// never in the pipeline.
+	TriggerTriage Trigger = "triage"
 )
 
 // NewID names a run in the log: the task plus nanoseconds, unique enough for

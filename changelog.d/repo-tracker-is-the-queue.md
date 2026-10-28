@@ -41,6 +41,12 @@
 - **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
   tick 3s ago`, `daemon down for 4 min` once no tick has run for three
   intervals, or `daemon never started`.
+- **The triager grills a card one round per run.** A `Triage` card starts a
+  run of the source's `triager` (`trigger: triage` in `history`): it posts a
+  `## Round N` and moves the card to `Question`, or rewrites it as the spec,
+  publishes its tickets and hands it to the author in `To Do` — no pull
+  request, no verifier. A run that leaves the card in `Triage` fails. `init`
+  now writes `roles/triager.md`; name it with `role: triager`.
 - **An idea filed without an assignee goes to triage.** `herdr-docket task
   create` with no `-a` on a queue that names a `triager:` files the card in
   `Triage` and says so; with `-a`, or no triager, it lands as before.

@@ -338,9 +338,15 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		delete(r.tasks, t.ID)
 		r.mu.Unlock()
 	}()
+	// A card in triage is the triager's (TASK-86): its run publishes the card
+	// or asks the owner, and either move hands it back to the queue. There is
+	// no pull request to judge, so nothing follows it.
+	if t.Triage {
+		trigger = history.TriggerTriage
+	}
 	res, err := r.attempt(src, t, a, trigger, "")
 	r.release(key)
-	if err != nil || !res.delivered {
+	if err != nil || !res.delivered || trigger == history.TriggerTriage {
 		return err
 	}
 	return r.pipeline(src, t, a, res.pr)
@@ -358,6 +364,7 @@ type outcome struct {
 // first run, a rework, or a verifier's run when pr names what it judges.
 func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger, pr string) (outcome, error) {
 	verifying := pr != "" && trigger == history.TriggerVerify
+	triaging := trigger == history.TriggerTriage
 	piped := r.settings.PipelineFor(t.ID).Verifier != ""
 	rec := recorder{id: history.NewID(t.ID), task: t.ID, agent: a.Name, trigger: trigger, started: time.Now()}
 	var errInspect error
@@ -367,10 +374,20 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 		r.notifyFailed(t, err.Error())
 		return outcome{}, err
 	}
-	r.claim(src, t.ID)
+	// A triage card's status is the grill's state: claiming it In Progress
+	// would take it out of triage before the triager has said anything.
+	if !triaging {
+		r.claim(src, t.ID)
+	}
 	words := r.settings.WordsFor(t.ID)
 	text := prompt.Assemble(a, v, r.fleetDir, words)
 	switch {
+	case triaging:
+		author := v.Assignee
+		if author == "" {
+			author = r.settings.Defaults().For(t.ID)
+		}
+		text = prompt.Triage(a, v, author, r.fleetDir)
 	case verifying:
 		text = prompt.Verify(a, v, pr, r.fleetDir)
 	case piped:
@@ -455,7 +472,14 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 	// fleet.yaml as it is now, and a PR left on an open task is a delivery
 	// either way, never a silent run to close Failed.
 	var out outcome
-	if err == nil {
+	if err == nil && triaging {
+		// The triager's whole report is the card's move: out of triage —
+		// published to To Do, asked to Question — or the run did nothing.
+		if after, gerr := src.Get(t.ID); gerr == nil && after.Triage {
+			err = fmt.Errorf("%s: the triager left the card in triage — neither published nor asked", t.ID)
+		}
+	}
+	if err == nil && !triaging {
 		if verifying {
 			out.verdict, out.patch, _ = history.VerificationFor(rec.id)
 			out.delivered = out.verdict != ""
@@ -485,7 +509,10 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 		}
 		err = fmt.Errorf("%s: the agent never settled — %s past its timeout, %s", t.ID, lateWindow(a), ending)
 	}
-	final, handedOn, reported := r.reconcile(src, t.ID, a.Name, err, out.delivered)
+	final, handedOn, reported := r.reconcile(src, t.ID, a.Name, err, out.delivered || triaging)
+	// A card the triager asked about may read closed to the fleet (a
+	// question waits on a human), yet it was handed back, not abandoned.
+	handedOn = handedOn || (triaging && err == nil)
 	out.delivered = out.delivered && handedOn
 	// The guard exists to keep a workspace a run left behind. A give-up
 	// closed its own on purpose and said why on the task and in the
