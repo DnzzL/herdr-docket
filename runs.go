@@ -369,7 +369,7 @@ func renderPane(d paneData, width int) []string {
 	var questions, blocked, held []string
 	for _, t := range d.Queue {
 		switch {
-		case t.Phase == string(work.PhaseQuestion):
+		case t.Question:
 			questions = append(questions, "  ? "+t.ID+" "+t.Title)
 		case !t.Blocked && t.Verdict != work.Blocked:
 		case merges[t.ID] != "":

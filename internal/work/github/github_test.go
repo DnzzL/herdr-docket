@@ -200,8 +200,8 @@ func TestTheTriageAndQuestionColumnsAreTheGrills(t *testing.T) {
 	if got := byID[strconv.Itoa(idea)]; !got.Open || !got.Triage || got.Blocked || got.Phase != "Triage" {
 		t.Errorf("idea = %+v, want open, in triage, not blocked", got)
 	}
-	if got := byID[strconv.Itoa(asked)]; !got.Blocked || got.Triage || got.Phase != "Question" {
-		t.Errorf("asked = %+v, want blocked on the owner, not in triage", got)
+	if got := byID[strconv.Itoa(asked)]; !got.Question || got.Blocked || got.Triage || got.Phase != "Question" {
+		t.Errorf("asked = %+v, want a question, not blocked, not in triage", got)
 	}
 }
 

@@ -112,8 +112,8 @@ func TestTriageIsOpenWorkAndAQuestionWaitsOnAHuman(t *testing.T) {
 		if tri := items[0]; !tri.Open || !tri.Triage || tri.Blocked {
 			t.Errorf("%s: triage card = %+v, want open, in triage, not parked", tc.name, tri)
 		}
-		if q := items[1]; q.Open || q.Triage || !q.Blocked {
-			t.Errorf("%s: question card = %+v, want not open, parked on a human", tc.name, q)
+		if q := items[1]; q.Open || q.Triage || q.Blocked || !q.Question {
+			t.Errorf("%s: question card = %+v, want not open, a question, not blocked", tc.name, q)
 		}
 	}
 }

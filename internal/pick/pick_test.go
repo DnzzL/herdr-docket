@@ -347,3 +347,14 @@ func TestATriageCardWithNoTriagerIsNotPicked(t *testing.T) {
 		t.Fatalf("a triage card with no triager is not an unknown agent: %v", res.Unknown)
 	}
 }
+
+// A card in Question waits on its owner's answer: open on a board that has
+// only open and closed, yet no run can answer for the owner.
+func TestAQuestionCardIsNeverPicked(t *testing.T) {
+	q := open("T-1", 0, "dev")
+	q.Question = true
+	s := fleet.Settings{Source: fleet.SourceConfig{Triager: "dev"}}
+	if res := Next([]work.Task{q}, agents("dev"), s.Defaults()); res.Task != nil {
+		t.Fatalf("picked a question card: %+v", res.Task)
+	}
+}

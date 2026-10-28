@@ -162,23 +162,21 @@ func (s *Source) BaseBranch(string) (string, error) {
 // they route the card, so they are written in the project's word for them, and
 // a project with no such word is told so rather than silently skipped.
 func (s *Source) SetPhase(id string, phase work.Phase) error {
-	if phase == work.PhaseQuestion || phase == work.PhaseTriage {
-		word, role := s.vocab.Question, "question"
-		if phase == work.PhaseTriage {
-			word, role = s.vocab.Triage, "triage"
-		}
+	word := s.vocab.Word(phase)
+	switch phase {
+	case work.PhaseQuestion, work.PhaseTriage:
 		if word == "" {
+			role := strings.ToLower(string(phase))
 			return fmt.Errorf("%s: this project's statuses name no %s word — add `%s:` to the source's statuses", id, role, role)
 		}
-		return s.client.SetStatus(id, word)
-	}
-	if phase != work.PhaseInProgress {
+	case work.PhaseInProgress:
+		if word == "" {
+			return nil
+		}
+	default:
 		return fmt.Errorf("phase %q: the backlogmd adapter does not know it", phase)
 	}
-	if s.vocab.InProgress == "" {
-		return nil
-	}
-	return s.client.SetStatus(id, s.vocab.InProgress)
+	return s.client.SetStatus(id, word)
 }
 
 // asTask maps a Backlog.md task onto the fleet's vocabulary. A task is open
@@ -192,6 +190,7 @@ func (s *Source) asTask(t task) work.Task {
 		Open:      s.vocab.Open(t.Status),
 		Blocked:   s.vocab.Parked(t.Status),
 		Triage:    s.vocab.InTriage(t.Status),
+		Question:  s.vocab.InQuestion(t.Status),
 		Phase:     s.vocab.Phase(t.Status),
 		Verdict:   s.vocab.VerdictOf(t.Status),
 		Priority:  rank(t.Priority),

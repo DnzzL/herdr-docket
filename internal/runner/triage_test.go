@@ -52,7 +52,7 @@ func (tr *triage) run() error {
 // to Question, waiting on the owner.
 func ask(b *fakeBoard) {
 	it := b.items["TASK-1"]
-	it.Triage, it.Phase = false, string(work.PhaseQuestion)
+	it.Triage, it.Question, it.Phase = false, true, string(work.PhaseQuestion)
 	b.items["TASK-1"] = it
 }
 

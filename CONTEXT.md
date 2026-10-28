@@ -28,7 +28,9 @@ _Avoid_: unfinished, active, pending, in-progress
 **Phase**:
 Where a task stands, in the fleet's words: _Triage_, _Question_, _To Do_ and _In Progress_, plus the
 three endings it shares with Verdict. Display only — nothing about a phase
-decides what runs.
+decides what runs: Triage and Question route a card, so the adapter carries
+them as their own flags on the task, and the fleet reads those, never the
+phase word.
 _Avoid_: status, state, column
 
 **Verdict**:
@@ -128,15 +130,17 @@ the gate.
 _Avoid_: review, approval
 
 **Triage**:
-The status of a card whose idea is not yet a spec. The queue's triager gets
-it whatever its assignee says, and either publishes it as a spec back to the
-author in _To Do_ or asks a Question. No triager, the card waits.
+The status of a card whose idea is not yet a spec, carried as the task's
+Triage flag. The queue's triager gets it whatever its assignee says, and
+either publishes it as a spec back to the author in _To Do_ or asks a
+Question. No triager, the card waits. A triage run works in the repo root,
+never a worktree.
 _Avoid_: inbox, draft, grooming
 
 **Question**:
 The status of a card whose grill waits on the owner's answer: a round of
-numbered questions in a note. Never picked; the answer sends it back to
-Triage.
+numbered questions in a note, carried as the task's Question flag — not
+Blocked. Never picked; the answer sends it back to Triage.
 _Avoid_: blocked (a Verdict), waiting, needs-info
 
 **Triager**:

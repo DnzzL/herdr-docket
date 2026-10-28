@@ -17,7 +17,7 @@ func paneFixture() paneData {
 		Daemon: "daemon down for 4 min",
 		Now:    now,
 		Queue: []work.Task{
-			{ID: "TASK-1", Title: "Which store? " + long, Open: true, Blocked: true, Phase: string(work.PhaseQuestion)},
+			{ID: "TASK-1", Title: "Which store? " + long, Question: true, Phase: string(work.PhaseQuestion)},
 			{ID: "TASK-2", Title: "Parked " + long, Open: true, Blocked: true, Phase: "Blocked"},
 			{ID: "TASK-3", Title: "Held " + long, Verdict: work.Blocked, Phase: "Blocked"},
 			{ID: "TASK-4", Title: "Plain todo " + long, Open: true, Phase: string(work.PhaseTodo)},

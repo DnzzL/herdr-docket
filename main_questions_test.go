@@ -16,7 +16,7 @@ const threeQuestionRound = "## Round 2\n" +
 	"3. How long is it kept?\n   A. forever (reco)\n   B. 30 days\n"
 
 func questionSource(title string) *phasingSource {
-	card := work.Task{ID: "TASK-2", Title: title, Phase: string(work.PhaseQuestion), Notes: threeQuestionRound}
+	card := work.Task{ID: "TASK-2", Title: title, Question: true, Phase: string(work.PhaseQuestion), Notes: threeQuestionRound}
 	return &phasingSource{fakeSource: fakeSource{
 		items: []work.Task{card, {ID: "TASK-3", Title: "busy", Open: true, Phase: string(work.PhaseInProgress)}},
 		item:  card,

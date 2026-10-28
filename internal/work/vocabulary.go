@@ -136,13 +136,37 @@ func (v Vocabulary) InTriage(status string) bool {
 	return status != "" && status == v.Triage
 }
 
+// InQuestion reports whether a status is this project's question word: a
+// grill round the owner has not answered (TASK-86).
+func (v Vocabulary) InQuestion(status string) bool {
+	return status != "" && status == v.Question
+}
+
+// Word is the table read the other way: the project's word for a phase the
+// fleet writes, empty when the project has none. The one phase↔word mapping
+// every adapter with a status vocabulary writes through.
+func (v Vocabulary) Word(p Phase) string {
+	switch p {
+	case PhaseTodo:
+		return v.Todo
+	case PhaseInProgress:
+		return v.InProgress
+	case PhaseTriage:
+		return v.Triage
+	case PhaseQuestion:
+		return v.Question
+	}
+	return ""
+}
+
 // Parked reports whether a status is one that waits on a human — this
-// project's own blocked word, or its question word (a grill round the owner
-// has not answered). Written only where the queue names one, a
+// project's own blocked word. A question waits on a human too, but it is
+// the grill's own state (InQuestion), not a block. Written only where the
+// queue names one, a
 // task the vocabulary does not know at all is not parked by guess: the
 // whitelist above already leaves it invisible to routing, and inventing a
 // parked state for a column the fleet never mapped would be a second
 // vocabulary, not a translation.
 func (v Vocabulary) Parked(status string) bool {
-	return status != "" && (status == v.Blocked || status == v.Question)
+	return status != "" && status == v.Blocked
 }

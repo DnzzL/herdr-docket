@@ -187,7 +187,7 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 		// a task parked on a human (TASK-53): the fleet will never act on it,
 		// the human it waits on is the one who moves it, and a comment would
 		// only re-read the wall it stands against.
-		if !t.Open || t.Blocked {
+		if !t.Open || t.Blocked || t.Question {
 			routable = append(routable, t)
 			continue
 		}

@@ -20,6 +20,10 @@ import (
 // that parked the work. A backend that cannot say which of its open
 // statuses stands for parked leaves it false, exactly as one leaves Verdict
 // empty.
+// Triage and Question are the grill's two states (TASK-86), read by the
+// adapter off its own status, never off Phase: Triage is open work routed to
+// the queue's triager; Question waits on the owner's answer, so nothing picks
+// it — not Blocked, which is the queue's own parked word.
 // Phase is where it stands in the fleet's words, for display only — written
 // best-effort, never read back; the adapter is what translates its backend's
 // own label into one. Verdict is how a closed task ended, when the backend can
@@ -42,7 +46,10 @@ type Task struct {
 	Blocked  bool
 	// Triage is true for an open card in the queue's triage status: an idea
 	// to grill, routed to the queue's triager whatever its assignee says.
-	Triage    bool
+	Triage bool
+	// Question is true for a card in the queue's question status: a grill
+	// round waits on the owner's answer.
+	Question  bool
 	Phase     string
 	Verdict   Verdict
 	Priority  int
