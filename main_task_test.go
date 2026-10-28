@@ -136,13 +136,14 @@ func TestTaskViewShowsBodyNotesAndCriteria(t *testing.T) {
 	src := &fakeSource{item: work.Task{
 		ID: "TASK-2", Title: "B", Assignee: "dev", Open: true, Phase: "To Do",
 		Body: "do it", Notes: "so far",
+		Labels:   []string{"grill"},
 		Criteria: []work.Criterion{{Index: 1, Text: "works"}},
 	}}
 	got, err := runTask(t, src, "view", "TASK-2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"TASK-2", "do it", "so far", "works"} {
+	for _, want := range []string{"TASK-2", "do it", "so far", "works", "Labels: grill"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("view must show %q:\n%s", want, got)
 		}

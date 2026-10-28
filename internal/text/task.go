@@ -26,6 +26,9 @@ func TaskDetail(it work.Task) string {
 		who = "-"
 	}
 	fmt.Fprintf(&b, "%s — %s\n%s · %s · %s\n", it.ID, it.Title, state, it.Phase, who)
+	if len(it.Labels) > 0 {
+		fmt.Fprintf(&b, "Labels: %s\n", strings.Join(it.Labels, ", "))
+	}
 	if it.Body != "" {
 		fmt.Fprintf(&b, "\n## Description\n\n%s\n", it.Body)
 	}

@@ -12,7 +12,7 @@
 | `herdr-docket list` | the queue, grouped by phase, with the routed agent |
 | `herdr-docket run TASK-12` | run one task now |
 | `herdr-docket task list` | the queue as the agent sees it (`--all` includes closed work) |
-| `herdr-docket task view ID` | one task: body, notes, criteria, and who it is routed to |
+| `herdr-docket task view ID` | one task: its labels, body, notes, criteria, and who it is routed to |
 | `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria); with no `-a` on a queue that names a `triager`, the card is created straight in `triage`. Prints the status it landed in |
 | `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-docket task note ID "…"` | say where things stand without closing |
