@@ -37,7 +37,7 @@ func TestPhasesOfKeepsTheEmptyPhase(t *testing.T) {
 // the same words the fleet writes its verdicts in. The order is built from the
 // verdicts rather than retyped beside them, so the two cannot drift.
 func TestPhaseOrderIsTheOpenPhasesThenTheVerdicts(t *testing.T) {
-	want := []string{"To Do", "In Progress", "Blocked", "Failed", "Done"}
+	want := []string{"To Do", "In Progress", "Triage", "Question", "Blocked", "Failed", "Done"}
 	if !reflect.DeepEqual(phaseOrder, want) {
 		t.Fatalf("phaseOrder = %v, want %v", phaseOrder, want)
 	}

@@ -15,6 +15,10 @@ type Result struct {
 	Task    *work.Task
 	Agent   fleet.Agent
 	Unknown []work.Task
+	// Untriaged are triaged cards whose queue names no triager (TASK-86). They
+	// are open, nobody will pick them up, and the daemon says so rather than
+	// letting an idea wait in a column nothing reads.
+	Untriaged []work.Task
 }
 
 // Next picks the most urgent open task whose assignee is a known agent.
@@ -39,7 +43,10 @@ func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defau
 	// word reaches pick through the task — not a literal.
 	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
-		if it.Open && !it.Blocked {
+		// A card waiting for the owner's answer is open and nobody's to run:
+		// the question is a person's, and another run cannot answer it
+		// (TASK-86). It comes back to the queue when the answer does.
+		if it.Open && !it.Blocked && !it.Asking {
 			open = append(open, it)
 		}
 	}
@@ -52,6 +59,9 @@ func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defau
 	for i, it := range open {
 		name := AssigneeFor(it, defaults)
 		if name == "" {
+			if it.Triaging {
+				res.Untriaged = append(res.Untriaged, it)
+			}
 			continue
 		}
 		agent, ok := agents[name]
@@ -91,9 +101,15 @@ func Before(a, b work.Task) bool {
 }
 
 // AssigneeFor is the one routing rule: the task's assignee, or the default
-// agent for the queue it came from when it has none. Every surface that routes
-// a task (daemon, board, CLI) must go through this, or they drift apart.
+// agent for the queue it came from when it has none. A triaged card is the
+// exception — its queue's triager owns the grill whatever the card names, and
+// a queue with no triager leaves it to nobody rather than to its assignee
+// (TASK-86). Every surface that routes a task (daemon, board, CLI) must go
+// through this, or they drift apart.
 func AssigneeFor(it work.Task, defaults fleet.Defaults) string {
+	if it.Triaging {
+		return defaults.TriagerFor(it.ID)
+	}
 	if it.Assignee != "" {
 		return it.Assignee
 	}

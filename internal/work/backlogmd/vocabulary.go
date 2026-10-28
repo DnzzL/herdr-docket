@@ -15,6 +15,8 @@ func DefaultVocabulary() Vocabulary {
 	return Vocabulary{
 		Todo:       statusToDo,
 		InProgress: statusInProgress,
+		Triage:     statusTriage,
+		Question:   statusQuestion,
 		Done:       statusDone,
 		Failed:     statusFailed,
 		Blocked:    statusBlocked,

@@ -1,8 +1,11 @@
 package backlogmd
 
 import (
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // A project that keeps its own status words is still a queue the fleet can
@@ -86,5 +89,54 @@ func TestAVocabularyMustNameEveryEnding(t *testing.T) {
 	}
 	if got := OrDefault(Vocabulary{}); got != DefaultVocabulary() {
 		t.Errorf("orDefault = %+v, want the fleet's own words", got)
+	}
+}
+
+// The grill's three moves reach the project's own words, and a project that
+// has no word for the state asked for refuses rather than writing nothing:
+// a card in a column nothing reads is an idea lost (TASK-86).
+func TestMoveWritesTheProjectsOwnGrillWords(t *testing.T) {
+	v := DefaultVocabulary()
+	f := &fakeClient{}
+	s := NewWith("", f, v, nil)
+	for _, tc := range []struct {
+		phase work.Phase
+		want  string
+	}{
+		{work.PhaseTriage, v.Triage},
+		{work.PhaseQuestion, v.Question},
+		{work.PhaseTodo, v.Todo},
+	} {
+		f.stages = nil
+		if err := s.Move("T-1", tc.phase); err != nil {
+			t.Fatalf("Move(%q): %v", tc.phase, err)
+		}
+		if !reflect.DeepEqual(f.stages, []string{tc.want}) {
+			t.Errorf("Move(%q) wrote %v, want %q", tc.phase, f.stages, tc.want)
+		}
+	}
+	if err := s.Move("T-1", work.PhaseInProgress); err == nil {
+		t.Error("a phase outside the grill must be refused")
+	}
+}
+
+// A project that names no triage/question words cannot grill, and says so
+// instead of moving a card to a status its CLI would reject.
+func TestMoveRefusesAProjectWithoutTheGrillWords(t *testing.T) {
+	plain := Vocabulary{Todo: "t", InProgress: "p", Done: "d", Failed: "f", Blocked: "b"}
+	s := NewWith("", &fakeClient{}, plain, nil)
+	if err := s.Move("T-1", work.PhaseTriage); err == nil {
+		t.Fatal("want a refusal when the project names no triage word")
+	}
+}
+
+// The triager's spec replaces the body the author's prompt reads.
+func TestWriteBodyReplacesTheDescription(t *testing.T) {
+	f := &fakeClient{}
+	if err := NewWith("", f, Vocabulary{}, nil).WriteBody("T-1", "## Done when\n\nthe spec"); err != nil {
+		t.Fatal(err)
+	}
+	if f.body != "## Done when\n\nthe spec" {
+		t.Fatalf("body = %q", f.body)
 	}
 }

@@ -130,12 +130,12 @@ func initFleet(t *testing.T, dir string) string {
 func TestInitWritesTheTwoPipelineRoles(t *testing.T) {
 	dir := t.TempDir()
 	out := initFleet(t, dir)
-	for _, name := range []string{"dev", "reviewer", "example"} {
+	for _, name := range []string{"dev", "reviewer", "triager", "example"} {
 		if got := read(t, filepath.Join(dir, "roles", name+".md")); got == "" {
 			t.Errorf("roles/%s.md is empty", name)
 		}
 	}
-	for _, name := range []string{"dev", "reviewer"} {
+	for _, name := range []string{"dev", "reviewer", "triager"} {
 		if !strings.Contains(out, "wrote roles/"+name+".md") {
 			t.Errorf("output must say it wrote roles/%s.md:\n%s", name, out)
 		}
@@ -150,7 +150,7 @@ func TestTheRolesInitWritesAreTheOnesTheDocsShow(t *testing.T) {
 	examples := read(t, "../../docs/examples.md")
 	dir := t.TempDir()
 	initFleet(t, dir)
-	for _, name := range []string{"dev", "reviewer"} {
+	for _, name := range []string{"dev", "reviewer", "triager"} {
 		if !strings.Contains(examples, read(t, filepath.Join(dir, "roles", name+".md"))) {
 			t.Errorf("role %s is not in docs/examples.md verbatim — one of the two has drifted", name)
 		}
@@ -170,7 +170,7 @@ func TestInitKeepsARoleTheFleetAlreadyHas(t *testing.T) {
 	if got := read(t, mine); got != "my own method" {
 		t.Fatalf("roles/dev.md overwritten: %q", got)
 	}
-	for _, name := range []string{"dev", "reviewer"} {
+	for _, name := range []string{"dev", "reviewer", "triager"} {
 		if !strings.Contains(out, "skipped roles/"+name+".md") {
 			t.Errorf("output must say it skipped roles/%s.md:\n%s", name, out)
 		}
@@ -197,6 +197,23 @@ func TestEveryVerdictExampleCarriesItsNote(t *testing.T) {
 			if !strings.Contains(example, "--note") {
 				t.Errorf("%s: a task verdict example without --note teaches a bare verdict: %q", path, example)
 			}
+		}
+	}
+}
+
+// The shipped triager must say the four things a triage run cannot invent:
+// when an idea is clear, what a round looks like, that the last round is the
+// confirmation, and that the grill label forces the questions (TASK-86).
+func TestTheShippedTriagerNamesTheGrillRules(t *testing.T) {
+	role := read(t, "roles/triager.md")
+	for _, want := range []string{
+		"clear", "uncertain", // the rule
+		"## Round 2",                  // the round format
+		"Build on these assumptions?", // the final confirm round
+		"grill",                       // the label that forces the questions
+	} {
+		if !strings.Contains(role, want) {
+			t.Errorf("roles/triager.md does not name %q", want)
 		}
 	}
 }

@@ -139,6 +139,25 @@ request and settles with it: merged, the task closes _done_; closed
 unmerged by a human, _failed_; still open, the hold stands.
 _Avoid_: reject, park
 
+**Grill**:
+Turning an unclear idea into a spec by putting numbered rounds of questions to
+its owner, as a state of the card rather than a live session: a card in the
+queue's _triage_ word is the triager's to work, and one in _question_ waits
+for the owner's answer. Nothing is built off a guessed product decision.
+_Avoid_: interview, discovery, kickoff (a session's words, not a card's)
+
+**Round**:
+One note on a grilling card: numbered questions, each with the options and a
+recommendation. The owner's reply is `## Answer N`, and the last round is
+always the agreement to build on the named assumptions.
+_Avoid_: questionnaire, batch
+
+**Triager**:
+The agent a queue names to run its grill (`triager:` on the source). It either
+writes the spec and hands the card to the author in _To Do_, or asks the next
+round and parks the card. Never closes an idea.
+_Avoid_: interviewer, PM
+
 ## In the software-factory language
 
 docket's words map onto the shared vocabulary of the `software-factory` skill

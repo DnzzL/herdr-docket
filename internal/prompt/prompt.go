@@ -72,6 +72,12 @@ func allComments(s string) bool {
 // outside it is what keeps the one contract the whole system depends on
 // pinned by a test.
 func assemble(a fleet.Agent, v work.Task, brief, fleetDir string, words fleet.Words) string {
+	// A triaged card is not ended, it is specced or asked about: the grill has
+	// its own protocol, and the verdict protocol beside it would teach a run
+	// to close the idea it was handed (TASK-86).
+	if v.Triaging {
+		return head(a, v, brief) + grill(a, v, fleetDir)
+	}
 	return head(a, v, brief) + protocol(a, v, fleetDir, words, false)
 }
 
@@ -93,7 +99,81 @@ fix what the verifier found, push, and deliver the same PR again.
 
 `, pr, pr)
 	}
+	if v.Triaging {
+		return head(a, v, brief) + grill(a, v, fleetDir)
+	}
 	return head(a, v, brief) + rework + protocol(a, v, fleetDir, words, true)
+}
+
+// grill is the triager's protocol: the card is an idea, and the run either
+// turns it into a spec the author can build or asks the owner the one question
+// that is still open. Neither ending closes the card.
+func grill(a fleet.Agent, v work.Task, fleetDir string) string {
+	return fmt.Sprintf(`## The grill — this card is in triage
+
+The idea has no spec yet, and you are the triager this queue routes it to.
+Decide one thing: can its `+"`Done when`"+` and `+"`Verify by`"+` be written
+without settling a product decision?
+
+**Clear** — every assumption you still make goes under `+"`ASSUMPTIONS:`"+` in
+the body, and only decisions the owner would call obvious stay in. Rewrite the
+card's body as the spec, publish its tickets the way this repo's
+`+"`docs/agents/issue-tracker.md`"+` says, hand it to the author and file it
+into the queue's pickup word:
+
+  herdr-docket task body %s "<the spec>"
+  herdr-docket task assign %s <the author>
+  herdr-docket task move %s todo
+
+**Uncertain** — anything a reasonable person could decide differently, or the
+card carries the `+"`grill`"+` label, which forces this path even when the idea looks
+clear. Post the next round and park the card:
+
+  herdr-docket task ask %s "<the round>"
+
+A round is a note readable without a tool, numbered from one, each question
+with the options you would accept and your recommendation marked:
+
+## Round 2
+1. What happens to the audio when it is sent?
+   A. attached as a file (reco)
+   B. text in a comment
+   T. try and show me
+
+The owner answers in the form `+"`1.A 2.T 3. free text`"+`, and the answer lands
+as `+"`## Answer N`"+` on this card, which moves it back to triage for your next run.
+Ask only what you need; a round of ten questions is a round the owner will not
+answer. After two clear rounds the last round is always the same:
+
+## Round N
+Build on these assumptions?
+   A. yes
+   B. change …
+
+Only the yes publishes; a change answers the next round.
+
+## Verify, then end the run — required, exactly once
+
+Say what happened as you go, so the next reader has the thread:
+
+  herdr-docket task note %s "<what you did and why>"
+
+Then end with exactly one of the two endings above — the card specced and in
+the pickup word, or the round asked and the card in question. Do not close the
+card: a `+"`task done`"+`, `+"`task fail`"+` or `+"`task block`"+` on an idea ends it before
+anyone builds it. If you can do neither, close it with the single question that
+would settle it exactly as the verdict protocol below says.
+
+## Ending the run — required, exactly once
+
+  herdr-docket task done %s --note "<...>"    only if the idea is clear and specced
+  herdr-docket task fail %s --note "<why the grill could not proceed>"
+  herdr-docket task block %s --note "<what a human must decide>"
+
+The ending command is the last tool call of the run: **execute it, then
+summarise**. A run that says its conclusion in prose and stops is filed as one
+that reported nothing. (The fleet dir, for context, is %s.)
+`, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, fleetDir)
 }
 
 // Verify is the verifier's prompt: the same layers and task, the pull request

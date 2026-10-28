@@ -757,3 +757,135 @@ type bareSource struct{ work.Source }
 func (f bareSource) Create(title, body, assignee string) (string, error) {
 	return "T-1", nil
 }
+
+// grillSource is the fake queue with the grill's two capabilities, so the
+// verbs are tested against what the port offers rather than against the CLI's
+// own copy of the rules.
+type grillSource struct {
+	*fakeSource
+	moves []work.Phase
+	body  string
+}
+
+func (g *grillSource) Move(id string, phase work.Phase) error {
+	g.moves = append(g.moves, phase)
+	return g.err
+}
+
+func (g *grillSource) WriteBody(id, body string) error {
+	g.body = body
+	return g.err
+}
+
+// The owner's answer lands on the card as the reply to the latest round, and
+// the card goes back to triage for the triager's next run (TASK-86).
+func TestAnswerPostsTheLatestRoundNumberAndReturnsToTriage(t *testing.T) {
+	src := &grillSource{fakeSource: &fakeSource{item: work.Task{
+		ID: "TASK-1", Triaging: false, Asking: true,
+		Notes: "## Round 1\n\nold\n\n## Round 2\n\nnew",
+	}}}
+	got, err := runTask(t, src, "answer", "TASK-1", "1.A 2.T 3. keep it 30 days")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(src.comments) != 1 || !strings.HasPrefix(src.comments[0], "## Answer 2") {
+		t.Fatalf("the answer must head the latest round, got %q", src.comments)
+	}
+	if !strings.Contains(src.comments[0], "1.A 2.T 3. keep it 30 days") {
+		t.Fatalf("the answer text is missing: %q", src.comments[0])
+	}
+	if len(src.moves) != 1 || src.moves[0] != work.PhaseTriage {
+		t.Fatalf("the card must return to triage, got %v", src.moves)
+	}
+	if !strings.Contains(got, "answered round 2") {
+		t.Fatalf("the verb must say what it did: %q", got)
+	}
+}
+
+// An answer to nothing is not an answer: a card the triager never asked a
+// round on has no ## Round to reply to, and the CLI says so rather than
+// writing a note nobody will read.
+func TestAnswerWithNoRoundFails(t *testing.T) {
+	src := &grillSource{fakeSource: &fakeSource{item: work.Task{ID: "TASK-1", Notes: "just a comment"}}}
+	_, err := runTask(t, src, "answer", "TASK-1", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "no ## Round") {
+		t.Fatalf("want a refusal naming the missing round, got %v", err)
+	}
+	if len(src.comments) != 0 || len(src.moves) != 0 {
+		t.Fatalf("a refused answer must touch nothing: %q %v", src.comments, src.moves)
+	}
+}
+
+// Asking numbers the round after the last one and parks the card where the
+// fleet never picks it — one write each, in that order.
+func TestAskNumbersTheRoundAndParksInQuestion(t *testing.T) {
+	src := &grillSource{fakeSource: &fakeSource{item: work.Task{ID: "TASK-1", Notes: "## Round 2\n\nold"}}}
+	if _, err := runTask(t, src, "ask", "TASK-1", "1. Audio?"); err != nil {
+		t.Fatal(err)
+	}
+	if len(src.comments) != 1 || !strings.HasPrefix(src.comments[0], "## Round 3") {
+		t.Fatalf("the round must be numbered after the last, got %q", src.comments)
+	}
+	if len(src.moves) != 1 || src.moves[0] != work.PhaseQuestion {
+		t.Fatalf("the card must park in question, got %v", src.moves)
+	}
+}
+
+// The triager's clear ending: the spec replaces the body, and the card is
+// filed into the pickup word the author's run is picked from.
+func TestBodyWritesTheSpecAndMoveFilesTheCard(t *testing.T) {
+	src := &grillSource{fakeSource: &fakeSource{item: work.Task{ID: "TASK-1"}}}
+	if _, err := runTask(t, src, "body", "TASK-1", "## Done when\n\nthe spec"); err != nil {
+		t.Fatal(err)
+	}
+	if src.body != "## Done when\n\nthe spec" {
+		t.Fatalf("body = %q", src.body)
+	}
+	if _, err := runTask(t, src, "move", "TASK-1", "todo"); err != nil {
+		t.Fatal(err)
+	}
+	if len(src.moves) != 1 || src.moves[0] != work.PhaseTodo {
+		t.Fatalf("moves = %v, want To Do", src.moves)
+	}
+}
+
+// A queue with no grill statuses refuses the write instead of pretending it
+// happened: a card left in a column nothing reads is an idea lost.
+func TestGrillVerbsRefuseAQueueWithoutThoseStates(t *testing.T) {
+	plain := &fakeSource{item: work.Task{ID: "TASK-1", Notes: "## Round 1\n\nq"}}
+	for _, args := range [][]string{
+		{"answer", "TASK-1", "1.A"},
+		{"ask", "TASK-1", "1. ?"},
+		{"move", "TASK-1", "question"},
+	} {
+		if _, err := runTask(t, plain, args...); err == nil || !strings.Contains(err.Error(), "triage/question") {
+			t.Errorf("%v: want a refusal naming the missing states, got %v", args, err)
+		}
+	}
+	if _, err := runTask(t, plain, "body", "TASK-1", "the spec"); err == nil || !strings.Contains(err.Error(), "cannot replace a card's body") {
+		t.Errorf("body on a queue that cannot write one must be refused, got %v", err)
+	}
+	if len(plain.comments) != 0 {
+		t.Fatalf("refusals must not write: %q", plain.comments)
+	}
+}
+
+// A round number is read as the highest one, never the last in the text: a
+// re-posted round must not make the answer reply to an older question.
+func TestLatestRoundIsTheHighestNumber(t *testing.T) {
+	for _, tc := range []struct {
+		notes string
+		want  int
+		ok    bool
+	}{
+		{"no rounds here", 0, false},
+		{"## Round 1\n\n## Round 2", 2, true},
+		{"## Round 3\n\n## Round 2", 3, true},
+		{"## Round X", 0, false},
+	} {
+		got, ok := latestRound(tc.notes)
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("latestRound(%q) = %d, %v; want %d, %v", tc.notes, got, ok, tc.want, tc.ok)
+		}
+	}
+}

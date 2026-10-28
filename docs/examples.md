@@ -246,6 +246,101 @@ run is provisioned in a worktree of its own, cut at the pull request's head
 commit and removed when the verdict settles — never a tab on the checkout a
 human works in.
 
+## 5. A triager that grills an idea into a spec
+
+An idea is cheap to file and expensive to guess: if nobody settles its product
+decisions, an author invents them. The grill is a card state, not a live
+session — a card filed in the queue's triage word goes to this persona, which
+either writes the spec (every assumption named) or asks the owner a round of
+questions and parks the card until the answers come back.
+
+`agents/triager/AGENT.md` — the post: which repo it works, and the author it
+hands a specced card to.
+
+```markdown
+---
+workdir: ~/Projects/myapp
+workspace: root
+role: triager
+---
+
+You grill MyApp ideas into specs. The repo's `docs/agents/issue-tracker.md`
+says where a spec and its tickets are published; the author is `dev`.
+```
+
+`roles/triager.md` — the method it names with `role: triager`, shared by every
+triager the fleet has, in any repo ([sharing a method](agents.md#sharing-a-method-between-agents)):
+
+```markdown
+You are the triager: an idea arrives in the queue's triage word, and you turn
+it into a spec a stranger can build, or you ask the owner the one question
+that is still open. You never close an idea — you hand it on or you park it.
+
+**The clear/uncertain rule.** The idea is clear when its `Done when` and
+`Verify by` can be written without settling a product decision. Every
+assumption you still make goes under `ASSUMPTIONS:` in the spec; only
+decisions the owner would call obvious stay in. Anything a reasonable person
+could decide differently is uncertain, and an uncertain idea is asked about,
+never guessed. A card carrying the `grill` label is always uncertain, even
+when it looks clear: the owner asked for the questions.
+
+**A clear idea becomes the spec.** Rewrite the card's body as the spec —
+`Done when`, `Verify by`, the assumptions — publish its tickets the way this
+repo's `docs/agents/issue-tracker.md` says, assign the card to the author and
+file it into the queue's pickup word. The card stays open: the author's run is
+its next step, not yours.
+
+**An uncertain idea becomes a round.** Post the next round on the card and
+move it to the queue's question word. A round is readable without a tool:
+numbered questions, each with the options you would accept and your
+recommendation marked.
+
+## Round 2
+1. What happens to the audio when it is sent?
+   A. attached as a file (reco)
+   B. text in a comment
+   T. try and show me
+
+The owner answers in the form `1.A 2.T 3. free text`; the answer lands as
+`## Answer 2` on the card and moves it back to triage for your next run. Read
+the whole thread before asking: a question already answered is a round the
+owner will not answer twice. Ask only what blocks the spec, and few enough
+that a person can answer in two minutes.
+
+**The last round is always the same.** After two rounds that settled
+everything, the only thing left is the owner's go-ahead:
+
+## Round N
+Build on these assumptions?
+   A. yes
+   B. change …
+
+Only the yes publishes. A `B` comes back as an answer and the owner's change
+is the next round's subject.
+```
+
+Name it as the queue's triager and a card in the triage word routes here
+whatever assignee it names; a card parked in the question word is never
+picked up. The owner answers from wherever they are:
+
+```bash
+herdr-docket task answer myapp/TASK-12 "1.A 2.T 3. keep it 30 days"
+```
+
+which posts `## Answer 2` on the card and moves it back to triage. A `grill`
+label forces the questions even when the idea looks clear.
+
+```yaml
+sources:
+  myapp:
+    default_agent: dev
+    verifier: reviewer
+    triager: triager   # a card in Triage routes here, not to its assignee
+    statuses:
+      triage: Triage
+      question: Question
+```
+
 ## Composing them into one fleet
 
 The four are one system, and the coupling between them is a single queue — no

@@ -425,3 +425,52 @@ func TestTheVerifierIsToldThePRAndTheVerdictCommandOnly(t *testing.T) {
 		}
 	}
 }
+
+// A triaged card is specced or asked about, never closed: the run is told the
+// grill's rules and the two endings, and never the verdict protocol that
+// would end the idea (TASK-86).
+func TestATriagedCardGetsTheGrillProtocolNotTheVerdictOne(t *testing.T) {
+	got := Assemble(
+		fleet.Agent{Name: "triager", Persona: "You grill ideas."},
+		work.Task{ID: "TASK-7", Title: "an idea", Open: true, Triaging: true},
+		"/fleet", fleet.Words{Todo: "To Do", Done: "Done"},
+	)
+	for _, want := range []string{
+		"## The grill",
+		"task body TASK-7",
+		"task ask TASK-7",
+		"task move TASK-7 todo",
+		"## Round 2",
+		"Build on these assumptions?",
+		"`grill` label",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the triage prompt does not name %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{
+		"End with a verdict on your own task",
+		"Hand it on to another agent",
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("a triage run was told %q, which ends the card", unwanted)
+		}
+	}
+}
+
+// A question card's next run (the triager's, after the owner answered) is the
+// same grill: the card is back in triage by then, and asking and speccing are
+// still the only two endings.
+func TestTheGrillIsTheSameWhicheverAgentGrills(t *testing.T) {
+	got := Deliver(
+		fleet.Agent{Name: "triager", Persona: "P"},
+		work.Task{ID: "TASK-7", Open: true, Triaging: true},
+		"https://example.test/pr/1", "/fleet", fleet.Words{},
+	)
+	if !strings.Contains(got, "## The grill") {
+		t.Fatalf("a triaged card in a verifying queue still grills:\n%s", got)
+	}
+	if strings.Contains(got, "Your pull request came back") {
+		t.Fatal("a triaged card has no pull request to rework")
+	}
+}

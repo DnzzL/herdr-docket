@@ -24,6 +24,9 @@ type client interface {
 	// SetCriteria replaces the task's acceptance criteria — the write side of
 	// Create's criteria, which here go through the same edit verb.
 	SetCriteria(id string, criteria []string) error
+	// SetDescription replaces the task's body — what the triager writes when a
+	// grilled idea becomes the spec (TASK-86).
+	SetDescription(id, body string) error
 	// DefaultBranch is the queue's own answer for which ref its worktree runs
 	// branch from. Empty means the repo has none to name — the caller inherits
 	// the checkout's HEAD, which is what preceded this field.
@@ -169,6 +172,34 @@ func (s *Source) SetPhase(id string, phase work.Phase) error {
 	return s.client.SetStatus(id, s.vocab.InProgress)
 }
 
+// Move files a card into one of the grill's states, or out of the grill into
+// the pickup word once the triager has specced it (TASK-86). Unlike SetPhase
+// this is load-bearing — a card in Question is never picked — so a project
+// with no word for the phase asked for is an error rather than a no-op: the
+// caller can then say why the grill cannot run here.
+func (s *Source) Move(id string, phase work.Phase) error {
+	word := ""
+	switch phase {
+	case work.PhaseTriage:
+		word = s.vocab.Triage
+	case work.PhaseQuestion:
+		word = s.vocab.Question
+	case work.PhaseTodo:
+		word = s.vocab.Todo
+	default:
+		return fmt.Errorf("move %s: %q is not a grill state", id, phase)
+	}
+	if word == "" {
+		return fmt.Errorf("move %s: this project names no %q status — add it to statuses: for this queue", id, phase)
+	}
+	return s.client.SetStatus(id, word)
+}
+
+// WriteBody replaces the task's body with the spec the grill produced.
+func (s *Source) WriteBody(id, body string) error {
+	return s.client.SetDescription(id, body)
+}
+
 // asTask maps a Backlog.md task onto the fleet's vocabulary. A task is open
 // until a verdict has closed it: Done, Failed and Blocked are all closed to
 // the fleet, and Phase carries the fleet's word for wherever it stands.
@@ -179,6 +210,8 @@ func (s *Source) asTask(t task) work.Task {
 		Assignee:  assignee(t.Assignees),
 		Open:      s.vocab.Open(t.Status),
 		Blocked:   s.vocab.Parked(t.Status),
+		Triaging:  s.vocab.Triaging(t.Status),
+		Asking:    s.vocab.Asking(t.Status),
 		Phase:     s.vocab.Phase(t.Status),
 		Verdict:   s.vocab.VerdictOf(t.Status),
 		Priority:  rank(t.Priority),

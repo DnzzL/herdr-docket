@@ -367,7 +367,7 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 		r.notifyFailed(t, err.Error())
 		return outcome{}, err
 	}
-	r.claim(src, t.ID)
+	r.claim(src, v)
 	words := r.settings.WordsFor(t.ID)
 	text := prompt.Assemble(a, v, r.fleetDir, words)
 	switch {
@@ -588,13 +588,20 @@ func (r *Runner) mergeNeeded(t work.Task, pr, reason string) {
 // write is display only and best-effort: a binary backend has no such state,
 // and the run lock — not this — is what keeps two runs apart, so a backend
 // that cannot say it is not a reason to refuse the run.
-func (r *Runner) claim(src work.Source, id string) {
+//
+// A triaged card is left where it is (TASK-86): its status is what routes the
+// run, and painting over it would leave a card that is mid-grill looking like
+// ordinary work in hand — to the next tick and to the person reading the board.
+func (r *Runner) claim(src work.Source, t work.Task) {
+	if t.Triaging {
+		return
+	}
 	p, ok := src.(work.Phaser)
 	if !ok {
 		return
 	}
-	if err := p.SetPhase(id, work.PhaseInProgress); err != nil {
-		log.Printf("%s: mark as running: %v", id, err)
+	if err := p.SetPhase(t.ID, work.PhaseInProgress); err != nil {
+		log.Printf("%s: mark as running: %v", t.ID, err)
 	}
 }
 
@@ -629,6 +636,14 @@ func (r *Runner) reconcile(src work.Source, taskID, agent string, runErr error, 
 	// route it. Only on a clean run — a task reassigned by an agent that then
 	// crashed is still an unreported task.
 	if runErr == nil && (delivered || (v.Assignee != "" && v.Assignee != agent)) {
+		return "", true, true
+	}
+	// A card the run left waiting for the owner's answer is the grill's own
+	// open-on-purpose (TASK-86): the triager asked, and closing it here would
+	// end the idea instead of parking it. A card still in triage is not that —
+	// the run neither asked nor specced it — so it falls through to Failed and
+	// a human reopens it rather than the next tick spinning on the same card.
+	if runErr == nil && v.Asking {
 		return "", true, true
 	}
 	verdict, note := work.Failed, "fleet: the agent settled without reporting a verdict."

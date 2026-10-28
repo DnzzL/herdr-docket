@@ -14,9 +14,17 @@ import "fmt"
 type Vocabulary struct {
 	Todo       string `yaml:"todo"`
 	InProgress string `yaml:"in_progress"`
-	Done       string `yaml:"done"`
-	Failed     string `yaml:"failed"`
-	Blocked    string `yaml:"blocked"`
+	// Triage and Question are the grill's two words (TASK-86): a card in
+	// Triage waits for the queue's triager, and one in Question waits for the
+	// owner's answer. Both are open work — the card is not closed while it is
+	// being grilled — and Question is the one status the fleet never picks up.
+	// A queue that names neither is simply not grilled, and its triage column
+	// (if it has one) stays the humans'.
+	Triage   string `yaml:"triage"`
+	Question string `yaml:"question"`
+	Done     string `yaml:"done"`
+	Failed   string `yaml:"failed"`
+	Blocked  string `yaml:"blocked"`
 }
 
 // Validate refuses a half-written vocabulary. Every ending must have a word:
@@ -39,14 +47,20 @@ func (v Vocabulary) Validate() error {
 			return fmt.Errorf("statuses: names no %s — every phase and ending the fleet writes needs a word this project accepts", f.name)
 		}
 	}
+	// The grill's two words are one loop: a card sent to Question with no
+	// Triage to come back to is work that never returns, and a Triage with no
+	// Question to park in cannot ask. Both or neither.
+	if (v.Triage == "") != (v.Question == "") {
+		return fmt.Errorf("statuses: names one of triage/question — the grill needs both a word to wait for its triager in and one to wait for the owner's answer in")
+	}
 	return nil
 }
 
 // List is the vocabulary in board order, for whoever has to write it down.
 // A word the project does not have is left out rather than written empty.
 func (v Vocabulary) List() []string {
-	out := make([]string, 0, 5)
-	for _, s := range []string{v.Todo, v.InProgress, v.Blocked, v.Failed, v.Done} {
+	out := make([]string, 0, 7)
+	for _, s := range []string{v.Todo, v.InProgress, v.Triage, v.Question, v.Blocked, v.Failed, v.Done} {
 		if s != "" {
 			out = append(out, s)
 		}
@@ -105,19 +119,41 @@ func (v Vocabulary) Phase(status string) string {
 		return string(PhaseTodo)
 	case v.InProgress:
 		return string(PhaseInProgress)
+	case v.Triage:
+		return string(PhaseTriage)
+	case v.Question:
+		return string(PhaseQuestion)
 	}
 	return status
 }
 
-// Open reports whether a status is work the fleet may pick up. A whitelist,
-// deliberately: a project has columns the fleet has no business in — triage,
-// wontfix, waiting on a human — and reading anything unrecognised as open
-// would put an agent on them.
+// Open reports whether a status is work the fleet still owes. A whitelist,
+// deliberately: a project has columns the fleet has no business in — wontfix,
+// waiting on a human, a triage column it was never told about — and reading
+// anything unrecognised as open would put an agent on them.
+//
+// The grill's two words are open: a triaged card is the triager's to work and
+// a question card still owes an answer. What keeps a Question card from being
+// run is Asking, not Open — the daemon reads it and never picks it (TASK-86).
 func (v Vocabulary) Open(status string) bool {
 	if status == "" {
 		return false
 	}
-	return status == v.Todo || status == v.InProgress
+	return status == v.Todo || status == v.InProgress || v.Triaging(status) || v.Asking(status)
+}
+
+// Triaging reports whether a status is the word a card waits for the triager
+// in. A queue that names no such word never grills, and no column of it is
+// read as one by guess.
+func (v Vocabulary) Triaging(status string) bool {
+	return status != "" && status == v.Triage
+}
+
+// Asking reports whether a status is the word a card waits for the owner's
+// answer in. The fleet never picks such a card: the answer only a person can
+// give does not come from another run.
+func (v Vocabulary) Asking(status string) bool {
+	return status != "" && status == v.Question
 }
 
 // Parked reports whether a status is the one that waits on a human — this

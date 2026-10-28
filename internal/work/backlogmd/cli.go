@@ -47,6 +47,8 @@ func (c *cli) DefaultBranch(dir string) (string, error) {
 const (
 	statusToDo       = "To Do"
 	statusInProgress = "In Progress"
+	statusTriage     = "Triage"
+	statusQuestion   = "Question"
 	statusBlocked    = "Blocked"
 	statusFailed     = "Failed"
 	statusDone       = "Done"
@@ -156,6 +158,13 @@ func (c *cli) SetAssignee(id, agent string) error {
 // AppendNote adds to the task's implementation notes without replacing them.
 func (c *cli) AppendNote(id, note string) error {
 	_, err := c.exec("task", "edit", id, "--append-notes", note, "--plain")
+	return err
+}
+
+// SetDescription replaces the task's body in one edit: the triager rewrites
+// a grilled card as the spec, and the author's prompt reads the body.
+func (c *cli) SetDescription(id, body string) error {
+	_, err := c.exec("task", "edit", id, "-d", body, "--plain")
 	return err
 }
 

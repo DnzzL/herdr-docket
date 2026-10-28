@@ -16,6 +16,10 @@
 | `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria) |
 | `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-docket task note ID "…"` | say where things stand without closing |
+| `herdr-docket task ask ID "ROUND"` | post the next grill round (`## Round N`) and park the card in `question` |
+| `herdr-docket task answer ID "1.A 2.T …"` | post `## Answer N` for the latest round and send the card back to `triage` |
+| `herdr-docket task move ID triage\|question\|todo` | file a card into one of the grill's states |
+| `herdr-docket task body ID "…"` | replace a card's body — the triager writes the spec here |
 | `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence; `--pr URL` delivers a PR to the verifier) |
 | `herdr-docket task verdict ID PASS\|FAIL --pr URL --note "…"` | a verifier's verdict, pinned to the PR's diff; the note is the evidence it carries |
 | `herdr-docket agent list` | the agents, and which are parked |

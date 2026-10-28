@@ -180,6 +180,33 @@ func (s *Source) SetPhase(id string, phase work.Phase) error {
 	return s.setField(id, s.cfg.statusField(), s.vocab.InProgress)
 }
 
+// Move files a card into one of the grill's states, or out of the grill into
+// the pickup word once the triager has specced it (TASK-86). A database that
+// names no such word refuses, because a card left in the wrong select value is
+// one no tick ever picks or parks.
+func (s *Source) Move(id string, phase work.Phase) error {
+	var word string
+	switch phase {
+	case work.PhaseTriage:
+		word = s.vocab.Triage
+	case work.PhaseQuestion:
+		word = s.vocab.Question
+	case work.PhaseTodo:
+		word = s.vocab.Todo
+	default:
+		return fmt.Errorf("move %s: %q is not a grill state", id, phase)
+	}
+	if word == "" {
+		return fmt.Errorf("move %s: this database names no %q status — add it to statuses: for this queue", id, phase)
+	}
+	return s.setField(id, s.cfg.statusField(), word)
+}
+
+// WriteBody replaces the card's body with the spec the grill produced.
+func (s *Source) WriteBody(id, body string) error {
+	return s.api.do(http.MethodPatch, record(id), map[string]any{"body": body}, nil)
+}
+
 // Assign re-routes the card. An empty agent clears the field — Notara's empty
 // select value is "", and null is refused — which hands the card to the
 // queue's default agent.
@@ -218,6 +245,8 @@ func (s *Source) asTask(r rec) work.Task {
 		Assignee:  text(r.Fields[s.cfg.agentField()]),
 		Open:      s.vocab.Open(status),
 		Blocked:   s.vocab.Parked(status),
+		Triaging:  s.vocab.Triaging(status),
+		Asking:    s.vocab.Asking(status),
 		Phase:     s.vocab.Phase(status),
 		Verdict:   s.vocab.VerdictOf(status),
 		Priority:  rank(text(r.Fields[priorityField])),

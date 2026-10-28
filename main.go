@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +46,10 @@ Usage:
   herdr-docket task create      Add work: "<title>" [-a <agent>] [-d "<body>"] [-s <source>] [--ac "<criterion>"...]
   herdr-docket task assign <id> <agent>  Hand a task to another agent
   herdr-docket task note <id>   Append to a task's notes
+  herdr-docket task ask <id> "<round>"   Post the next grill round and park the card in question
+  herdr-docket task answer <id> "<text>" Answer the latest round and send the card back to triage
+  herdr-docket task move <id> <triage|question|todo>  File a card into one of the grill's states
+  herdr-docket task body <id> "<text>"   Replace a card's body (the triager writes the spec here)
   herdr-docket task done|fail|block <id> [--note "..."] [--pr <url>]  Close with a verdict
   herdr-docket task verdict <id> PASS|FAIL --pr <url> [--note "..."]  A verifier's verdict on a PR
   herdr-docket agent list       Show the agents and which are paused
@@ -317,7 +323,7 @@ func queueFor(cwd string, s fleet.Settings) string {
 func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 	src, defaultQueue := env.src, env.defaultQueue
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|done|fail|block|verdict")
+		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|ask|answer|move|body|done|fail|block|verdict")
 	}
 	switch args[0] {
 	case "list":
@@ -353,6 +359,26 @@ func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 		// (TASK-57).
 		fmt.Fprintf(out, "%s noted\n", args[1])
 		return nil
+	case "ask":
+		if len(args) != 3 {
+			return fmt.Errorf(`usage: herdr-docket task ask <id> "<the round>"`)
+		}
+		return taskAsk(src, args[1], args[2], out)
+	case "answer":
+		if len(args) != 3 {
+			return fmt.Errorf(`usage: herdr-docket task answer <id> "<the answer>"`)
+		}
+		return taskAnswer(src, args[1], args[2], out)
+	case "move":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: herdr-docket task move <id> <triage|question|todo>")
+		}
+		return taskMove(src, args[1], args[2], out)
+	case "body":
+		if len(args) != 3 {
+			return fmt.Errorf(`usage: herdr-docket task body <id> "<text>"`)
+		}
+		return taskBody(src, args[1], args[2], out)
 	case "done", "fail", "block":
 		return taskClose(env, args[0], args[1:], out)
 	case "verdict":
@@ -516,6 +542,138 @@ func putCriteria(caller string, src work.Source, id string, criteria []string) e
 		return fmt.Errorf("%s: %s does not store acceptance criteria — put the bar in -d instead:\n  %s", caller, id, strings.Join(criteria, "; "))
 	}
 	return w.WriteCriteria(id, criteria)
+}
+
+// roundHeading is how a grill round is written on a card, and answerHeading
+// how the owner's reply is. Both are notes, because a note is what an agent
+// appends and a person reads without a tool (TASK-86).
+var roundHeading = regexp.MustCompile(`(?m)^## Round (\d+)\s*$`)
+
+// latestRound is the highest round number on the card, and whether there is
+// one at all. Highest rather than last-seen: notes append, and a re-posted
+// round must not make the answer reply to the older one.
+func latestRound(notes string) (int, bool) {
+	latest, found := 0, false
+	for _, m := range roundHeading.FindAllStringSubmatch(notes, -1) {
+		n, err := strconv.Atoi(m[1])
+		if err != nil || n <= latest {
+			continue
+		}
+		latest, found = n, true
+	}
+	return latest, found
+}
+
+// grillMover is the queue's capability or a refusal naming it: a move that
+// silently did nothing would leave a card in a column nothing reads.
+func grillMover(src work.Source, id string) (work.Griller, error) {
+	g, ok := src.(work.Griller)
+	if !ok {
+		return nil, fmt.Errorf("%s: this queue has no triage/question statuses to move a card between", id)
+	}
+	return g, nil
+}
+
+// taskAsk posts the next round and parks the card in the queue's question
+// word, where nothing picks it up until the owner answers (TASK-86).
+func taskAsk(src work.Source, id, round string, out io.Writer) error {
+	if strings.TrimSpace(round) == "" {
+		return fmt.Errorf("task ask: an empty round asks nothing — say what you need to know")
+	}
+	m, err := grillMover(src, id)
+	if err != nil {
+		return err
+	}
+	it, err := src.Get(id)
+	if err != nil {
+		return err
+	}
+	last, _ := latestRound(it.Notes)
+	// One note, so the heading and its body land together: a round split
+	// across two writes is one a reader can find half of.
+	if err := src.Comment(id, fmt.Sprintf("## Round %d\n\n%s", last+1, strings.TrimSpace(round))); err != nil {
+		return err
+	}
+	if err := m.Move(id, work.PhaseQuestion); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s round %d asked — the card waits in question\n", id, last+1)
+	return nil
+}
+
+// taskAnswer posts the owner's answer as `## Answer N` for the latest round
+// and moves the card back to triage, where the triager's next run reads it
+// (TASK-86). A card with no round has nothing to answer, and saying so is
+// better than writing an answer nobody asked for.
+func taskAnswer(src work.Source, id, answer string, out io.Writer) error {
+	if strings.TrimSpace(answer) == "" {
+		return fmt.Errorf("task answer: an empty answer says nothing — answer the round")
+	}
+	m, err := grillMover(src, id)
+	if err != nil {
+		return err
+	}
+	it, err := src.Get(id)
+	if err != nil {
+		return err
+	}
+	n, ok := latestRound(it.Notes)
+	if !ok {
+		return fmt.Errorf("task answer: %s has no ## Round to answer — the triager must ask a round first", id)
+	}
+	if err := src.Comment(id, fmt.Sprintf("## Answer %d\n\n%s", n, strings.TrimSpace(answer))); err != nil {
+		return err
+	}
+	if err := m.Move(id, work.PhaseTriage); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s answered round %d — back in triage\n", id, n)
+	return nil
+}
+
+// grillPhases is the CLI's spelling of the three states a card can be filed
+// into: the grill's two, and the pickup word the triager hands the spec to.
+var grillPhases = map[string]work.Phase{
+	"triage":   work.PhaseTriage,
+	"question": work.PhaseQuestion,
+	"todo":     work.PhaseTodo,
+	"to do":    work.PhaseTodo,
+}
+
+// taskMove files a card into one of those states. It is the one write the
+// grill's states are reached through, so the CLI and the adapter cannot
+// disagree about which word a phase means.
+func taskMove(src work.Source, id, phase string, out io.Writer) error {
+	p, ok := grillPhases[strings.ToLower(strings.TrimSpace(phase))]
+	if !ok {
+		return fmt.Errorf("task move: %q is not one of triage, question or todo", phase)
+	}
+	m, err := grillMover(src, id)
+	if err != nil {
+		return err
+	}
+	if err := m.Move(id, p); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s moved to %s\n", id, p)
+	return nil
+}
+
+// taskBody replaces the card's body: what the triager does when a grilled
+// idea becomes the spec the author's prompt carries (TASK-86).
+func taskBody(src work.Source, id, body string, out io.Writer) error {
+	if strings.TrimSpace(body) == "" {
+		return fmt.Errorf("task body: an empty body is not a spec — write the card")
+	}
+	w, ok := src.(work.BodyWriter)
+	if !ok {
+		return fmt.Errorf("%s: this queue cannot replace a card's body", id)
+	}
+	if err := w.WriteBody(id, body); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s body written\n", id)
+	return nil
 }
 
 // closeVerbs is the CLI's spelling of the verdict vocabulary: the verbs are

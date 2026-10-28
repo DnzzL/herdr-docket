@@ -27,6 +27,7 @@ type fakeClient struct {
 	assigned []string // "<id>=<agent>", in order
 	comments []string
 	criteria []string
+	body     string // the body the last SetDescription wrote
 }
 
 func (f *fakeClient) List() ([]task, error)        { return f.tasks, f.err }
@@ -49,6 +50,11 @@ func (f *fakeClient) SetAssignee(id, agent string) error {
 
 func (f *fakeClient) AppendNote(id, note string) error {
 	f.comments = append(f.comments, note)
+	return f.err
+}
+
+func (f *fakeClient) SetDescription(id, body string) error {
+	f.body = body
 	return f.err
 }
 
@@ -438,6 +444,15 @@ func (m *memClient) SetStatus(id, status string) error {
 		return err
 	}
 	mt.task.Status = status
+	return nil
+}
+
+func (m *memClient) SetDescription(id, body string) error {
+	mt, err := m.find(id)
+	if err != nil {
+		return err
+	}
+	mt.body = body
 	return nil
 }
 

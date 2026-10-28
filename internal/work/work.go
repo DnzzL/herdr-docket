@@ -49,6 +49,14 @@ type Task struct {
 	// Labels are the task's tags, filled by Get where the backend has them.
 	// The merge gate reads one: `critical` keeps a PR for a human.
 	Labels []string
+
+	// Triaging and Asking are the grill's two states (TASK-86): a card in the
+	// queue's triage word is the triager's to work, and one in its question
+	// word waits for the owner's answer. Both are Open — the card is still
+	// owed — and Asking is what keeps a card from being picked: the answer is
+	// a person's, and another run cannot produce it.
+	Triaging bool
+	Asking   bool
 }
 
 // Criterion is one acceptance criterion of a task. Criteria are read-only to
@@ -115,6 +123,13 @@ const (
 	// PhaseInProgress is work a run has in hand right now, and the one phase
 	// the fleet writes.
 	PhaseInProgress Phase = "In Progress"
+	// PhaseTriage is an idea the queue's triager has yet to spec, and
+	// PhaseQuestion one waiting for the owner's answer. Unlike the two above,
+	// these decide what runs: pick routes a triaged card to the triager and
+	// never picks a question card (TASK-86). That is why they are moved by a
+	// capability of their own rather than through Phaser — see Griller.
+	PhaseTriage   Phase = "Triage"
+	PhaseQuestion Phase = "Question"
 )
 
 // Phaser is the optional capability of a source that can show a task as
@@ -179,6 +194,28 @@ type CriterionWriter interface {
 // own.
 type BaseBrancher interface {
 	BaseBranch(id string) (string, error)
+}
+
+// Griller is the optional capability of a source that can move a card
+// between the grill's states (TASK-86): into the triage word, into the
+// question word, or out of the grill into the pickup word once the triager
+// has specced it.
+//
+// It is separate from Phaser on purpose. A phase is display only, written
+// best-effort and never read back; these three words decide what runs — a
+// triaged card is the triager's, a question card nobody's — so a source that
+// cannot write them says so by its absence and the CLI refuses, rather than
+// swallowing a write the next tick would act on.
+type Griller interface {
+	Move(id string, phase Phase) error
+}
+
+// BodyWriter is the optional capability of a source that can replace a
+// task's body. The triager uses it when a clear idea becomes the spec: the
+// card's body is what the author's prompt carries, so rewriting it is how the
+// grill's answer reaches the run that builds it (TASK-86).
+type BodyWriter interface {
+	WriteBody(id, body string) error
 }
 
 // TodoStarter is the optional capability of a source that files a task it
@@ -277,7 +314,7 @@ var closedOrder = []Verdict{Blocked, Failed, Done}
 var phaseOrder = buildPhaseOrder()
 
 func buildPhaseOrder() []string {
-	order := []string{string(PhaseTodo), string(PhaseInProgress)}
+	order := []string{string(PhaseTodo), string(PhaseInProgress), string(PhaseTriage), string(PhaseQuestion)}
 	for _, v := range closedOrder {
 		order = append(order, v.Label())
 	}

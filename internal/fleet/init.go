@@ -46,7 +46,9 @@ const exampleRole = `# roles/example.md — a role every agent that names it ope
 
 // The pipeline's two roles (ADR 0021): the author's method and the
 // verifier's, shipped with plain init so a fleet has both from its first run.
-// Verbatim as docs/examples.md shows them — a drift test pins the two.
+// The triager's (TASK-86, ADR 0023) joins them: a queue that routes a triaged
+// card to it has the method the card needs. Verbatim as docs/examples.md shows
+// them — a drift test pins all three.
 //
 //go:embed roles/dev.md
 var devRole string
@@ -54,9 +56,13 @@ var devRole string
 //go:embed roles/reviewer.md
 var reviewerRole string
 
+//go:embed roles/triager.md
+var triagerRole string
+
 var pipelineRoles = []struct{ name, body string }{
 	{"dev", devRole},
 	{"reviewer", reviewerRole},
+	{"triager", triagerRole},
 }
 
 const exampleAgent = `---

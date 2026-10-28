@@ -624,6 +624,61 @@ func TestATaskHandedToAnotherAgentStaysOpen(t *testing.T) {
 	}
 }
 
+// A triager that asks a round parks the card and ends its run: the card is
+// open on purpose, waiting for a person, exactly as a handoff is — closing it
+// as "settled without reporting" would end the idea the grill exists to keep.
+func TestATriagedCardThatAsksStaysOpenInQuestion(t *testing.T) {
+	b := newBoard("TASK-1")
+	b.items["TASK-1"] = work.Task{ID: "TASK-1", Title: "T", Phase: "Triage", Open: true, Triaging: true, Assignee: "a"}
+	h := &fakeHost{after: func() {
+		it := b.items["TASK-1"]
+		it.Triaging, it.Asking = false, true
+		b.items["TASK-1"] = it
+	}}
+	if err := run(t, h, b); err != nil {
+		t.Fatal(err)
+	}
+	if !b.open("TASK-1") {
+		t.Fatal("a question card must stay open for the owner's answer")
+	}
+	if v := b.verdict("TASK-1"); v != "" {
+		t.Fatalf("verdict = %q, want none: the grill parked the card", v)
+	}
+}
+
+// A triage run that neither asked nor specced leaves the card where it was.
+// That is not a park: the next tick would spin on the same card forever, so
+// it ends Failed and a human decides.
+func TestATriagedCardLeftInTriageFails(t *testing.T) {
+	b := newBoard("TASK-1")
+	b.items["TASK-1"] = work.Task{ID: "TASK-1", Title: "T", Phase: "Triage", Open: true, Triaging: true, Assignee: "a"}
+	if err := run(t, &fakeHost{}, b); err == nil {
+		t.Fatal("want error: the run neither asked nor specced")
+	}
+	if b.open("TASK-1") || b.verdict("TASK-1") != work.Failed {
+		t.Fatalf("verdict = %q, open = %v", b.verdict("TASK-1"), b.open("TASK-1"))
+	}
+}
+
+// A triaged card's status is what routes its run, so the claim leaves it
+// alone: painting it In Progress would leave a mid-grill card looking like
+// ordinary work in hand to the next tick and to the person reading the board.
+func TestATriagedCardIsNotClaimedAsInProgress(t *testing.T) {
+	b := newBoard("TASK-1")
+	b.items["TASK-1"] = work.Task{ID: "TASK-1", Title: "T", Phase: "Triage", Open: true, Triaging: true, Assignee: "a"}
+	h := &fakeHost{after: func() {
+		it := b.items["TASK-1"]
+		it.Triaging, it.Asking = false, true
+		b.items["TASK-1"] = it
+	}}
+	if err := run(t, h, b); err != nil {
+		t.Fatal(err)
+	}
+	if len(b.phaseSeen) != 0 {
+		t.Fatalf("a triaged card must keep its status, saw %v", b.phaseSeen)
+	}
+}
+
 // Reassignment is not an escape hatch from reporting. An agent that handed the
 // task on and then crashed left it unreported all the same.
 func TestAHandoffDoesNotExcuseAFailedRun(t *testing.T) {

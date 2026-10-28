@@ -282,3 +282,47 @@ func TestBlockedIsNotPicked(t *testing.T) {
 		t.Fatalf("blocked as the only work must leave the tick bare: %+v", res)
 	}
 }
+
+// grilled is a fleet whose queue q names a triager. A prefixed id is the only
+// id a multi-queue fleet holds, so the routing test reads like the real one.
+func grilled(triager string) fleet.Defaults {
+	return fleet.Settings{Sources: map[string]fleet.SourceConfig{
+		"q": {Triager: triager},
+	}}.Defaults()
+}
+
+// A triaged card is the triager's to work whatever assignee it names: the
+// card was filed as an idea, and the assignee is whoever wrote it down.
+func TestATriagedCardRoutesToTheTriagerNotItsAssignee(t *testing.T) {
+	card := work.Task{ID: "q/T-1", Title: "an idea", Open: true, Triaging: true, Assignee: "dev"}
+	res := Next([]work.Task{card}, agents("dev", "triage"), grilled("triage"))
+	if res.Task == nil || res.Agent.Name != "triage" {
+		t.Fatalf("a triaged card must go to the triager, got %+v", res)
+	}
+}
+
+// A card waiting for the owner's answer is open and nobody's to run: the
+// answer is a person's, and another run cannot produce it.
+func TestAQuestionCardIsNeverPicked(t *testing.T) {
+	card := work.Task{ID: "q/T-1", Title: "an idea", Open: true, Asking: true, Assignee: "dev"}
+	res := Next([]work.Task{card}, agents("dev", "triage"), grilled("triage"))
+	if res.Task != nil {
+		t.Fatalf("a question card must never be picked, got %+v", res.Task)
+	}
+	if len(res.Untriaged) != 0 || len(res.Unknown) != 0 {
+		t.Fatalf("a question card is waiting, not unroutable: %+v", res)
+	}
+}
+
+// A queue that names no triager does not hand its ideas to the assignee by
+// accident: the card waits, and the fleet says so instead of guessing.
+func TestATriagedCardWithNoTriagerIsReportedNotRun(t *testing.T) {
+	card := work.Task{ID: "T-1", Title: "an idea", Open: true, Triaging: true, Assignee: "dev"}
+	res := Next([]work.Task{card}, agents("dev"), defaults("dev"))
+	if res.Task != nil {
+		t.Fatalf("a triaged card must never fall to its assignee, got %+v", res.Task)
+	}
+	if len(res.Untriaged) != 1 || res.Untriaged[0].ID != "T-1" {
+		t.Fatalf("the untriaged card must be reported: %+v", res.Untriaged)
+	}
+}

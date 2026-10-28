@@ -235,6 +235,21 @@ func evaluate(runs *runner.Runner, reported map[string]bool) {
 			log.Printf("%s: append note: %v", t.ID, err)
 		}
 	}
+	// A triaged card in a queue that names no triager is nobody's to pick up:
+	// the idea waits in a column nothing reads, so it is said once rather than
+	// left to look like work the fleet is about to take (TASK-86).
+	for _, t := range res.Untriaged {
+		note := fmt.Sprintf("fleet: %s is in triage and this queue names no triager — set triager: on its source, or move the card out of triage.", t.ID)
+		key := t.ID + "/untriaged"
+		if reported[key] {
+			continue
+		}
+		reported[key] = true
+		log.Printf("%s: %s", t.ID, note)
+		if err := src.Comment(t.ID, note); err != nil {
+			log.Printf("%s: append note: %v", t.ID, err)
+		}
+	}
 	// The caps count what is already in flight plus what this tick starts:
 	// a run registers itself inside its goroutine, after this loop has moved on.
 	inFlight := map[string]int{}

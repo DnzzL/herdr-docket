@@ -116,6 +116,35 @@ func (s *Source) SetPhase(id string, phase work.Phase) error {
 	return nil
 }
 
+// Move forwards to the named sub-source when it keeps the grill's states, and
+// refuses when it does not: a question card nothing will ever pick up is a
+// card lost, so this write is not display and cannot be swallowed.
+func (s *Source) Move(id string, phase work.Phase) error {
+	name, rest, err := s.split(id)
+	if err != nil {
+		return err
+	}
+	g, ok := s.subs[name].(work.Griller)
+	if !ok {
+		return fmt.Errorf("%s: source %q has no grill states to move a card between", id, name)
+	}
+	return g.Move(rest, phase)
+}
+
+// WriteBody forwards to the named sub-source, and refuses when it cannot
+// replace a body: the triager's spec would otherwise be lost silently.
+func (s *Source) WriteBody(id, body string) error {
+	name, rest, err := s.split(id)
+	if err != nil {
+		return err
+	}
+	b, ok := s.subs[name].(work.BodyWriter)
+	if !ok {
+		return fmt.Errorf("%s: source %q cannot replace a card's body", id, name)
+	}
+	return b.WriteBody(rest, body)
+}
+
 // Assign forwards to the named sub-source, and refuses when that backend has
 // no assignee to write. Unlike SetPhase this is not display: swallowing it
 // would leave the task routed to the wrong agent with nothing to show for it.
