@@ -1,11 +1,11 @@
 ---
 id: TASK-53
 title: The pick routes a Blocked task — a task parked on a human gets a run
-status: Blocked
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-02 15:52'
-updated_date: '2026-10-03 23:04'
+updated_date: '2026-10-28 15:25'
 labels: []
 dependencies: []
 ordinal: 53000
@@ -41,4 +41,6 @@ Rebased PR #13 onto main (726e8c7), force-pushed, CI green. Verified myself: (1)
 verdict PASS on https://github.com/DnzzL/herdr-docket/pull/13: Verified on head 726e8c7 in my own disposable worktree, never the queue checkout. Bar: go build/vet/test ./... and gofmt -l all clean; CI build pass; merge-tree vs main 570ded5 clean (rc 0, CHANGELOG auto-merges). ACs re-derived by replay, not the PR's claims: (1) seam = work.Task.Blocked field (work.go:42), pick.Next skips it with no status literal (pick.go:42); (2) red replay: reverted pick.go:42 to it.Open, TestBlockedIsNotPicked failed with the blocked task picked (pick_test.go:282), restored, green — and the full 15-test pick suite stays green, so every other open status still routes (TestPicksHighestPriorityOpenTaskWithKnownAssignee, TestWorkLeftMidFlightIsStillPickedUp, TestUnassignedGoesToDefaultAgentWhenConfigured); (3) every adapter sets Blocked from its own queue's word: backlogmd via the configured vocabulary (backlogmd.go:256; backlogmd_test.go:97 maps the non-literal word 'needs human validation' — red when backlogmd.go:208 is removed), github from the board's Blocked column (github.go:178 — pre-fix state open=true blocked=false reproduced by removing the line, github_test.go:142 red), basecamp leaves it false; (4) daemon change red-before too: revert daemon.go:153 and the reassign comment lands on the parked task twice (daemon_test.go:296 fails), restored, green. One commit, 10 files, all the ticket's own. Correction for the record (does not change the verdict): the grounding observation fleet/TASK-1 2026-10-02 10:14 was test-suite pollution, not the daemon routing a parked task — the history record is the only one of 405 with fake workspace ws/pane p (fakeHost, daemon_test.go:117), its agent reviewer contradicts the real assignee intake (file at fleet commit a0f5535, updated 10-01 11:10), the never-rotated daemon.log has zero TASK-1 start lines, and the run-root--w-dishnow.lock mtime 10:14 matches the fixture added in 81a47b8 committed 10:14:42 — 10s after the record; the running daemon (PID 3897393 since Sep 25, d735a53 code) could not have picked it anyway: backlogmd open() has excluded Blocked since 4813f7d (backlogmd.go:245), live-checked against the real backlog CLI which reports status Blocked verbatim. So the fix is load-bearing for github boards (issue-open + Blocked column) and belt-and-braces for this fleet's three backlogmd queues. Non-blocking follow-up for plugin-dev: github.go:40 hardcodes the parked column name while in_progress is configurable — a board whose parked column is not spelled Blocked cannot be skipped.
 
 fleet: https://github.com/DnzzL/herdr-docket/pull/13 is held for a human — internal/daemon/daemon.go is a CODEOWNERS path (/internal/daemon/).
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/13 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

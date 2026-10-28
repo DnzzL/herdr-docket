@@ -3,10 +3,10 @@ id: TASK-63
 title: >-
   A merge the human owes is announced as one — herdr popup and a merge-needed
   label
-status: Blocked
+status: Done
 assignee: []
 created_date: '2026-10-04 15:52'
-updated_date: '2026-10-04 17:33'
+updated_date: '2026-10-28 15:25'
 labels:
   - enhancement
 dependencies: []
@@ -48,4 +48,6 @@ verdict PASS on https://github.com/DnzzL/herdr-docket/pull/24: Checked PR 24 (he
 Not blocking, follow-up filed as docket/TASK-66 for plugin-dev: internal/daemon TestEachTickWritesToTheQueueItReadFrom is flaky — observed on this PR and on origin/main without it (paired go test -count=200 stress runs failed on both trees). Mechanism proven by tag instrumentation (33/33 failures were the second waitClosed): waitClosed (daemon_test.go:149) returns when reconcile closes the task mid-attempt while Run still holds the task lock, so the second evaluate silently skips the task at internal/daemon/daemon.go:144 and nothing closes the second source (fails at exactly 2.00s). The race predates this PR; TASK-63 only widens its window by one history read. Production unaffected: the daemon ticks seconds apart and the next tick retries. Also noted: herdr rate-limits popups shown within seconds (second show returned shown:false rate_limited) — platform behaviour, not this PR.
 
 fleet: https://github.com/DnzzL/herdr-docket/pull/24 is held for a human — internal/daemon/daemon_test.go is a CODEOWNERS path (/internal/daemon/).
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/24 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

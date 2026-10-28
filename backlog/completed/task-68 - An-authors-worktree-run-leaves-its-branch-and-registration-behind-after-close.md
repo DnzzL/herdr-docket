@@ -1,11 +1,11 @@
 ---
 id: TASK-68
 title: An author's worktree run leaves its branch and registration behind after close
-status: needs human validation
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-04 21:11'
-updated_date: '2026-10-04 23:31'
+updated_date: '2026-10-28 15:26'
 labels: []
 dependencies: []
 ordinal: 68000
@@ -41,4 +41,6 @@ fleet: run failed: waiting for the agent: agent wait: timeout: timed out waiting
 fleet: the run's workspace w1 (pane w1:pW) is left open — jump in to resume.
 
 verdict PASS on https://github.com/DnzzL/herdr-docket/pull/30: Re-derived criteria from the ticket, verified on the real surface (throwaway worktree at head 31a8394, human checkout untouched; PR diff vs base 8db5ea4 identical to gh pr diff 30, 8 files, 4 commits all the ticket's own). Full bar green: go build/vet/test ./..., gofmt -l . empty; CI run 37236793013 success at that headSha. Red-first proven at both stages: fa02092 fails exactly the three new tests (host_test.go:518/537, :847 — WorktreeRetire stub ops.go:155) with the rest of the suite green; 8242a87 green; the c56cea2 twin test transplanted onto 8242a87 fails at host_test.go:905, so the same-tip fix was red before it too. Seam: TestCloseRetiresAnAuthorWorktreeWhenTheWorkspaceIsReallyClosed (host_test.go:489) pins author+ErrGone retire, root/tab/close-failure/verify not (host.go:317-319), TestCloseSurfacesAFailedRetire pins error propagation. Real git: TestWorktreeRetirePrunesTheRegistrationAndDeletesOnlyWhatIsSafe (host_test.go:805) — unpushed kept, pushed deleted, partially-pushed kept, twin-ref kept, dirty kept whole. Live replay on real herdr: LIVE_HERDR=1 go test ./internal/host/ — TestLiveAuthorWorktreeProvisionAndClose and TestLiveVerifyProvisionAndClose both PASS. Independent delivery-chain proof: after retire deletes a pushed local branch, refs/remotes holds the exact tip, so the verifier still cuts its worktree at the PR head — survives git gc --prune=now. Scope: runner diff comment-only (no runner behaviour change; parked runs keep their resume note), docs done (ADR 0018 with rejected alternatives, changelog.d/TASK-68.md, docs/agents.md), pre-existing pile filed as docket/TASK-69. Non-blocking, checked: dirty = git status --porcelain (ops.go:219), so gitignored files go with the removal — required (DishNow node_modules would pin every worktree) and no delivery at risk since ignored files can never be pushed.
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/30 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

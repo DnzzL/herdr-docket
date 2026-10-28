@@ -3,10 +3,10 @@ id: TASK-65
 title: >-
   A verify run works in its own worktree cut from the PR head, not a tab on the
   human's checkout
-status: needs human validation
+status: Done
 assignee: []
 created_date: '2026-10-04 16:08'
-updated_date: '2026-10-04 21:36'
+updated_date: '2026-10-28 15:25'
 labels:
   - enhancement
 dependencies: []
@@ -50,4 +50,6 @@ Design: ADR 0017 (renumbered on rebase — 0015/0016 were taken), changelog frag
 GAPS: not done — an end-to-end verify run on the merged binary; this PR's own verification runs pre-merge, so until merge+restart the live personas describe incoming behaviour while runs still land on a tab. not tested — a fork PR whose head object is absent locally (provision fails with the reason by design; no live case here). untouched — author worktree runs still leave branch + registration behind; filed as docket/TASK-68.
 
 State of the delivery, for whoever picks this up next — the evidence does not settle what happens next, so it is yours. What happened: this run passed its 45-minute budget and the fleet closed the task Failed at 21:04 ('run failed: waiting for the agent: agent wait: timeout'; the daemon runs the pre-TASK-62 binary, so a late delivery cannot reach the pipeline the way the new one does). The PR was opened at 21:03 and stamped at 21:12 by 'task done --pr' — one verdict, done, with the per-criterion evidence in the note above. Consequence: the verify stage never started, so plugin-reviewer has NOT judged PR #29 yet; the task sits in needs human validation because my run failed, not because anything is wrong with the PR (CI green, run 37234646765). Next move is a human's or the stall sweep's: reopen/assign so plugin-reviewer judges https://github.com/DnzzL/herdr-docket/pull/29, or review it by hand. Two facts to carry: (1) the branch was rebased onto origin/main mid-run (main gained the changelog-fragment convention — my entry is changelog.d/TASK-65.md, ADR renumbered 0017, CHANGELOG.md untouched); (2) my workspace wC4 is still open from the failed cleanup — close it when done, nothing in it is needed (everything is pushed). Follow-up for author-run leftovers filed as docket/TASK-68.
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/29 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

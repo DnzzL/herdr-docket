@@ -1,11 +1,11 @@
 ---
 id: TASK-57
 title: 'The gate reads CODEOWNERS from the PR''s base branch, not the local checkout'
-status: Blocked
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-03 17:57'
-updated_date: '2026-10-03 22:42'
+updated_date: '2026-10-28 15:25'
 labels: []
 dependencies: []
 ordinal: 57000
@@ -67,4 +67,6 @@ verifier fails answered on PR #19: forge_test.go restored (port tests of the raw
 both verifier fails fixed on PR #19, pushed as 2ea7218 + 5096ad1, CI green. FAIL 1: internal/gate/forge_test.go restored from 19d1cd6 (port tests of the raw fetch, three-notch order, 404-is-no-file mapping, url parse) with the stale assertion updated to the ref-in-url form. FAIL 2: the 404 mapping now matches only gh's own stderr ('HTTP 404'), not the whole message that names the endpoint — new red test proves a 401 on a repo saying 'my-404-repo' holds the task as an error, not 'no file' (failed against 3d2f4c8, I ran it); fix at 5096ad1. Minors in the PR body: the bogus commit ref 64a0e63 corrected to 3d2f4c8, red line numbers corrected. Verified myself: go build/vet/test ./... and gofmt -l clean; all 8 gate tests pass; live probe re-run redone — GH{}.Codeowners(https://github.com/DnzzL/herdr-docket/pull/19) -> [/internal/gate/ /internal/runner/ /internal/daemon/ /internal/host/ /.github/ /herdr-plugin.toml /scripts/] err=nil.
 
 fleet: https://github.com/DnzzL/herdr-docket/pull/19 is held for a human — plugin-reviewer stayed busy with another run.
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/19 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

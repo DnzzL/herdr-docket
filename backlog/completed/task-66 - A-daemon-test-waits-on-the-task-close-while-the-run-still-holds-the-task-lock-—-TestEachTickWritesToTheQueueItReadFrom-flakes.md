@@ -3,11 +3,11 @@ id: TASK-66
 title: >-
   A daemon test waits on the task close while the run still holds the task lock
   — TestEachTickWritesToTheQueueItReadFrom flakes
-status: Blocked
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-04 17:32'
-updated_date: '2026-10-04 19:25'
+updated_date: '2026-10-28 15:25'
 labels: []
 dependencies: []
 ordinal: 66000
@@ -29,4 +29,6 @@ Test-only fix in internal/daemon/daemon_test.go: waitEnded now waits for Runner.
 verdict PASS on https://github.com/DnzzL/herdr-docket/pull/27: Re-derived every criterion, ran it myself. (1) Pre-fix red reproduced on origin/main: under 6 CPU burners, go test ./internal/daemon -run TestEachTickWritesToTheQueueItReadFrom -count=1000 fails at 2.00s on the second waitClosed (daemon_test.go:184) — the ticket's exact symptom. (2) Mechanism proven live, not assumed: instrumented the runs.Running skip (internal/daemon/daemon.go:144) in a disposable base worktree; 85/85 failures were each immediately preceded by that skip, all at ~2.00s on line 184. The chain is runner.go:211 (task key held until Run returns) vs waitClosed firing at src.Close inside reconcile. (3) Diff is the ticket's own: 1 commit (e8b4aa9), test-only, internal/daemon/daemon_test.go +23 — waitEnded (daemon_test.go:169) polls Runner.Running(TASK-1) false (2s deadline, explicit fatal) before evaluate #2, so daemon.go:144 can no longer silently drop the task; both original source-isolation assertions intact (daemon_test.go:197,205), so the seam it guards is still guarded. (4) Post-fix on PR head: same 1000x stress green (8.1s, load avg 25); go test ./... -count=20 under the same load EXIT:0; go test -race ./internal/daemon -count=50 and target -count=200 clean; plain go test ./... green; go build ./... / go vet ./... clean, gofmt -l . empty. Mergeable, CI build SUCCESS. No production code touched; no CHANGELOG entry (CONTRIBUTING.md:58 requires one only for user-visible changes). Safety fact: the fix only delays evaluate #2 until the task lock drops — the exact state production reaches on its next tick.
 
 fleet: https://github.com/DnzzL/herdr-docket/pull/27 is held for a human — internal/daemon/daemon_test.go is a CODEOWNERS path (/internal/daemon/).
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/27 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

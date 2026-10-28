@@ -1,6 +1,6 @@
 project_name: "herdr-docket"
 default_status: "To Do"
-statuses: ["To Do", "In Progress", "Blocked", "Done", "needs human validation"]
+statuses: ["Triage", "Question", "To Do", "In Progress", "Blocked", "needs human validation", "Done"]
 labels: []
 date_format: yyyy-mm-dd
 max_column_width: 20

@@ -3,10 +3,10 @@ id: TASK-62
 title: >-
   A run that times out keeps its delivery — a late PR or verdict still reaches
   the pipeline
-status: Blocked
+status: Done
 assignee: []
 created_date: '2026-10-04 15:52'
-updated_date: '2026-10-04 16:48'
+updated_date: '2026-10-28 15:25'
 labels:
   - bug
 dependencies: []
@@ -39,4 +39,6 @@ Picked option one — the run keeps the agent and resumes the pipeline; recorded
 verdict PASS on https://github.com/DnzzL/herdr-docket/pull/23: Verified on a disposable worktree of pr-23-verify (a762444): go build/vet/test ./... and gofmt -l . all clean locally; CI build job (same four gates) pass. AC#1 met — runner_test.go:804 TestARunThatPassesItsDeadlineAndSettlesLateStillReachesTheVerifier drives the seam (fake do answers ErrTimedOut at the deadline, settle stamps the PR after it), asserts the late PR goes through verifier and gate to merged, late run done carrying timed_out, on-time verifier unmarked. AC#2 met — runner_test.go:863: verify run past deadline, PASS recorded in Settle, reaches the gate and merges; verify record done+timed_out, worker unmarked. AC#3 met — runner_test.go:905: never-settled ends Failed with exactly one 2x window (settles=1, runner.go:394 lateWindow), one notification saying never settled, workspace closed (runner.go:326 Close before reconcile closes the task) plus task note; runner_test.go:945: Settle-cancelled stays Blocked and quiet. AC#4 met — history_test.go:232 pins timed_out as a mark not an ending and the on-wire flag; AC#1 test greps history.jsonl for "status":"timed_out" and the collapsed closing record carries timed_out; I built the real binary to /tmp and ran herdr-docket history on a synthetic log: the late run line prints timed-out, the on-time line does not. AC#5 met — red-first reproduced myself: checkout of 0f5bf51 (test commit) fails exactly those 5 tests (4 runner + main_test.go:214 history line), green after 308002f. Scope clean: exactly 3 commits / 14 files vs origin/main, all ticket own, no drive-by work; ADR 0014 records the pick with the rejected alternative. Not run against a live herdr agent (the seam is the surface the task names, as the author also stated). Non-blocking observation for a follow-up: a PR/verdict stamped before the deadline is hidden from latest-record readers while the timed_out record is latest — self-heals, the closing record re-reads scan-all (PullRequestFor/VerificationFor).
 
 fleet: https://github.com/DnzzL/herdr-docket/pull/23 is held for a human — internal/daemon/daemon_test.go is a CODEOWNERS path (/internal/daemon/).
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/23 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

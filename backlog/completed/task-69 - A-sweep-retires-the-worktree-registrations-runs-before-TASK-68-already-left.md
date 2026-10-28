@@ -1,11 +1,11 @@
 ---
 id: TASK-69
 title: A sweep retires the worktree registrations runs before TASK-68 already left
-status: Blocked
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-04 21:37'
-updated_date: '2026-10-04 22:57'
+updated_date: '2026-10-28 15:26'
 labels: []
 dependencies: []
 ordinal: 69000
@@ -40,4 +40,6 @@ Delivered PR #31 (stacked on PR #30 / TASK-68's branch — merge #30 first, GitH
 verdict PASS on https://github.com/DnzzL/herdr-docket/pull/31: Re-derived every criterion on a throwaway worktree at PR head 0563c34 (checkout untouched). (1) Full bar green: go build/vet/test ./..., gofmt -l . empty; CI run 37240168504 success on 0563c34. (2) Red-first proven: at 40730f9 the new tests fail rc=1 (undefined Sweep/Options/worktreeCmd). (3) Diff is the ticket's own — 2 commits; new internal/sweep, additive host.RetireWorktree (host.go:152) delegating to the same stateless herdrOps.WorktreeRetire Close uses (ops.go:160; real-git tests host_test.go:805), CLI worktree sweep, README + docs/agents.md + changelog.d/TASK-69.md; no runner/daemon/gate changes, no go.mod change. (4) Fakes agree with the world: herdr.Worktree keys match real 'herdr worktree list' JSON; history.Runs gives latest record per run newest-first (history.go:210-234); keepReason's verdict compare matched real lowercase 'blocked' records. (5) Real-surface replay: dry-run exit 0 twice with a reason on every keep, and git worktree list + for-each-ref + herdr lists byte-identical before/after (touches nothing); then live — 1 retired / 34 kept / 0 failed: only the completed TASK-69 run's worktree+local branch removed, refs/remotes/origin/fleet/docket-task-69-... and refs/pull/31/head still 0563c34, dirty DishNow task-138 kept whole, in-flight dishnow/TASK-140 and open workspaces w8P/w8C/wA3 kept, unattributable /tmp worktrees kept. (6) Author's aftermath reconciles: DishNow 21 = /tmp/sweep-after-dishnow.txt, docket 12 (+3 worktrees cut since, all kept 'no run in history'), refs diffs show exactly 5+6 local branch deletions with no refs/remotes/* lost, origin/fleet/docket-task-68 still 31a8394, unpushed task22-rebase-51 and docket-task-46-restore-the-pins still present.
 
 fleet: https://github.com/DnzzL/herdr-docket/pull/31 is held for a human — internal/host/host.go is a CODEOWNERS path (/internal/host/).
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/31 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

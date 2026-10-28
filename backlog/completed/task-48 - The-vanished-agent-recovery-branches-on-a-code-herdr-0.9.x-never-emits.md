@@ -1,11 +1,11 @@
 ---
 id: TASK-48
 title: The vanished-agent recovery branches on a code herdr 0.9.x never emits
-status: Blocked
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-01 15:13'
-updated_date: '2026-10-03 22:49'
+updated_date: '2026-10-28 15:25'
 labels: []
 dependencies: []
 ordinal: 48000
@@ -49,4 +49,6 @@ Rebased PR 12 onto main (head a1b4405) as the re-queue asked; main did not alrea
 verdict PASS on https://github.com/DnzzL/herdr-docket/pull/12: Verified in a disposable worktree at head a1b4405 (1 commit, 4 files, all the ticket's own). Bar green: go build/vet/test ./..., gofmt -l empty. Decisive fact re-derived live, not from the PR's claims: (1) throwaway workspace w9P opened by me, pi agent t48-probe registered in it, workspace closed under it — herdr 0.9.0 answers {"error":{"code":"agent_not_found"}} to agent get, wait AND prompt (raw envelopes, exit 1); (2) never-registered target: same agent_not_found on 0.9.0 (HERDR_BIN_PATH, the env the contract suite inherits) and on 0.9.1 (/run/current-system/sw/bin/herdr); (3) agent_not_running exists in the 0.9.0 binary strings ('agent is no longer running in the target pane') but no call reached it; probe workspace closed by the probe (workspace list count 0). Red proof: constant reverted to agent_not_running in my worktree → TestHerdrAnswersAVanishedAgentWithAgentNotFound FAIL at internal/herdr/contract_test.go:90 (saw agent_not_found, wanted agent_not_running); restored → PASS against the real binary. So the retarget is the one fact the fix is safe on, proven both directions. Behaviour path: await maps it to ErrCancelled at internal/host/agent.go:169, exercised by internal/host/agent_test.go:221. Contract renegotiated in the same commit as the constant (a1b4405). CI run 37156975796 green — note the contract suite skips there (no herdr installed); its live hold is the local run above. PR MERGEABLE/CLEAN and git merge-tree vs origin/main 570ded5: 0 conflicts. Non-blocking finding filed as docket/TASK-60: CHANGELOG bullet sits under the released, tagged v0.8.0 section instead of Unreleased.
 
 fleet: https://github.com/DnzzL/herdr-docket/pull/12 is held for a human — internal/host/agent_test.go is a CODEOWNERS path (/internal/host/).
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/12 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->
