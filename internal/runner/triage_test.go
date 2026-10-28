@@ -152,3 +152,23 @@ func TestATriageCardAnsweredDuringTheRunIsHandedOnNotFailed(t *testing.T) {
 		t.Fatalf("the answered card must stay in triage for the next run: %+v", it)
 	}
 }
+
+// Held answers for any process whether a run has the card in hand: the CLI
+// asks before it writes an answer under a live triage run.
+func TestHeldSaysWhetherARunHoldsTheTask(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if Held("TASK-1") {
+		t.Fatal("no run yet, but Held says one holds TASK-1")
+	}
+	r := New(&fakeHost{}, fleet.Settings{})
+	if _, ok := r.acquire(taskKey("TASK-1")); !ok {
+		t.Fatal("could not take the task lock")
+	}
+	if !Held("TASK-1") || Held("TASK-2") {
+		t.Fatal("Held must name the task a run holds, and only it")
+	}
+	r.release(taskKey("TASK-1"))
+	if Held("TASK-1") {
+		t.Fatal("a released task is not held")
+	}
+}

@@ -29,7 +29,8 @@ func questionsCmd() error {
 }
 
 // questionCards lists the cards waiting on the owner's answer: the Question
-// flag decides, whatever the queue says about Open.
+// flag decides, whatever the queue says about Open. A card a live run still
+// holds is not the owner's turn yet, and `task answer` would refuse it.
 func questionCards(src work.Source) ([]work.Task, error) {
 	items, err := src.List()
 	if err != nil {
@@ -37,7 +38,7 @@ func questionCards(src work.Source) ([]work.Task, error) {
 	}
 	var cards []work.Task
 	for _, it := range items {
-		if it.Question {
+		if it.Question && !runHeld(it.ID) {
 			cards = append(cards, it)
 		}
 	}

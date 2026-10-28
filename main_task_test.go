@@ -786,7 +786,8 @@ func TestTaskAskMovesTheCardToQuestion(t *testing.T) {
 
 func TestTaskAnswerPostsTheAnswerToTheLatestRoundAndSendsItBack(t *testing.T) {
 	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2",
-		Notes: "## Round 1\n1. a?\n\n## Answer 1\n1.A\n\n## Round 2\n1. b?\n   A. yes (reco)\n2. c?"}}}
+		Question: true,
+		Notes:    "## Round 1\n1. a?\n\n## Answer 1\n1.A\n\n## Round 2\n1. b?\n   A. yes (reco)\n2. c?"}}}
 	got, err := runTask(t, src, "answer", "TASK-2", "1.A 2. keep it 30 days")
 	if err != nil {
 		t.Fatal(err)
@@ -803,7 +804,7 @@ func TestTaskAnswerPostsTheAnswerToTheLatestRoundAndSendsItBack(t *testing.T) {
 }
 
 func TestTaskAnswerWithoutARoundFailsNamingTheCard(t *testing.T) {
-	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Notes: "started"}}}
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Question: true, Notes: "started"}}}
 	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
 	if err == nil || !strings.Contains(err.Error(), "TASK-2") {
 		t.Fatalf("err = %v, want an error naming TASK-2", err)
@@ -878,5 +879,35 @@ func TestQueuesListsOneNamePerLine(t *testing.T) {
 	writeQueues(&out, fleet.Settings{})
 	if got, want := out.String(), "default\n"; got != want {
 		t.Fatalf("one source: queues = %q, want %q", got, want)
+	}
+}
+
+// An answer is only for a card waiting on one: anything else is refused,
+// naming the card and where it stands, and nothing is written.
+func TestTaskAnswerRefusesACardNotInQuestion(t *testing.T) {
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Open: true, Phase: string(work.PhaseTodo),
+		Notes: "## Round 1\n1. a?"}}}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "TASK-2") || !strings.Contains(err.Error(), "To Do") {
+		t.Fatalf("err = %v, want a refusal naming TASK-2 and its To Do", err)
+	}
+	if len(src.comments) != 0 || len(src.phases) != 0 {
+		t.Fatalf("nothing must be written: comments %v phases %v", src.comments, src.phases)
+	}
+}
+
+// An answer under a live run would land in Triage while the run settles,
+// and the run would read the card as untouched: refused, retry later.
+func TestTaskAnswerRefusesWhileARunHoldsTheCard(t *testing.T) {
+	held := runHeld
+	t.Cleanup(func() { runHeld = held })
+	runHeld = func(id string) bool { return id == "TASK-2" }
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Question: true, Notes: "## Round 1\n1. a?"}}}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "retry") {
+		t.Fatalf("err = %v, want a refusal saying to retry", err)
+	}
+	if len(src.comments) != 0 || len(src.phases) != 0 {
+		t.Fatalf("nothing must be written: comments %v phases %v", src.comments, src.phases)
 	}
 }

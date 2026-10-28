@@ -602,9 +602,21 @@ func putCriteria(caller string, src work.Source, id string, criteria []string) e
 // `## Answer N` note, then the card goes back to the triager. Nothing is
 // written when the card has no round to answer.
 func taskAnswer(src work.Source, id, answers string, out io.Writer) error {
+	// A live run still reads the card when it settles: an answer landing in
+	// Triage under it would read as a triager that did nothing.
+	if runHeld(id) {
+		return fmt.Errorf("%s: a run holds the card right now — retry once it settles (herdr-docket runs)", id)
+	}
 	t, err := src.Get(id)
 	if err != nil {
 		return err
+	}
+	if !t.Question {
+		where := t.Phase
+		if where == "" {
+			where = "no phase the fleet knows"
+		}
+		return fmt.Errorf("%s is in %s, not %s — only a card waiting on an answer takes one", id, where, work.PhaseQuestion)
 	}
 	n, _, ok := grill.LatestRound(t.Notes)
 	if !ok {
@@ -619,6 +631,10 @@ func taskAnswer(src work.Source, id, answers string, out io.Writer) error {
 	fmt.Fprintf(out, "%s: answered round %d, moved to %s\n", id, n, work.PhaseTriage)
 	return nil
 }
+
+// runHeld asks whether a run holds a task's lock; a variable so a test can
+// stand in for a live run.
+var runHeld = runner.Held
 
 // setPhase moves a card where the grill needs it. Unlike the runner's
 // best-effort In Progress, this phase routes the card, so a queue that cannot

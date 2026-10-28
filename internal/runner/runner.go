@@ -263,6 +263,24 @@ func drop(path string, f *os.File) {
 	f.Close()
 }
 
+// Held reports whether a run — of any process — holds the task's lock right
+// now (ADR 0018): what a writer outside the runner asks before it moves a
+// card a run is still reading. A probe takes the flock for an instant and
+// gives it back without removing the file, so a run starting in that instant
+// is refused once and the next tick takes it.
+func Held(taskID string) bool {
+	f, err := os.OpenFile(lockPath(taskKey(taskID)), os.O_RDWR, 0o644)
+	if err != nil {
+		return false // no file, no run
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return true
+	}
+	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return false
+}
+
 // SweepLocks removes the run lock files no run holds: leftovers of runs that
 // settled before removal existed, and of crashes. A live claim — the
 // daemon's or a manual `herdr-docket run`'s, its flock held across

@@ -69,3 +69,14 @@ func TestQuestionsWithNoQuestionCardsSaysSo(t *testing.T) {
 		t.Fatalf("must say nothing waits, got %q", got)
 	}
 }
+
+// A card a live run holds is not the owner's turn yet: questions hides it.
+func TestQuestionsHidesACardALiveRunHolds(t *testing.T) {
+	held := runHeld
+	t.Cleanup(func() { runHeld = held })
+	runHeld = func(id string) bool { return id == "TASK-2" }
+	got := runQuestions(t, questionSource("Voice notes"), "")
+	if strings.Contains(got, "TASK-2") || !strings.Contains(got, "no card") {
+		t.Fatalf("a held card must not be offered, got %q", got)
+	}
+}
