@@ -20,12 +20,43 @@ import (
 // phone in portrait running Termux.
 const phoneWidth = 45
 
+// questionsCmd is the Round screen on a terminal (ADR 0024), the line prompt
+// for scripts and pipes.
 func questionsCmd() error {
 	_, src, err := settingsAndSource()
 	if err != nil {
 		return err
 	}
+	if terminal(os.Stdin) && terminal(os.Stdout) {
+		m, ok, err := questionsPane(src)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return runPane(m)
+		}
+	}
 	return answerQuestions(src, daemon.Liveness(time.Now()), os.Stdin, os.Stdout)
+}
+
+func terminal(f *os.File) bool {
+	st, err := f.Stat()
+	return err == nil && st.Mode()&os.ModeCharDevice != 0
+}
+
+// questionsPane is the pane `questions` opens: straight on the Round of the
+// one card waiting, on Home among the `?` rows when several wait. ok is
+// false when none waits, for the line prompt to say so.
+func questionsPane(src work.Source) (paneModel, bool, error) {
+	cards, err := questionCards(src)
+	if err != nil || len(cards) == 0 {
+		return paneModel{}, false, err
+	}
+	m := newPane(src.List, func() (work.Source, error) { return src, nil })
+	if len(cards) == 1 {
+		m.open = cards[0].ID
+	}
+	return m, true, nil
 }
 
 // questionCards lists the cards waiting on the owner's answer: the Question

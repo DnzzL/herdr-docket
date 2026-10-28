@@ -5,3 +5,7 @@
 - **The pane takes clicks and taps.** Tap a row to select it, tap it again (or
   press Enter) on a question card to open its round; the wheel scrolls, and on
   a phone in Termux a tap is a click. Every key the pane had still works.
+- **Answer a round with taps.** A question card opens its Round in the pane:
+  the context, each option a button with the reco preselected, a plain-words
+  field, and Send. `herdr-docket questions` opens it too on a terminal; piped,
+  it stays the line prompt.
