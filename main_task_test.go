@@ -879,8 +879,8 @@ func TestQueuesListsOneNamePerLine(t *testing.T) {
 	}
 	out.Reset()
 	writeQueues(&out, fleet.Settings{})
-	if got, want := out.String(), "default\n"; got != want {
-		t.Fatalf("one source: queues = %q, want %q", got, want)
+	if got := out.String(); got != "" {
+		t.Fatalf("one unnamed source: queues = %q, want nothing — there is no name to pass back as -s", got)
 	}
 }
 

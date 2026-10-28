@@ -20,7 +20,7 @@
 | `herdr-docket task answer ID "1.A 2.T 3. …"` | answer the card's newest round (`## Answer N` note) and send it back to `triage` |
 | `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence; `--pr URL` delivers a PR to the verifier) |
 | `herdr-docket task verdict ID PASS\|FAIL --pr URL --note "…"` | a verifier's verdict, pinned to the PR's diff; the note is the evidence it carries |
-| `herdr-docket queues` | the queue names, one per line, for scripts (`default` for a single `source:`) |
+| `herdr-docket queues` | the queue names, one per line, for scripts; nothing for a single unnamed `source:`, which takes no `-s` |
 | `herdr-docket agent list` | the agents, and which are parked |
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket runs` | the runs in flight; a record past its timeout is marked `stale?` |

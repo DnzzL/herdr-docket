@@ -332,12 +332,8 @@ type taskEnv struct {
 
 // writeQueues prints the fleet's queue names, one per line, for scripts that
 // pass one back as -s. A fleet with one `source:` has no name for it and
-// prints "default".
+// prints nothing: there is no queue to choose, and no -s to pass.
 func writeQueues(w io.Writer, s fleet.Settings) {
-	if len(s.Sources) == 0 {
-		fmt.Fprintln(w, "default")
-		return
-	}
 	names := make([]string, 0, len(s.Sources))
 	for name := range s.Sources {
 		names = append(names, name)
