@@ -1,10 +1,10 @@
 ---
 id: TASK-87.2
 title: herdr-docket questions answers a round with Enter and letters
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:30'
-updated_date: '2026-10-28 13:30'
+updated_date: '2026-10-28 13:37'
 labels: []
 dependencies:
   - TASK-86.2
