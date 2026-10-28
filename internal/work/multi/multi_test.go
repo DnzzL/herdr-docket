@@ -88,7 +88,7 @@ func (m *memSource) Close(id string, v work.Verdict) error {
 }
 
 // phaserSource is a sub-source that can show a phase — the Backlog.md-shaped
-// one beside the Basecamp-shaped one that cannot.
+// one beside a binary one that cannot.
 type phaserSource struct {
 	*memSource
 	phases []work.Phase
@@ -100,7 +100,7 @@ func (p *phaserSource) SetPhase(id string, phase work.Phase) error {
 }
 
 // starterSource is the Backlog.md-shaped one, able to file new work into its
-// own pickup status, beside the Basecamp-shaped one that cannot.
+// own pickup status, beside a binary one that cannot.
 type starterSource struct {
 	*memSource
 	todo []string // "title|body|assignee" per CreateTodo call
@@ -430,7 +430,7 @@ func (f *fakeBrancher) BaseBranch(id string) (string, error) {
 // verdict about where criteria belong on somebody else's queue. The refusal
 // has to name the queue, because that is what the human has to go fix.
 func TestCriteriaForAQueueThatCannotStoreThemAreRefusedNotDropped(t *testing.T) {
-	plain := newMem() // no WriteCriteria: a Basecamp-shaped queue
+	plain := newMem() // no WriteCriteria: a binary queue
 	able := &criterSource{memSource: newMem(), criteria: map[string][]string{}}
 	mustCreate(t, plain, "no place for a bar")
 	mustCreate(t, able.memSource, "a bar fits here")

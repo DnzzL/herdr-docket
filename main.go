@@ -1,8 +1,8 @@
 // herdr-docket — the queue layer for Herdr agents: a shared task queue,
 // AGENT.md personas as the workers, and a daemon that routes open tasks to
-// real coding agents, one run at a time. The queue is a Backlog.md project, a
-// Basecamp project or a GitHub Projects board; which one is configuration, and
-// nothing above the adapter knows the difference.
+// real coding agents, one run at a time. The queue is a Backlog.md project or a
+// GitHub Projects board; which one is configuration, and nothing above the
+// adapter knows the difference.
 package main
 
 import (
@@ -181,13 +181,11 @@ func initCmd(arg string) error {
 }
 
 // authCmd is thin on purpose: which queues can be signed in to, and how, is
-// fleet's business, not the CLI's. The name is a queue kind — basecamp,
-// github, notara — or the name of one source when a fleet has several.
+// fleet's business, not the CLI's. The name is a queue kind — github —
+// or the name of one source when a fleet has several.
 func authCmd(args []string) error {
 	const usage = `usage: herdr-docket auth <queue> [--token <pat>]
-  queues that sign in: basecamp   a Launchpad app of your own, browser flow
-                       github     a PAT with the project scope, or gh's token
-                       notara     an ntr_ key from Notara's sidebar → API keys`
+  queues that sign in: github   a PAT with the project scope, or gh's token`
 	name, token := "", ""
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {

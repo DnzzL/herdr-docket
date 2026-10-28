@@ -3,9 +3,9 @@ package work
 import "fmt"
 
 // Vocabulary is one queue's status words, in the fleet's terms. A queue the
-// fleet did not lay down has its own — notara says `ready-for-agent` where
-// the fleet says `To Do` — and this is the whole translation: Backlog.md and
-// Notara read the same `statuses:` block through it (ADR-0022).
+// fleet did not lay down has its own — a project may say `ready-for-agent`
+// where the fleet says `To Do` — and this is the whole translation: a
+// Backlog.md project's `statuses:` block is read through it.
 //
 // Read it as a whitelist: a status not named below is not the fleet's
 // business. That matters more than it sounds — a project's triage and wontfix

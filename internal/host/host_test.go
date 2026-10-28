@@ -514,8 +514,8 @@ func TestAgentNameFitsHerdrsLimit(t *testing.T) {
 // failed attempt abandoned — the retry could not start while the pane it was
 // meant to improve was still holding the name.
 func TestAgentNameKeepsAttemptsAtATaskApart(t *testing.T) {
-	first := agentName("TASK-34 Sweep notara PR review queue: !18-!27", "tl4367")
-	second := agentName("TASK-34 Sweep notara PR review queue: !18-!27", "tl4368")
+	first := agentName("TASK-34 Sweep notionalt PR review queue: !18-!27", "tl4367")
+	second := agentName("TASK-34 Sweep notionalt PR review queue: !18-!27", "tl4368")
 	if first == second {
 		t.Fatalf("two attempts at one task share an agent name: %q", first)
 	}

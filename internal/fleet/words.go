@@ -21,8 +21,8 @@ type Words struct {
 }
 
 // Known reports whether there is anything worth telling an agent. A queue
-// whose backend has no status words — a Basecamp to-do is done or not — has
-// none, and the prompt simply says nothing about them.
+// whose backend has no status words of the fleet's to teach has none, and
+// the prompt simply says nothing about them.
 func (w Words) Known() bool { return w.Todo != "" }
 
 // WordsFor is the vocabulary of the queue a task came from. The prefix names
@@ -37,8 +37,6 @@ func (s Settings) WordsFor(taskID string) Words {
 	switch c.kind() {
 	case kindBacklogmd:
 		v = backlogmd.OrDefault(c.Statuses)
-	case kindNotara:
-		v = c.Statuses
 	default:
 		return Words{}
 	}

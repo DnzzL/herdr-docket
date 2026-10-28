@@ -35,17 +35,15 @@ And the block both of them take:
 
 | Key | What it does |
 | --- | --- |
-| `kind` | `backlogmd` (the default), `basecamp`, `github`, or `notara`. |
+| `kind` | `backlogmd` (the default) or `github`. |
 | `dir` | A Backlog.md project other than the fleet's own: absolute, `~`, or relative to the fleet dir. |
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
 | `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)). Unset: no pipeline, a run ends on the agent's own verdict. |
 | `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
 | `max_runs` | This queue's cap, under the fleet's: a repo whose test suite cannot run twice at once says `1`. Unset or `0`: no cap. A run's verifier and rework stages count as the one run. |
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |
-| `statuses` | The project's own status words — [a project you already have](#work-a-project-you-already-have). Required for `notara`. |
-| `basecamp` | `account_id` and `lists` — [a hosted queue](#a-hosted-queue-basecamp). |
+| `statuses` | The project's own status words — [a project you already have](#work-a-project-you-already-have). |
 | `github` | `owner`, `project`, `repo`, `agent_field`, `status_field`, `in_progress` — [a hosted board](#a-hosted-queue-github-projects). |
-| `notara` | `url`, `workspace`, `database`, `agent_field`, `status_field` — [a Notara database](#a-hosted-queue-notara). |
 
 ## Work a project you already have
 
@@ -107,16 +105,16 @@ sources:
     kind: backlogmd
     dir: ~/Projects/myapp
     statuses: {todo: ready-for-agent, done: done, failed: ready-for-human, blocked: needs-info}
-  agency:                     # a client's Basecamp, worked alongside it
-    kind: basecamp
-    basecamp:
-      account_id: "9999999"
-      lists:
-        dev: "1111111"
+  agency:                     # a client's GitHub board, worked alongside it
+    kind: github
+    github:
+      owner: agency
+      project: 3
+      repo: agency/site
 ```
 
 Each source's tasks carry its name as an id prefix — `myapp/TASK-12`,
-`agency/987654` — so every command that takes an id (`task view`, `note`,
+`agency/987` — so every command that takes an id (`task view`, `note`,
 `done|fail|block`) routes to the right project, and `herdr-docket list` and the
 board show them all together (the board gives each queue a column of its own
 and shows the id without the prefix, which is the part a person retypes).
@@ -137,7 +135,7 @@ sources:
     dir: ~/Projects/myapp
     default_agent: myapp-pm     # this project's intake
   agency:
-    kind: basecamp
+    kind: github
     default_agent: agency-pm
 ```
 
@@ -160,44 +158,6 @@ The prefix *is* the source, so an agent's follow-up task inherits it without
 the agent knowing a second queue exists. `source:` and `sources:` are mutually
 exclusive; `source:` stays exactly what it was — one unnamed queue, no prefix
 anywhere.
-
-## A hosted queue: Basecamp
-
-If the work already lives somewhere else, the queue does not have to be local:
-
-```yaml
-source:
-  kind: basecamp
-  basecamp:
-    account_id: "9999999"     # the account the lists are in
-    lists:                    # Basecamp has no labels, so the container is
-      dev: "1111111"          # the routing key: one to-do list per agent
-      pm: "2222222"
-```
-
-Basecamp wants an account, so sign in once. The fleet doesn't ship an
-application of its own — register one at
-[launchpad.37signals.com/integrations](https://launchpad.37signals.com/integrations)
-with the redirect URI `http://localhost:8917/callback`, then:
-
-```sh
-export HERDR_DOCKET_BASECAMP_CLIENT_ID=...
-export HERDR_DOCKET_BASECAMP_CLIENT_SECRET=...   # only if your app has one
-herdr-docket auth basecamp
-```
-
-The tokens land in `credentials.yaml` (0600) beside `fleet.yaml` and never in
-it — `fleet.yaml` is the file you paste into a bug report. A Basecamp access
-token lives two weeks, so the fleet refreshes it on the way out: a machine left
-alone for a month heals itself on the next poll instead of failing every one of
-them.
-
-Agents never see any of this. `task list`, `view`, `create`, `note` and
-`done|fail|block` are the same commands, and the fleet CLI is the only thing
-they talk to. What differs is what the backend can hold: Basecamp has no labels
-(the list is the assignee), no priority, and one word for an ending — so a
-`fail` or `block` completes the to-do and says which it was in a comment. A
-to-do in a list the fleet doesn't know about is simply not its work.
 
 ## A hosted queue: GitHub Projects
 
@@ -258,58 +218,6 @@ What the board can hold, and what that costs:
 
 Why a board can be a queue at all, and what that costs:
 [ADR 0007](adr/0007-a-board-is-a-queue.md).
-
-## A hosted queue: Notara
-
-A [Notara](https://github.com/DnzzL/notara) database is a backlog people and
-agents share: the humans work it in Notara's board and inbox, the fleet over
-its REST API. Notara knows nothing of runs — what a status *means* is this
-block's `statuses:`, read exactly as a Backlog.md project's
-([ADR 0022](adr/0022-a-notara-database-is-a-queue-and-the-status-table-is-shared.md)):
-
-```yaml
-source:
-  kind: notara
-  default_agent: notara-dev
-  worktree_base: origin/main   # a hosted queue has no repo to derive one from
-  statuses:                    # required: a database has no lifecycle to assume
-    todo: ready-for-agent
-    in_progress: in-progress
-    done: done
-    failed: failed
-    blocked: blocked
-  notara:
-    url: http://localhost:3100
-    workspace: 01M4…           # workspace id
-    database: 01M4…            # the database that is the queue
-    # agent_field: Agent       # the select carrying the agent
-    # status_field: Status     # the select carrying the status
-```
-
-Sign in once, with a key from Notara's sidebar → **API keys** (a write key —
-a read key cannot close anything):
-
-```sh
-herdr-docket auth notara --token ntr_...   # checks it, stores it (0600), provisions the selects
-```
-
-The key is looked for in `HERDR_DOCKET_NOTARA_TOKEN`, then in the copy
-`auth notara` stored in `credentials.yaml`. Notara refuses a select value that
-is not one of its options, so signing in adds every `statuses:` word and every
-`agents/<name>/` as an option of the Status and Agent selects — after the ones
-already there, never removing one. A comment the fleet writes is signed by the
-key's owner and shows the key's name.
-
-What the database holds, and how the fleet reads it:
-
-- A card is a record; its id is the short `PREFIX-n` (`NOT-12`). `Labels`
-  (multi-select) and `Priority` (`high`/`medium`/`low`) are read when present —
-  a `critical` label keeps a PR for a human, as on every queue.
-- Acceptance criteria are the to-dos of the card's page; `task create --ac`
-  appends them under an *Acceptance Criteria* heading.
-- New work lands in the `todo` word: a Notara select has no default, and a
-  card with no status is invisible to the fleet.
-- `List` reads every card in one request; a trashed card is not work.
 
 ## Writing an adapter — contributions welcome
 

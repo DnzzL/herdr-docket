@@ -93,7 +93,7 @@ func TestAuthWantsAQueueToSignInTo(t *testing.T) {
 	}{
 		{"nothing at all", nil, "usage:"},
 		{"a token and no queue", []string{"--token", "ghp_x"}, "usage:"},
-		{"a queue and then another", []string{"github", "basecamp"}, "unexpected"},
+		{"a queue and then another", []string{"github", "backlogmd"}, "unexpected"},
 		{"a token with nothing after it", []string{"--token"}, "usage:"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

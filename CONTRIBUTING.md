@@ -16,9 +16,8 @@ The maintainer runs Backlog.md on Claude Code every day. Everything past that
 pair is where a report is worth more than a patch.
 
 - **A third backend.** The contract is `work.Source`; pass `worktest.Run` and
-  nothing above the adapter moves. Basecamp is the second backend and the
-  newest — reports of where its phases or verdict readback lie are as welcome as
-  code.
+  nothing above the adapter moves. GitHub is the second backend — reports of
+  where its phases or verdict readback lie are as welcome as code.
 - **Agent kinds tested in the wild.** The plugin claims anything
   `herdr agent start` supports — `pi`, `codex`, `gemini`, `opencode`, `cursor`.
   Only `claude` runs daily. What breaks on the others is worth a paragraph.
