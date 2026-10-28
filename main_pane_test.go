@@ -230,3 +230,16 @@ func TestTheOldKeysStillWork(t *testing.T) {
 		t.Fatal("q did not quit")
 	}
 }
+
+// Before the terminal says its size there is nothing to fit: a frame drawn
+// at a guessed width wraps on a phone and leaves ghost lines.
+func TestNoFrameBeforeTheTerminalSize(t *testing.T) {
+	m := paneModel{data: paneFixture(), closer: &closer{}}
+	m = send(m, paneTick(paneFixture().Now))
+	if v := m.View(); v != "" {
+		t.Fatalf("drew before the size:\n%s", v)
+	}
+	if v := send(m, tea.WindowSizeMsg{Width: 45, Height: 20}).View(); v == "" {
+		t.Fatal("nothing drawn once sized")
+	}
+}

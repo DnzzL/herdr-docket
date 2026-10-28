@@ -441,7 +441,12 @@ func (m paneModel) openRound(id string) paneModel {
 	return m
 }
 
+// View draws nothing until the first WindowSizeMsg: a frame at a guessed
+// width would wrap on a narrower terminal and leave ghost lines.
 func (m paneModel) View() string {
+	if m.width <= 0 || m.height <= 0 {
+		return ""
+	}
 	if m.round != nil {
 		return m.round.View()
 	}
