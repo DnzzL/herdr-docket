@@ -304,9 +304,9 @@ Files: internal/upload/voice.go. Linked: TASK-41 (storage quota).
 ```
 
 The owner answers with `## Answer 2` then `1.A 2.T 3. keep it 30 days`. The
-last round is always one question — `Build on these assumptions?` with
-`A. yes (reco)` and `B. change …` — and the assumptions listed above it. Only
-a yes to it publishes.
+last round is always one question — `1. Build on these assumptions?` with
+`A. yes (reco)` and `B. change …` — and the assumptions listed above it as
+`- ` bullets, never numbered. Only a yes to it publishes.
 
 **Ask.** Post the round with `herdr-docket task note <id> "<the round>"`, then
 `herdr-docket task ask <id>`: the card waits in Question for the owner.
