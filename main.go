@@ -18,6 +18,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/gate"
+	"github.com/DnzzL/herdr-docket/internal/grill"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
@@ -339,7 +340,7 @@ func queueFor(cwd string, s fleet.Settings) string {
 func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 	src, defaultQueue := env.src, env.defaultQueue
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|done|fail|block|verdict")
+		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|ask|answer|done|fail|block|verdict")
 	}
 	switch args[0] {
 	case "list":
@@ -375,6 +376,20 @@ func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 		// (TASK-57).
 		fmt.Fprintf(out, "%s noted\n", args[1])
 		return nil
+	case "ask":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: herdr-docket task ask <id>")
+		}
+		if err := setPhase(src, args[1], work.PhaseQuestion); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s moved to %s\n", args[1], work.PhaseQuestion)
+		return nil
+	case "answer":
+		if len(args) != 3 {
+			return fmt.Errorf(`usage: herdr-docket task answer <id> "<answers>"`)
+		}
+		return taskAnswer(src, args[1], args[2], out)
 	case "done", "fail", "block":
 		return taskClose(env, args[0], args[1:], out)
 	case "verdict":
@@ -538,6 +553,39 @@ func putCriteria(caller string, src work.Source, id string, criteria []string) e
 		return fmt.Errorf("%s: %s does not store acceptance criteria — put the bar in -d instead:\n  %s", caller, id, strings.Join(criteria, "; "))
 	}
 	return w.WriteCriteria(id, criteria)
+}
+
+// taskAnswer answers the card's newest round: the answers go on as an
+// `## Answer N` note, then the card goes back to the triager. Nothing is
+// written when the card has no round to answer.
+func taskAnswer(src work.Source, id, answers string, out io.Writer) error {
+	t, err := src.Get(id)
+	if err != nil {
+		return err
+	}
+	n, _, ok := grill.LatestRound(t.Notes)
+	if !ok {
+		return fmt.Errorf("%s: no ## Round note to answer", id)
+	}
+	if err := src.Comment(id, fmt.Sprintf("## Answer %d\n%s", n, answers)); err != nil {
+		return err
+	}
+	if err := setPhase(src, id, work.PhaseTriage); err != nil {
+		return fmt.Errorf("%s: answer to round %d posted, but the card did not move: %w", id, n, err)
+	}
+	fmt.Fprintf(out, "%s: answered round %d, moved to %s\n", id, n, work.PhaseTriage)
+	return nil
+}
+
+// setPhase moves a card where the grill needs it. Unlike the runner's
+// best-effort In Progress, this phase routes the card, so a queue that cannot
+// write it says so.
+func setPhase(src work.Source, id string, phase work.Phase) error {
+	p, ok := src.(work.Phaser)
+	if !ok {
+		return fmt.Errorf("%s: this queue cannot move a card to %s", id, phase)
+	}
+	return p.SetPhase(id, phase)
 }
 
 // closeVerbs is the CLI's spelling of the verdict vocabulary: the verbs are
