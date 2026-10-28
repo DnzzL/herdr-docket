@@ -1154,3 +1154,27 @@ func TestAnAgentThatVanishesInTheLateWindowGoesBlockedNotFailed(t *testing.T) {
 		t.Fatalf("a cancelled run stays quiet, notifies = %v", h.notifies)
 	}
 }
+
+// A triager that specs the idea writes the body, hands the card to the author
+// and files it into the pickup word. That is the grill's clean ending, not a
+// close: the card must stay open for the author to pick up (TASK-86).
+func TestATriagedCardSpeccedAndMovedToTodoStaysOpen(t *testing.T) {
+	b := newBoard("TASK-1")
+	b.items["TASK-1"] = work.Task{ID: "TASK-1", Title: "T", Phase: "Triage", Open: true, Triaging: true, Assignee: "triager"}
+	h := &fakeHost{after: func() {
+		it := b.items["TASK-1"]
+		it.Triaging, it.Asking = false, false
+		it.Phase = "To Do"
+		it.Assignee = "author"
+		b.items["TASK-1"] = it
+	}}
+	if err := run(t, h, b); err != nil {
+		t.Fatal(err)
+	}
+	if !b.open("TASK-1") {
+		t.Fatal("a specced card must stay open for the author")
+	}
+	if v := b.verdict("TASK-1"); v != "" {
+		t.Fatalf("verdict = %q, want none: the grill handed the card on", v)
+	}
+}

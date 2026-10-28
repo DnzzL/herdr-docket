@@ -159,21 +159,20 @@ Say what happened as you go, so the next reader has the thread:
   herdr-docket task note %s "<what you did and why>"
 
 Then end with exactly one of the two endings above — the card specced and in
-the pickup word, or the round asked and the card in question. Do not close the
-card: a `+"`task done`"+`, `+"`task fail`"+` or `+"`task block`"+` on an idea ends it before
-anyone builds it. If you can do neither, close it with the single question that
-would settle it exactly as the verdict protocol below says.
+the pickup word, or the round asked and the card in question. Those are the
+only endings: never `+"`task done`"+`, `+"`task fail`"+` or `+"`task block`"+` on an idea,
+because that ends it before anyone builds it. If you can neither spec it nor
+ask, ask anyway: one question is a round.
 
 ## Ending the run — required, exactly once
 
-  herdr-docket task done %s --note "<...>"    only if the idea is clear and specced
-  herdr-docket task fail %s --note "<why the grill could not proceed>"
-  herdr-docket task block %s --note "<what a human must decide>"
+  herdr-docket task move %s todo      the card is specced and assigned to its author
+  herdr-docket task ask %s "<the round>"   the card is parked in question
 
 The ending command is the last tool call of the run: **execute it, then
 summarise**. A run that says its conclusion in prose and stops is filed as one
 that reported nothing. (The fleet dir, for context, is %s.)
-`, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, fleetDir)
+`, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, v.ID, fleetDir)
 }
 
 // Verify is the verifier's prompt: the same layers and task, the pull request

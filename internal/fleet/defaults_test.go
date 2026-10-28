@@ -39,3 +39,20 @@ func TestNoDefaultAnywhereLeavesUnassignedWorkAlone(t *testing.T) {
 		t.Errorf("default = %q, want none", got)
 	}
 }
+
+// One source: is one unnamed queue, so its ids carry no prefix and its
+// settings live under the empty key SourceOf reads from a bare id. Reading
+// only sources: left a singular-source fleet's triager and default
+// unreachable, and its triaged cards were called untriaged (TASK-86).
+func TestASingularSourceRoutesWithItsOwnSettings(t *testing.T) {
+	d := Settings{
+		DefaultAgent: "dev",
+		Source:       SourceConfig{DefaultAgent: "own-pm", Triager: "own-triager"},
+	}.Defaults()
+	if got := d.TriagerFor("TASK-1"); got != "own-triager" {
+		t.Errorf("triager = %q, want own-triager", got)
+	}
+	if got := d.For("TASK-1"); got != "own-pm" {
+		t.Errorf("default = %q, want own-pm", got)
+	}
+}

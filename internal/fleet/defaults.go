@@ -23,6 +23,19 @@ type Defaults struct {
 // one place rather than at each of the five call sites that route a task.
 func (s Settings) Defaults() Defaults {
 	d := Defaults{global: s.DefaultAgent}
+	// One source: is one unnamed queue: its ids carry no prefix, so its
+	// settings live under the empty key — the same key work.SourceOf reads
+	// from a bare id. Reading only s.Sources here left a singular source's
+	// triager and default unreachable (TASK-86).
+	if len(s.Sources) == 0 {
+		if s.Source.DefaultAgent != "" {
+			d.bySource = map[string]string{"": s.Source.DefaultAgent}
+		}
+		if s.Source.Triager != "" {
+			d.triagerFor = map[string]string{"": s.Source.Triager}
+		}
+		return d
+	}
 	for name, c := range s.Sources {
 		if c.DefaultAgent != "" {
 			if d.bySource == nil {

@@ -39,6 +39,7 @@ And the block both of them take:
 | `dir` | A Backlog.md project other than the fleet's own: absolute, `~`, or relative to the fleet dir. |
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
 | `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)). Unset: no pipeline, a run ends on the agent's own verdict. |
+| `triager` | The agent that grills this queue's `triage` cards into a spec ([the grill](adr/0023-the-grill-is-a-card-state.md)). Unset: a triaged card waits for a human to name one. Needs both `triage` and `question` in `statuses:`. |
 | `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
 | `max_runs` | This queue's cap, under the fleet's: a repo whose test suite cannot run twice at once says `1`. Unset or `0`: no cap. A run's verifier and rework stages count as the one run. |
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |
@@ -82,6 +83,11 @@ wontfix column, a waiting-on-a-human column, and a fleet that treated every
 unrecognised status as open work would put an agent on them. It is also the
 first lever in [How much autonomy](how-it-works.md#the-levers): `todo` is
 exactly how much of your board you are handing over.
+
+`triage` and `question` are the grill's two words, and they are both or
+neither: `triage` waits for the queue's `triager`, `question` waits for the
+owner's answer, and the fleet never picks a `question` card. Name them only on
+a queue that has a `triager`.
 
 `todo`, `done`, `failed` and `blocked` are required — a queue the fleet can
 pick from but cannot close leaves every task open for the next tick to pick up

@@ -451,6 +451,9 @@ func TestATriagedCardGetsTheGrillProtocolNotTheVerdictOne(t *testing.T) {
 	for _, unwanted := range []string{
 		"End with a verdict on your own task",
 		"Hand it on to another agent",
+		"task done TASK-7",
+		"task fail TASK-7",
+		"task block TASK-7",
 	} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("a triage run was told %q, which ends the card", unwanted)
