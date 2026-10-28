@@ -41,3 +41,7 @@
 - **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
   tick 3s ago`, `daemon down for 4 min` once no tick has run for three
   intervals, or `daemon never started`.
+- **An idea filed without an assignee goes to triage.** `herdr-docket task
+  create` with no `-a` on a queue that names a `triager:` files the card in
+  `Triage` and says so; with `-a`, or no triager, it lands as before.
+  `herdr-docket queues` prints the queue names one per line, for scripts.

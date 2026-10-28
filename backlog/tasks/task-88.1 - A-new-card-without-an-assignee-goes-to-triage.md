@@ -1,10 +1,10 @@
 ---
 id: TASK-88.1
 title: A new card without an assignee goes to triage
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:30'
-updated_date: '2026-10-28 13:30'
+updated_date: '2026-10-28 13:39'
 labels: []
 dependencies:
   - TASK-86.1
