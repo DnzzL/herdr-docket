@@ -88,3 +88,19 @@ func TestACommandOnASilentTerminalSendsNoQueryAndReturnsAtOnce(t *testing.T) {
 		})
 	}
 }
+
+// /dev/null is a character device but no terminal: `questions </dev/null`
+// must take the line prompt, not open a screen nobody sees.
+func TestOnlyATerminalCountsAsOne(t *testing.T) {
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer null.Close()
+	if terminal(null) {
+		t.Error("/dev/null counted as a terminal")
+	}
+	if _, slave := openPty(t); !terminal(slave) {
+		t.Error("a pty did not count as a terminal")
+	}
+}

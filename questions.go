@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/charmbracelet/x/term"
 
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/grill"
@@ -42,10 +43,9 @@ func questionsCmd() error {
 	return answerQuestions(src, daemon.Liveness(time.Now()), os.Stdin, os.Stdout)
 }
 
-func terminal(f *os.File) bool {
-	st, err := f.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
-}
+// terminal asks the tty driver, not the file mode: /dev/null is a character
+// device too.
+func terminal(f *os.File) bool { return term.IsTerminal(f.Fd()) }
 
 // questionsPane is the pane `questions` opens: straight on the Round of the
 // one card waiting, on Home among the `?` rows when several wait. ok is
