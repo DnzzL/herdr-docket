@@ -188,18 +188,22 @@ func InitRepo(s Settings, repo string, out io.Writer) error {
 	if err := Init(s, out); err != nil {
 		return err
 	}
-	// A Backlog.md source with no dir is a fleet from before ADR 0023, whose
-	// queue lived in the fleet dir: this repo is where it goes, statuses and all.
-	c, found := s.find(func(c SourceConfig) bool {
-		return c.kind() == kindBacklogmd && (c.Dir == "" || filepath.Clean(c.dirFrom(s.Dir)) == repo)
+	c, known := s.find(func(c SourceConfig) bool {
+		return c.kind() == kindBacklogmd && c.Dir != "" && filepath.Clean(c.dirFrom(s.Dir)) == repo
 	})
+	if !known {
+		// A Backlog.md source with no dir is a fleet from before ADR 0023,
+		// whose queue lived in the fleet dir: this repo is where it goes,
+		// statuses and all.
+		c, _ = s.find(func(c SourceConfig) bool { return c.kind() == kindBacklogmd && c.Dir == "" })
+	}
 	if err := initBacklog(repo, c.Statuses, out); err != nil {
 		return err
 	}
 	if err := initTrackerDoc(repo, issueTracker, out); err != nil {
 		return err
 	}
-	if found && c.Dir != "" {
+	if known {
 		fmt.Fprintf(out, "fleet.yaml already names %s\n", repo)
 		return nil
 	}
@@ -262,9 +266,13 @@ func repoDir(repo string) (string, error) {
 	return repo, nil
 }
 
-// find is the first source block of s that match accepts, one queue or several.
+// find is a source block of s that match accepts, one queue or several.
 func (s Settings) find(match func(SourceConfig) bool) (SourceConfig, bool) {
-	for _, c := range append([]SourceConfig{s.Source}, slices.Collect(maps.Values(s.Sources))...) {
+	all := []SourceConfig{s.Source}
+	if len(s.Sources) > 0 {
+		all = slices.Collect(maps.Values(s.Sources))
+	}
+	for _, c := range all {
 		if match(c) {
 			return c, true
 		}

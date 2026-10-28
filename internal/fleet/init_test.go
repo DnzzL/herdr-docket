@@ -435,6 +435,13 @@ func TestInitRepoAddsTheRepoBesideAnotherQueue(t *testing.T) {
 	if _, err := NewSource(got); err != nil {
 		t.Errorf("the fleet does not build its queue: %v", err)
 	}
+	before := read(t, fleetPath())
+	if err := InitRepo(loaded(t), repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if after := read(t, fleetPath()); after != before {
+		t.Errorf("a second run changed fleet.yaml:\n%s\n---\n%s", before, after)
+	}
 }
 
 // sources: gets one more entry; a name already taken gets a suffix rather than
