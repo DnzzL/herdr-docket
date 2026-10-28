@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -449,7 +450,7 @@ func TestInitRepoAddsTheRepoBesideAnotherQueue(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := loaded(t)
-	if got.Source != (SourceConfig{}) || len(got.Sources) != 2 {
+	if !reflect.DeepEqual(got.Source, SourceConfig{}) || len(got.Sources) != 2 {
 		t.Fatalf("want two sources, got source %+v sources %+v", got.Source, got.Sources)
 	}
 	if c := got.Sources["app"]; c.Kind != kindGithub || c.Github.Repo != "acme/app" {

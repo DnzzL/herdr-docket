@@ -62,6 +62,7 @@ fragment Page on ProjectV2 {
 // the one whose project is ours is picked out. An issue on several boards has
 // several items; only one of them is this queue.
 const issueQuery = `query Issue($owner: String!, $project: Int!, $repoOwner: String!, $repoName: String!, $issue: Int!, $agentField: String!, $statusField: String!) {
+  viewer { login }
   organization(login: $owner) { projectV2(number: $project) { id } }
   user(login: $owner) { projectV2(number: $project) { id } }
   repository(owner: $repoOwner, name: $repoName) {
