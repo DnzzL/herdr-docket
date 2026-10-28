@@ -81,6 +81,30 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 
 More: [how it works](docs/how-it-works.md).
 
+## Day to day
+
+**On the phone**, in Termux with `herdr --remote` on the box:
+`herdr-docket status` says whether the daemon is alive, `herdr-docket
+questions` answers a grill round one tap at a time, and a new idea is one tap
+on the `idea` widget. Merge what passed in GitHub mobile.
+
+**On the laptop**: the big grills, reviewing the PRs that wait on you, and
+`backlog browser` for the whole board.
+
+To set up the widget, install Termux, Termux:API and Termux:Widget (F-Droid),
+then in Termux:
+
+```bash
+pkg install openssh termux-api
+mkdir -p ~/.shortcuts ~/.config/herdr-docket
+curl -fsSL https://raw.githubusercontent.com/DnzzL/herdr-docket/main/scripts/termux/idea -o ~/.shortcuts/idea
+chmod +x ~/.shortcuts/idea
+echo 'BOX=me@my-box' > ~/.config/herdr-docket/idea.env   # ssh target, key auth
+```
+
+Add the Termux:Widget widget to the home screen and tap `idea`: pick the
+queue, type the idea, and a toast shows the new card's id.
+
 ## How much autonomy
 
 Start with one card you file by hand, then let go one project at a time:

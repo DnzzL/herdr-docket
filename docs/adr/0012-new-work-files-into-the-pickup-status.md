@@ -30,6 +30,10 @@ Two moves, both inside the port's existing grammar:
    exists in a column it does not belong in. There is no readback and no
    second round trip.
 
+(Amended by TASK-88: with a triager, unassigned new work files into Triage —
+the CLI creates as above, then moves the card through `Phaser`, so a queue
+with a `default_agent` has a short window where the card sits in To Do.)
+
 ## What was rejected, and why
 
 - **Widen `Create` with a starting status.** Every adapter — including those

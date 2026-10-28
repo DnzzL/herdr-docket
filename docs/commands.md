@@ -13,20 +13,22 @@
 | `herdr-docket run TASK-12` | run one task now |
 | `herdr-docket task list` | the queue as the agent sees it (`--all` includes closed work) |
 | `herdr-docket task view ID` | one task: body, notes, criteria, and who it is routed to |
-| `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria) |
+| `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria); with no `-a` on a queue that names a `triager`, the card is filed in `triage`. Prints the status it landed in |
 | `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-docket task note ID "…"` | say where things stand without closing |
 | `herdr-docket task ask ID` | park a card in `question` once its `## Round N` note is posted |
 | `herdr-docket task answer ID "1.A 2.T 3. …"` | answer the card's newest round (`## Answer N` note) and send it back to `triage` |
 | `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence; `--pr URL` delivers a PR to the verifier) |
 | `herdr-docket task verdict ID PASS\|FAIL --pr URL --note "…"` | a verifier's verdict, pinned to the PR's diff; the note is the evidence it carries |
+| `herdr-docket queues` | the queue names, one per line, for scripts (`default` for a single `source:`) |
 | `herdr-docket agent list` | the agents, and which are parked |
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket runs` | the runs in flight; a record past its timeout is marked `stale?` |
 | `herdr-docket status` | whether the daemon is alive: `daemon live · tick 3s ago`, `daemon down for 4 min` (no tick for 3 intervals), or `daemon never started` |
+| `herdr-docket questions` | the daemon line, then the `question` cards across queues; pick one and answer its newest round question by question — Enter takes the `(reco)`, a letter that option, other text a free answer — then confirm to send it as `task answer` does. Fits 45 columns |
 | `herdr-docket stop TASK-12` | stop a task's run in flight |
 | `herdr-docket pause [--now]` / `resume` | pause the whole fleet — no new runs, no pipeline stages (`--now` stops runs in flight) |
-| `herdr-docket pane` | the runs overlay (the plugin opens it for you) |
+| `herdr-docket pane` | the overlay (the plugin opens it for you): the daemon line, Your turn (questions, Blocked cards, merges held for you), runs in flight, the last 5 settled; cut to the terminal width |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
 | `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |

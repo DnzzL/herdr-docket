@@ -1,10 +1,10 @@
 ---
 id: TASK-88.2
 title: The idea widget on the phone
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:30'
-updated_date: '2026-10-28 13:30'
+updated_date: '2026-10-28 13:41'
 labels: []
 dependencies:
   - TASK-88.1
