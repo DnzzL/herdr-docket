@@ -29,3 +29,6 @@
   Tailscale, the Herdr server, `gh` and agent CLI logins, the plugin,
   `init <repo>` per repo, one `intake` workspace per repo, and a `max_runs`
   sized from RAM. `--dry-run` prints the commands without running them.
+- **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
+  tick 3s ago`, `daemon down for 4 min` once no tick has run for three
+  intervals, or `daemon never started`.
