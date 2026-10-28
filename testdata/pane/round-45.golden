@@ -1,0 +1,40 @@
+TASK-2 Voice notes  round 2
+
+Audio is sent as text today; upload.go builds
+the note, and the linked card TASK-7 waits on
+this.
+─────────────────────────────────────────────
+
+1. What happens to the audio when it is sent?
+  [✓A attached as a file (reco) ]
+  [ B text in a comment ]
+  [ or in plain words… ]
+
+2. Who reads it first?
+  [✓A the triager (reco) ]
+  [ B the owner ]
+  [ or in plain words… ]
+
+3. How long is it kept?
+  [✓A forever (reco) ]
+  [ B thirty days ]
+  [ or in plain words… ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.A 2.A 3.A   [ Send ]
+tap or ⏎ to pick
+↑↓/jk question · ←→/hl option · a letter
+picks · tab words · esc back · q/^c quit

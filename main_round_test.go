@@ -349,3 +349,72 @@ func TestSlowWorkRunsOffTheUpdate(t *testing.T) {
 		t.Fatalf("the stop did not run: %+v\n%s", c.closed, m.View())
 	}
 }
+
+// The footer splits what to do from which key: actions first, every key the
+// handler takes second, none of the old glued-together line left.
+func TestTheRoundHintSplitsActionsFromKeys(t *testing.T) {
+	m, _ := roundPane(t, 120, 40)
+	view := m.View()
+	for _, want := range []string{"tap or ⏎ to pick", "↑↓/jk question", "←→/hl option", "a letter picks", "tab words", "esc back", "q/^c quit"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("hint lost %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "tap or ⏎ pick") {
+		t.Errorf("old glued hint still drawn:\n%s", view)
+	}
+
+	r := *m.round
+	r.at = focus{kind: sendButton}
+	r = r.laidOut(true)
+	m.round = &r
+	if !strings.Contains(m.View(), "tap or ⏎ to send") {
+		t.Fatalf("Send focused but the action line does not say so:\n%s", m.View())
+	}
+}
+
+// While the plain-words field has the keys the hint shrinks to one line and
+// names only what the field takes.
+func TestTheRoundHintShrinksToOneLineWhileTyping(t *testing.T) {
+	m, _ := roundPane(t, 45, 40)
+	m = send(m, tea.KeyMsg{Type: tea.KeyTab})
+	if !m.round.editing {
+		t.Fatalf("tab did not open the plain-words field:\n%s", m.View())
+	}
+	typing := 0
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "typing") || strings.Contains(line, "esc done") || strings.Contains(line, "^c quit") {
+			typing++
+		}
+	}
+	if typing != 1 {
+		t.Fatalf("typing hint is %d lines, want 1:\n%s", typing, m.View())
+	}
+	view := m.View()
+	for _, want := range []string{"typing", "⏎/tab done", "esc done", "^c quit"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("typing hint lost %q:\n%s", want, view)
+		}
+	}
+	for _, gone := range []string{"a letter picks", "esc back", "tap or"} {
+		if strings.Contains(view, gone) {
+			t.Errorf("typing hint still names %q:\n%s", gone, view)
+		}
+	}
+}
+
+// Every key the Round takes is on the hint it draws, and an undeclared key
+// does nothing.
+func TestEveryRoundKeyIsNamedOnTheHint(t *testing.T) {
+	m, _ := roundPane(t, 120, 40)
+	view := m.View()
+	for _, h := range m.round.keyHints() {
+		if h.text == "" || !strings.Contains(view, h.text) {
+			t.Errorf("key %v handled but %q is not on the hint:\n%s", h.names, h.text, m.View())
+		}
+	}
+	before := m.View()
+	if m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("z")}); cmd != nil || m.(paneModel).View() != before {
+		t.Errorf("z is not on the hint but the handler took it:\n%s", m.(paneModel).View())
+	}
+}

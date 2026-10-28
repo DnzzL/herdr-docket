@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -375,22 +376,27 @@ func (m paneModel) mouse(msg tea.MouseMsg) (paneModel, tea.Cmd) {
 }
 
 func (m paneModel) key(msg tea.KeyMsg) (paneModel, tea.Cmd) {
-	rows := m.rows
-	runs := rowsFrom(rows, runRow)
 	k := msg.String()
-	switch {
-	case k == "q" || k == "ctrl+c":
+	h, ok := match(m.keyHints(), k)
+	if !ok {
+		return m, nil
+	}
+	switch h.act {
+	case actQuit:
 		return m, tea.Quit
-	case k == "j" || k == "down":
-		m.sel++
-	case k == "k" || k == "up":
-		m.sel--
-	case k == "enter":
+	case actMove:
+		switch {
+		case k == "j" || k == "down":
+			m.sel++
+		case k == "k" || k == "up":
+			m.sel--
+		case len(k) == 1 && k[0] >= '1' && k[0] <= '9':
+			m.sel = rowsFrom(m.rows, runRow) + int(k[0]-'1')
+		}
+	case actPress:
 		return m.act()
-	case len(k) == 1 && k[0] >= '1' && k[0] <= '9' && runs+int(k[0]-'1') < len(rows):
-		m.sel = runs + int(k[0]-'1')
-	case k == "x" && m.sel < len(rows) && rows[m.sel].Run != nil:
-		r, c, timeout := *rows[m.sel].Run, m.closer, timeoutFor(m.data.Timeouts, rows[m.sel].Run.Agent)
+	case actStop:
+		r, c, timeout := *m.rows[m.sel].Run, m.closer, timeoutFor(m.data.Timeouts, m.rows[m.sel].Run.Agent)
 		m.status = "stopping " + r.Task + "…"
 		return m, func() tea.Msg {
 			var b strings.Builder
@@ -399,7 +405,7 @@ func (m paneModel) key(msg tea.KeyMsg) (paneModel, tea.Cmd) {
 			}
 			return statusMsg(strings.TrimSpace(b.String()))
 		}
-	case k == "p":
+	case actPause:
 		paused := !runner.Paused()
 		if err := runner.SetPaused(paused); err != nil {
 			m.status = err.Error()
@@ -410,6 +416,49 @@ func (m paneModel) key(msg tea.KeyMsg) (paneModel, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// keyHints is Home's keys for the state on screen: the hint names exactly
+// these, and key takes exactly these. A key that does nothing here is not on
+// the list, so it is neither named nor taken.
+func (m paneModel) keyHints() []keyHint {
+	names := []string{"j", "down", "k", "up"}
+	selectText := "j/k/↑↓ select"
+	if runs := len(inFlight(m.data.Runs)); runs > 0 {
+		for i := 1; i <= min(runs, 9); i++ {
+			names = append(names, strconv.Itoa(i))
+		}
+		selectText = "j/k/↑↓ or 1-9 select"
+	}
+	hints := []keyHint{{names: names, text: selectText, act: actMove}}
+	if m.openableOnScreen() {
+		hints = append(hints, keyHint{names: []string{"enter"}, text: "⏎/tap open", act: actPress})
+	}
+	if m.sel < len(m.rows) && m.rows[m.sel].Run != nil {
+		hints = append(hints, keyHint{names: []string{"x"}, text: "x stop", act: actStop})
+	}
+	pause := "p pause"
+	if m.data.Paused {
+		pause = "p resume"
+	}
+	hints = append(hints,
+		keyHint{names: []string{"p"}, text: pause, act: actPause},
+		keyHint{names: []string{"q", "ctrl+c"}, text: "q/^c quit", act: actQuit})
+	return hints
+}
+
+// openableOnScreen says an Enter on the selected row can open a Round: some
+// question row is in the viewport.
+func (m paneModel) openableOnScreen() bool {
+	for _, r := range m.rows {
+		if r.Kind != questionRow {
+			continue
+		}
+		if m.height <= 0 || r.Line >= m.top && r.Line < m.top+m.height {
+			return true
+		}
+	}
+	return false
 }
 
 // act is Enter, or a tap, on the selected row: a question opens its Round. A
@@ -465,6 +514,7 @@ func (m paneModel) laidOut(follow bool) paneModel {
 	}
 	m.top = max(min(m.top, len(lines)-m.height), 0)
 	m.lines, m.rows = lines, rows
+	m.lines = append(m.lines, hintLines(m.keyHints(), w)...)
 	return m
 }
 
@@ -708,7 +758,5 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 		add("")
 		add(d.Status)
 	}
-	add("")
-	add("j/k/tap select · ⏎/tap selected open · x stop · p pause · q quit")
 	return lines, rows
 }

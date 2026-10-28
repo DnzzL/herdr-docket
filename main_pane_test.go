@@ -243,3 +243,91 @@ func TestNoFrameBeforeTheTerminalSize(t *testing.T) {
 		t.Fatal("nothing drawn once sized")
 	}
 }
+
+// hintLine is the last line of Home's frame: the hint as View draws it.
+func hintOf(m paneModel) string {
+	lines := strings.Split(m.View(), "\n")
+	return lines[len(lines)-1]
+}
+
+// At 45 columns the old hint was cut after "x stop"; the new one wraps and
+// every word survives, the keys that work with a question selected named.
+func TestHomeHintWrapsAt45ColumnsWithoutLosingAWord(t *testing.T) {
+	m := paneAt(t, paneFixture(), 45, 40)
+	var hint []string
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "select") || strings.Contains(line, "quit") || strings.Contains(line, "pause") || strings.Contains(line, "open") {
+			hint = append(hint, line)
+		}
+	}
+	joined := strings.Join(hint, " ")
+	for _, want := range []string{"j/k/↑↓", "1-9", "select", "⏎/tap", "open", "p pause", "q/^c", "quit"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("hint lost %q:\n%s", want, m.View())
+		}
+	}
+	if strings.Contains(joined, "x stop") {
+		t.Errorf("x stop named with a question selected:\n%s", m.View())
+	}
+}
+
+// A hint never names a key that does nothing where the pane is: p resumes
+// once paused, x stops only a selected run, Enter opens only with a question
+// row in view.
+func TestHomeHintNamesOnlyWhatWorksHere(t *testing.T) {
+	paused := paneFixture()
+	paused.Paused = true
+	if m := paneAt(t, paused, 45, 40); !strings.Contains(paneHintText(m), "p resume") {
+		t.Fatalf("paused fleet not offered p resume:\n%s", m.View())
+	}
+	now := time.Now()
+	runs := paneData{Now: now, Runs: []history.Record{
+		{RunID: "r1", Task: "TASK-1", Agent: "dev", Status: history.StatusRunning, At: now, WorkspaceID: "ws1"},
+	}}
+	m := paneAt(t, runs, 45, 40)
+	text := paneHintText(m)
+	if !strings.Contains(text, "x stop") {
+		t.Fatalf("a selected run not offered x stop:\n%s", m.View())
+	}
+	if strings.Contains(text, "⏎/tap open") {
+		t.Fatalf("open named with no question row:\n%s", m.View())
+	}
+	if !strings.Contains(text, "1-9") {
+		t.Fatalf("a run in flight not offered 1-9:\n%s", m.View())
+	}
+	empty := paneAt(t, paneData{Now: now}, 45, 40)
+	if text := paneHintText(empty); strings.Contains(text, "1-9") || strings.Contains(text, "x stop") || strings.Contains(text, "open") {
+		t.Fatalf("dead keys named with nothing to act on:\n%s", empty.View())
+	}
+}
+
+// paneHintText is Home's hint lines as one string.
+func paneHintText(m paneModel) string {
+	hints := m.keyHints()
+	var out []string
+	for _, h := range hints {
+		out = append(out, h.text)
+	}
+	return strings.Join(out, " · ")
+}
+
+// Every key Home takes is on the hint it draws, and an undeclared key does
+// nothing: the handler gates on the same list the hint is built from.
+func TestEveryHomeKeyIsNamedOnTheHint(t *testing.T) {
+	m := paneAt(t, paneFixture(), 45, 40)
+	view := strings.Join(m.lines, "\n")
+	for _, h := range m.keyHints() {
+		if h.text == "" || !strings.Contains(view, h.text) {
+			t.Errorf("key %v handled but %q is not on the hint:\n%s", h.names, h.text, m.View())
+		}
+		for _, name := range h.names {
+			if got, ok := match(m.keyHints(), name); !ok || got.act != h.act {
+				t.Errorf("%q accepted by the hint list but not matched", name)
+			}
+		}
+	}
+	before := m.View()
+	if m, cmd := key(m, "z"); cmd != nil || m.View() != before {
+		t.Errorf("z is not on the hint but the handler took it:\n%s", m.View())
+	}
+}

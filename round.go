@@ -194,9 +194,6 @@ func (m roundModel) submit() (roundModel, tea.Cmd) {
 
 func (m roundModel) key(msg tea.KeyMsg) (roundModel, tea.Cmd) {
 	k := msg.String()
-	if k == "ctrl+c" {
-		return m, tea.Quit
-	}
 	if m.editing {
 		a := &m.answers[m.at.q]
 		switch msg.Type {
@@ -213,37 +210,95 @@ func (m roundModel) key(msg tea.KeyMsg) (roundModel, tea.Cmd) {
 		}
 		return m, nil
 	}
-	switch k {
-	case "q":
+	h, ok := match(m.keyHints(), k)
+	if !ok {
+		return m, nil
+	}
+	switch h.act {
+	case actQuit:
 		return m, tea.Quit
-	case "esc":
+	case actBack:
 		return m, func() tea.Msg { return roundDoneMsg{} }
-	case "up", "k":
-		m.at = m.question(max(m.row()-1, 0))
-	case "down", "j":
-		m.at = m.question(min(m.row()+1, len(m.round.Questions)))
-	case "left", "h":
-		m.at = m.option(-1)
-	case "right", "l":
-		m.at = m.option(+1)
-	case "enter":
-		return m.press()
-	case "tab":
-		if m.at.kind != sendButton {
-			m.at = focus{kind: wordsButton, q: m.at.q}
-			return m.press()
+	case actMove:
+		switch k {
+		case "up", "k":
+			m.at = m.question(max(m.row()-1, 0))
+		case "down", "j":
+			m.at = m.question(min(m.row()+1, len(m.round.Questions)))
 		}
-	default:
-		if m.at.kind != sendButton && len(k) == 1 {
-			for i, o := range m.round.Questions[m.at.q].Options {
-				if strings.EqualFold(k, o.Letter) {
-					m.at = focus{kind: optionButton, q: m.at.q, opt: i}
-					return m.press()
-				}
+	case actOption:
+		switch k {
+		case "left", "h":
+			m.at = m.option(-1)
+		case "right", "l":
+			m.at = m.option(+1)
+		}
+	case actPress:
+		return m.press()
+	case actWords:
+		m.at = focus{kind: wordsButton, q: m.at.q}
+		return m.press()
+	case actPick:
+		for i, o := range m.round.Questions[m.at.q].Options {
+			if strings.EqualFold(k, o.Letter) {
+				m.at = focus{kind: optionButton, q: m.at.q, opt: i}
+				return m.press()
 			}
 		}
 	}
 	return m, nil
+}
+
+// keyHints is the Round's keys for the state on screen: while the plain-words
+// field has the keys it names only them, otherwise the actions line names
+// Enter and the keys line names every other key the handler takes. key gates
+// on the same list, so a hint and its handler cannot drift.
+func (m roundModel) keyHints() []keyHint {
+	if m.editing {
+		return []keyHint{
+			{text: "typing", act: actNone},
+			{names: []string{"enter", "tab"}, text: "⏎/tab done", act: actDone},
+			{names: []string{"esc"}, text: "esc done", act: actDone},
+			{names: []string{"ctrl+c"}, text: "^c quit", act: actQuit},
+		}
+	}
+	action := "tap or ⏎ to pick"
+	if m.at.kind == sendButton {
+		action = "tap or ⏎ to send"
+	}
+	hints := []keyHint{
+		{names: []string{"enter"}, text: action, act: actPress, line: 0},
+		{names: []string{"up", "k", "down", "j"}, text: "↑↓/jk question", act: actMove, line: 1},
+		{names: []string{"left", "h", "right", "l"}, text: "←→/hl option", act: actOption, line: 1},
+	}
+	if m.at.kind != sendButton {
+		if letters := m.optionLetters(); len(letters) > 0 {
+			hints = append(hints, keyHint{names: letters, text: "a letter picks", act: actPick, line: 1})
+		}
+		hints = append(hints, keyHint{names: []string{"tab"}, text: "tab words", act: actWords, line: 1})
+	}
+	return append(hints,
+		keyHint{names: []string{"esc"}, text: "esc back", act: actBack, line: 1},
+		keyHint{names: []string{"q", "ctrl+c"}, text: "q/^c quit", act: actQuit, line: 1})
+}
+
+// optionLetters is every key string that picks an option on the focused
+// question: both cases of each letter, minus the letters the handler reads as
+// a movement or a quit first.
+func (m roundModel) optionLetters() []string {
+	reserved := map[string]bool{"q": true, "j": true, "k": true, "h": true, "l": true}
+	seen := map[string]bool{}
+	var out []string
+	for _, o := range m.round.Questions[m.at.q].Options {
+		for _, name := range []string{strings.ToUpper(o.Letter), strings.ToLower(o.Letter)} {
+			if reserved[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
 }
 
 // row is the focused row of the screen's column of questions: the question,
@@ -345,7 +400,6 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 		}
 	}
 	body = append(body, "")
-	add("tap or ⏎ pick · ↑↓ question · tab words · esc back · q quit", 0)
 
 	if m.status != "" {
 		foot = append(foot, wrap(m.status, w)...)
@@ -381,6 +435,7 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 		footHits = append(footHits, roundHit{0, len(sendBtn), len(foot), len(foot), send})
 		foot = append(foot, sendDrawn)
 	}
+	foot = append(foot, hintLines(m.keyHints(), w)...)
 	return body, bodyHits, foot, footHits
 }
 
