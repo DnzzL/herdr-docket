@@ -60,3 +60,12 @@ func TestLatestRoundWithoutARoundIsNotOK(t *testing.T) {
 		t.Fatal("no Round heading must not be a round")
 	}
 }
+
+// An answer line is what `task answer` posts and the triager reads: a letter
+// sticks to its number, free text follows it after a space.
+func TestLineJoinsLettersAndFreeText(t *testing.T) {
+	got := Line([]Answer{{N: 1, Letter: "A"}, {N: 2, Text: "  only the owner \n"}, {N: 3, Letter: "T"}})
+	if want := "1.A 2. only the owner 3.T"; got != want {
+		t.Fatalf("Line = %q, want %q", got, want)
+	}
+}

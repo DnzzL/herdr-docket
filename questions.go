@@ -129,7 +129,7 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 			say(out, l)
 		}
 	}
-	var answers []string
+	var answers []grill.Answer
 	for _, q := range round.Questions {
 		a, err := askQuestion(r, out, q)
 		if err != nil {
@@ -137,7 +137,7 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 		}
 		answers = append(answers, a)
 	}
-	line := strings.Join(answers, " ")
+	line := grill.Line(answers)
 	say(out, line)
 	reply, err := ask(r, out, "send? [Y/n] ")
 	if err != nil {
@@ -150,8 +150,9 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 	return taskAnswer(src, card.ID, line, &fitting{out})
 }
 
-// askQuestion shows one question and reads its answer as `N.A` or `N. text`.
-func askQuestion(r *bufio.Reader, out io.Writer, q grill.Question) (string, error) {
+// askQuestion shows one question and reads its answer: Enter the reco, a
+// letter that option, anything else free text.
+func askQuestion(r *bufio.Reader, out io.Writer, q grill.Question) (grill.Answer, error) {
 	say(out, "")
 	say(out, fmt.Sprintf("%d. %s", q.N, q.Text))
 	reco := ""
@@ -166,18 +167,18 @@ func askQuestion(r *bufio.Reader, out io.Writer, q grill.Question) (string, erro
 	for {
 		line, err := ask(r, out, "> ")
 		if err != nil {
-			return "", err
+			return grill.Answer{}, err
 		}
 		if line == "" && reco != "" {
-			return fmt.Sprintf("%d.%s", q.N, reco), nil
+			return grill.Answer{N: q.N, Letter: reco}, nil
 		}
 		for _, o := range q.Options {
 			if strings.EqualFold(line, o.Letter) {
-				return fmt.Sprintf("%d.%s", q.N, o.Letter), nil
+				return grill.Answer{N: q.N, Letter: o.Letter}, nil
 			}
 		}
 		if line != "" {
-			return fmt.Sprintf("%d. %s", q.N, line), nil
+			return grill.Answer{N: q.N, Text: line}, nil
 		}
 	}
 }

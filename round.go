@@ -18,10 +18,6 @@ const inlineWidth = 60
 // confirmation of a sent answer, or nothing on Esc.
 type roundDoneMsg struct{ status string }
 
-// answer is one question's answer: an option letter, or free text when
-// letter is empty.
-type answer struct{ letter, text string }
-
 // roundModel is the Round screen: the round's context, each question's
 // options as buttons with the reco preselected, a plain-words field per
 // question, and Send. It writes nothing itself: send is the `task answer`
@@ -32,7 +28,7 @@ type roundModel struct {
 	id, title     string
 	round         grill.Round
 	send          func(line string) (string, error)
-	answers       []answer
+	answers       []grill.Answer
 	q, opt        int  // focus: q == len(questions) is Send; opt == len(options) is plain words
 	editing       bool // the focused question's text field takes the keys
 	width, height int
@@ -42,11 +38,12 @@ type roundModel struct {
 
 func newRound(id, title string, round grill.Round, send func(string) (string, error), width, height int) roundModel {
 	m := roundModel{id: id, title: title, round: round, send: send, width: width, height: height}
-	m.answers = make([]answer, len(round.Questions))
+	m.answers = make([]grill.Answer, len(round.Questions))
 	for i, q := range round.Questions {
+		m.answers[i].N = q.N
 		for _, o := range q.Options {
 			if o.Reco {
-				m.answers[i].letter = o.Letter
+				m.answers[i].Letter = o.Letter
 			}
 		}
 	}
@@ -62,18 +59,18 @@ func (m roundModel) picked(q int) int {
 	}
 	opts := m.round.Questions[q].Options
 	for i, o := range opts {
-		if o.Letter == m.answers[q].letter {
+		if o.Letter == m.answers[q].Letter {
 			return i
 		}
 	}
-	if m.answers[q].letter == "" && m.answers[q].text == "" && len(opts) > 0 {
+	if m.answers[q].Letter == "" && m.answers[q].Text == "" && len(opts) > 0 {
 		return 0
 	}
 	return len(opts)
 }
 
 func (m roundModel) answered(q int) bool {
-	return m.answers[q].letter != "" || strings.TrimSpace(m.answers[q].text) != ""
+	return m.answers[q].Letter != "" || strings.TrimSpace(m.answers[q].Text) != ""
 }
 
 func (m roundModel) complete() bool {
@@ -83,20 +80,6 @@ func (m roundModel) complete() bool {
 		}
 	}
 	return true
-}
-
-// line is the answer as the line prompt builds it: `1.A 2.B 3. free text`.
-func (m roundModel) line() string {
-	parts := make([]string, len(m.answers))
-	for i, a := range m.answers {
-		n := m.round.Questions[i].N
-		if a.letter != "" {
-			parts[i] = fmt.Sprintf("%d.%s", n, a.letter)
-		} else {
-			parts[i] = fmt.Sprintf("%d. %s", n, strings.TrimSpace(a.text))
-		}
-	}
-	return strings.Join(parts, " ")
 }
 
 func (m roundModel) Update(msg tea.Msg) (roundModel, tea.Cmd) {
@@ -139,11 +122,11 @@ func (m roundModel) press() (roundModel, tea.Cmd) {
 	}
 	opts := m.round.Questions[m.q].Options
 	if m.opt < len(opts) {
-		m.answers[m.q] = answer{letter: opts[m.opt].Letter, text: m.answers[m.q].text}
+		m.answers[m.q] = grill.Answer{N: m.answers[m.q].N, Letter: opts[m.opt].Letter, Text: m.answers[m.q].Text}
 		m.editing = false
 		return m, nil
 	}
-	m.answers[m.q].letter = ""
+	m.answers[m.q].Letter = ""
 	m.editing = !m.editing
 	return m, nil
 }
@@ -153,7 +136,7 @@ func (m roundModel) submit() (roundModel, tea.Cmd) {
 		m.status = "answer every question first"
 		return m, nil
 	}
-	out, err := m.send(m.line())
+	out, err := m.send(grill.Line(m.answers))
 	if err != nil {
 		m.status = err.Error()
 		return m, nil
@@ -173,13 +156,13 @@ func (m roundModel) key(msg tea.KeyMsg) (roundModel, tea.Cmd) {
 		case tea.KeyEnter, tea.KeyTab, tea.KeyEsc:
 			m.editing = false
 		case tea.KeyBackspace:
-			if r := []rune(a.text); len(r) > 0 {
-				a.text = string(r[:len(r)-1])
+			if r := []rune(a.Text); len(r) > 0 {
+				a.Text = string(r[:len(r)-1])
 			}
 		case tea.KeySpace:
-			a.text += " "
+			a.Text += " "
 		case tea.KeyRunes:
-			a.text += strings.NewReplacer("\n", " ", "\r", " ").Replace(string(msg.Runes))
+			a.Text += strings.NewReplacer("\n", " ", "\r", " ").Replace(string(msg.Runes))
 		}
 		return m, nil
 	}
@@ -265,7 +248,7 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 		labels := make([]string, 0, len(q.Options)+1)
 		for _, o := range q.Options {
 			mark := " "
-			if m.answers[qi].letter == o.Letter {
+			if m.answers[qi].Letter == o.Letter {
 				mark = "✓"
 			}
 			l := mark + o.Letter + " " + o.Text
@@ -275,13 +258,13 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 			labels = append(labels, l)
 		}
 		plain := " or in plain words…"
-		if m.answers[qi].letter == "" && (m.editing && m.q == qi || m.answers[qi].text != "") {
+		if m.answers[qi].Letter == "" && (m.editing && m.q == qi || m.answers[qi].Text != "") {
 			plain = "✓or in plain words…"
 		}
 		labels = append(labels, plain)
 		bodyHits = append(bodyHits, m.buttons(&body, labels, qi, w)...)
-		if m.editing && m.q == qi || m.answers[qi].letter == "" && m.answers[qi].text != "" {
-			text := m.answers[qi].text
+		if m.editing && m.q == qi || m.answers[qi].Letter == "" && m.answers[qi].Text != "" {
+			text := m.answers[qi].Text
 			if m.editing && m.q == qi {
 				text += "▏"
 			}
@@ -305,8 +288,8 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 	for qi, q := range m.round.Questions {
 		a := "–"
 		switch {
-		case m.answers[qi].letter != "":
-			a = m.answers[qi].letter
+		case m.answers[qi].Letter != "":
+			a = m.answers[qi].Letter
 		case m.answered(qi):
 			a = "✎"
 		}

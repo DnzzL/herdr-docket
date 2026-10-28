@@ -12,6 +12,7 @@
 package grill
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -106,4 +107,26 @@ func LatestAnswer(notes string) int {
 		}
 	}
 	return n
+}
+
+// Answer is one question's answer: option Letter, or free Text when Letter
+// is empty.
+type Answer struct {
+	N            int
+	Letter, Text string
+}
+
+// Line is a round's answers the way `task answer` posts them and the triager
+// reads them: `1.A 2.B 3. free text`. Free text is one line, its whitespace
+// collapsed.
+func Line(answers []Answer) string {
+	parts := make([]string, len(answers))
+	for i, a := range answers {
+		if a.Letter != "" {
+			parts[i] = fmt.Sprintf("%d.%s", a.N, a.Letter)
+		} else {
+			parts[i] = fmt.Sprintf("%d. %s", a.N, strings.Join(strings.Fields(a.Text), " "))
+		}
+	}
+	return strings.Join(parts, " ")
 }
