@@ -13,7 +13,8 @@
 | `herdr-docket run TASK-12` | run one task now |
 | `herdr-docket task list` | the queue as the agent sees it (`--all` includes closed work) |
 | `herdr-docket task view ID` | one task: body, notes, criteria, and who it is routed to |
-| `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria) |
+| `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria); with no `-a` on a queue that names a `triager`, the card is filed in `triage` |
+| `herdr-docket queues` | the queue names, one per line, for scripts; nothing for a single unnamed `source:`, which takes no `-s` |
 | `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-docket task note ID "…"` | say where things stand without closing |
 | `herdr-docket task ask ID "ROUND"` | post the next grill round (`## Round N`) and park the card in `question` |

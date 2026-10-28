@@ -71,6 +71,34 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 
 More: [how it works](docs/how-it-works.md).
 
+## Day to day
+
+**On the phone**, a new idea is one tap on the `idea` widget: pick the queue,
+dictate the sentence, and the card lands in `Triage` for the queue's triager.
+Merge what passed in GitHub mobile.
+
+**On the laptop**: the big grills, reviewing the PRs that wait on you, and
+`backlog browser` for the whole board.
+
+To set up the widget, install Termux, Termux:API and Termux:Widget (F-Droid),
+then in Termux:
+
+```bash
+pkg install openssh termux-api
+mkdir -p ~/.shortcuts ~/.config/herdr-docket
+curl -fsSL https://raw.githubusercontent.com/DnzzL/herdr-docket/main/scripts/termux/idea -o ~/.shortcuts/idea
+chmod +x ~/.shortcuts/idea
+echo 'BOX=me@my-box' > ~/.config/herdr-docket/idea.env   # ssh target, key auth
+```
+
+Add the Termux:Widget widget to the home screen and tap `idea`: pick the
+queue, type the idea, and a toast shows the new card's id.
+
+`scripts/box-setup` walks a fresh always-on box through the parts only you can
+do: Tailscale, the Herdr server, `gh` and agent CLI logins, the plugin, a repo
+per queue, one `intake` workspace per repo, and a `max_runs` sized from RAM.
+It checks each step before acting and can be re-run.
+
 ## How much autonomy
 
 Start with one card you file by hand, then let go one project at a time:

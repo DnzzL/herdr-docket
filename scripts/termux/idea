@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+#
+# idea: file an idea on the box in one tap, from a Termux:Widget shortcut.
+#
+# Reads BOX (the ssh target) from ~/.config/herdr-docket/idea.env, asks for the
+# queue and the text with termux-dialog, runs
+#   ssh $BOX herdr-docket task create [-s <queue>] <text>
+# and toasts what it printed. No -a: on a queue with a triager the card lands
+# in Triage.
+#
+# --dry-run prints the ssh command instead of running it. It reads the queue
+# (empty: no -s) and text from IDEA_QUEUE and IDEA_TEXT instead of the dialogs, and BOX from
+# the env file or the environment (default: box), so it runs on any Linux.
+
+set -euo pipefail
+
+DRY_RUN=0
+[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
+
+CONFIG="${HOME}/.config/herdr-docket/idea.env"
+# shellcheck source=/dev/null
+[[ -f "$CONFIG" ]] && . "$CONFIG"
+
+notify() {
+  if command -v termux-toast >/dev/null 2>&1; then termux-toast "$1"; else printf '%s\n' "$1"; fi
+}
+
+if [[ -z "${BOX:-}" ]]; then
+  if (( DRY_RUN )); then BOX=box; else
+    notify "idea: set BOX=<ssh target> in $CONFIG"; exit 1
+  fi
+fi
+
+# json_text reads termux-dialog's JSON on stdin and prints its "text" field,
+# empty when the dialog was cancelled (code -2). No jq needed.
+json_text() {
+  local json
+  json=$(cat)
+  grep -q '"code": *-2' <<<"$json" && return 0
+  sed -n 's/^.*"text": *"\(\([^"\\]\|\\.\)*\)".*$/\1/p' <<<"$json" | head -n 1 |
+    sed 's/\\\\/\x01/g; s/\\"/"/g; s/\\n/ /g; s/\\t/ /g; s/\x01/\\/g'
+}
+
+if (( DRY_RUN )); then
+  queue="${IDEA_QUEUE:-}"
+  text="${IDEA_TEXT:-}"
+else
+  queues=$(ssh "$BOX" herdr-docket queues) || { notify "idea: ssh $BOX failed"; exit 1; }
+  queue=""
+  # One queue, or one unnamed source (no line at all): nothing to choose and
+  # no -s to pass.
+  if (( $(grep -c . <<<"$queues") > 1 )); then
+    queue=$(termux-dialog radio -t "Queue" -v "$(paste -sd, - <<<"$queues")" | json_text)
+    [[ -n "$queue" ]] || exit 0
+  fi
+  text=$(termux-dialog text -t "Idea${queue:+ ($queue)}" -m | json_text)
+fi
+
+[[ -n "${text//[[:space:]]/}" ]] || { (( DRY_RUN )) && echo "idea: empty text" >&2; exit 0; }
+
+# ssh joins its arguments into one line for the remote shell: single-quote
+# each part (a ' inside becomes '\'').
+squote() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
+remote="herdr-docket task create"
+[[ -n "$queue" ]] && remote+=" -s $(squote "$queue")"
+remote+=" $(squote "$text")"
+
+if (( DRY_RUN )); then
+  # Exactly what ssh hands the box's shell, as one would type it.
+  printf 'ssh %q %s\n' "$BOX" "$remote"
+  exit 0
+fi
+
+if out=$(ssh "$BOX" "$remote" 2>&1); then
+  notify "$out"
+else
+  notify "idea failed: $out"; exit 1
+fi
