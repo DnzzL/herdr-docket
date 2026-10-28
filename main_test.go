@@ -93,7 +93,7 @@ func TestAuthWantsAQueueToSignInTo(t *testing.T) {
 	}{
 		{"nothing at all", nil, "usage:"},
 		{"a token and no queue", []string{"--token", "ghp_x"}, "usage:"},
-		{"a queue and then another", []string{"github", "basecamp"}, "unexpected"},
+		{"a queue and then another", []string{"github", "backlogmd"}, "unexpected"},
 		{"a token with nothing after it", []string{"--token"}, "usage:"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -160,7 +160,7 @@ func TestHistoryLineShowsTheVerification(t *testing.T) {
 // init takes no flag: an unknown argument is refused before anything on disk
 // is touched, and the refusal points at plain init.
 func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
-	if err := initCmd("--frobnicate"); err == nil {
+	if err := initCmd([]string{"--frobnicate"}); err == nil {
 		t.Fatal("want an error")
 	} else if !strings.Contains(err.Error(), "herdr-docket init") {
 		t.Errorf("error must point at plain init: %v", err)
@@ -171,7 +171,7 @@ func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
 // `init --factory` must fail loudly, not silently get a plain init and believe
 // the loop is installed: the error names the removal and the way forward.
 func TestInitFactoryFailsNamingTheRemoval(t *testing.T) {
-	err := initCmd("--factory")
+	err := initCmd([]string{"--factory"})
 	if err == nil {
 		t.Fatal("init --factory must fail now that the loop is gone")
 	}
@@ -340,5 +340,36 @@ func TestATestRunNeverResolvesTheRealHome(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(hostpath.ConfigDir(), "probe"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("writing the config dir must land in the temp home: %v", err)
+	}
+}
+
+// A ticket is its spec's plan, not a card: `list` shows whose ticket it is,
+// never an agent the default would route it to.
+func TestListShowsATicketAsATicketOfItsSpec(t *testing.T) {
+	agents := map[string]fleet.Agent{"dev": {Name: "dev"}}
+	items := []work.Task{
+		{ID: "TASK-1", Title: "the spec", Open: true, Phase: "To Do"},
+		{ID: "TASK-1.1", Title: "a ticket", Open: true, Phase: "To Do", Parent: "TASK-1"},
+	}
+	var out bytes.Buffer
+	writeList(&out, items, agents, defaults("dev"))
+
+	for _, line := range strings.Split(out.String(), "\n") {
+		if !strings.Contains(line, "TASK-1.1") {
+			continue
+		}
+		if !strings.Contains(line, "ticket of TASK-1") || strings.Contains(line, "dev") {
+			t.Fatalf("a ticket must read as a ticket of its spec, not routed: %q", line)
+		}
+		return
+	}
+	t.Fatalf("the ticket is missing from the list:\n%s", out.String())
+}
+
+func TestManualRunOfATicketPointsAtItsSpec(t *testing.T) {
+	agents := map[string]fleet.Agent{"dev": {Name: "dev"}}
+	_, err := routedAgent(agents, work.Task{ID: "TASK-1.1", Assignee: "dev", Parent: "TASK-1"}, defaults(""))
+	if err == nil || !strings.Contains(err.Error(), "TASK-1") || !strings.Contains(err.Error(), "ticket") {
+		t.Fatalf("running a ticket must point at its spec, got %v", err)
 	}
 }

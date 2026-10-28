@@ -1,6 +1,6 @@
 // Package work is the backend-blind task queue the fleet speaks. A Source is
-// wherever work actually lives — a Backlog.md project, a Basecamp list, a
-// GitHub Projects board, or something not written yet — and a Task is one unit
+// wherever work actually lives — a Backlog.md project, a GitHub
+// Projects board, or something not written yet — and a Task is one unit
 // of it, in the fleet's own vocabulary. Nothing above an adapter knows which
 // backend answered.
 package work
@@ -13,13 +13,17 @@ import (
 // Task is one unit of work as the fleet sees it.
 //
 // Open is the only state the fleet reads: a task stays open until a verdict
-// closes it, which is all a binary backend (a Basecamp to-do) can express.
+// closes it.
 // Blocked is the one parked state pick reads: true when the task sits in a
 // column that means "waits on a human" — the queue's own blocked word —
 // while still open. Route nothing to it; the run cannot answer the question
 // that parked the work. A backend that cannot say which of its open
 // statuses stands for parked leaves it false, exactly as one leaves Verdict
 // empty.
+// Triage and Question are the grill's two states (TASK-86), read by the
+// adapter off its own status, never off Phase: Triage is open work routed to
+// the queue's triager; Question waits on the owner's answer, so nothing picks
+// it — not Blocked, which is the queue's own parked word.
 // Phase is where it stands in the fleet's words, for display only — written
 // best-effort, never read back; the adapter is what translates its backend's
 // own label into one. Verdict is how a closed task ended, when the backend can
@@ -33,13 +37,19 @@ import (
 // as text is enough, and parsing it would only add a way for a bad date to lose
 // a task.
 type Task struct {
-	ID        string
-	Title     string
-	Body      string
-	Notes     string
-	Assignee  string
-	Open      bool
-	Blocked   bool
+	ID       string
+	Title    string
+	Body     string
+	Notes    string
+	Assignee string
+	Open     bool
+	Blocked  bool
+	// Triage is true for an open card in the queue's triage status: an idea
+	// to grill, routed to the queue's triager whatever its assignee says.
+	Triage bool
+	// Question is true for a card in the queue's question status: a grill
+	// round waits on the owner's answer.
+	Question  bool
 	Phase     string
 	Verdict   Verdict
 	Priority  int
@@ -49,6 +59,10 @@ type Task struct {
 	// Labels are the task's tags, filled by Get where the backend has them.
 	// The merge gate reads one: `critical` keeps a PR for a human.
 	Labels []string
+	// Parent is the id of the spec this task is a ticket of, empty for a
+	// card. A ticket is never routed. Read from the backend, never written by
+	// the fleet.
+	Parent string
 }
 
 // Criterion is one acceptance criterion of a task. Criteria are read-only to
@@ -115,13 +129,16 @@ const (
 	// PhaseInProgress is work a run has in hand right now, and the one phase
 	// the fleet writes.
 	PhaseInProgress Phase = "In Progress"
+	// PhaseTriage is an idea waiting for the queue's triager to grill it.
+	PhaseTriage Phase = "Triage"
+	// PhaseQuestion is a card whose grill waits on the owner's answer.
+	PhaseQuestion Phase = "Question"
 )
 
 // Phaser is the optional capability of a source that can show a task as
 // being worked on. Backlog.md has an In Progress state to write, a GitHub
-// board a Status column; a Basecamp to-do is simply done or not, and the run
-// lock is what actually keeps two runs apart — so a source without this is
-// not a lesser source, just a quieter one.
+// board a Status column. The run lock is what actually keeps two runs apart,
+// so a source without this is not a lesser source, just a quieter one.
 type Phaser interface {
 	SetPhase(id string, phase Phase) error
 }
@@ -131,9 +148,9 @@ type Phaser interface {
 // alternative — close this one, create a follow-up — splits one subject
 // across two ids and loses the thread.
 //
-// Optional because not every backend has an assignee to write. Basecamp
-// routes by which list a to-do is in, so re-routing there is a move, not a
-// field; a GitHub board routes by a single-select field, so it is a write.
+// Optional because not every backend has an assignee to write. Backlog.md
+// writes its assignee; a GitHub board routes by a single-select field, so
+// re-routing there is a field write.
 // Unlike Phaser, a source that cannot do this says so: a re-route that
 // silently did nothing would leave the task with the wrong agent and look
 // like it worked.
@@ -144,11 +161,11 @@ type Assigner interface {
 // CriterionWriter is the optional capability of a source that can put
 // acceptance criteria on an existing task — the bar a run hands on writes
 // through the id Create returned (ADR-0019), beside the landing that ADR-0012
-// gave Create and CreateTodo: the landing decides whether the next tick can
+// gave Create and PhaseStarter: the landing decides whether the next tick can
 // claim the task, the criteria decide what the run has to show. Backlog.md
 // appends through its task edit's --ac, one flag per criterion; GitHub writes
-// them into the body's checklist; a Basecamp to-do has no step endpoint
-// after the create, so it says so rather than taking the words.
+// them into the body's checklist; a backend with no place for them after
+// the create says so rather than taking the words.
 //
 // Optional, like Phaser and unlike Assigner: criteria with no place to live
 // are lost wherever a source cannot speak them at all, so a refusal is a
@@ -181,16 +198,19 @@ type BaseBrancher interface {
 	BaseBranch(id string) (string, error)
 }
 
-// TodoStarter is the optional capability of a source that files a task it
-// creates straight into its own pickup status — the word this queue maps to
-// To Do, the one status the next tick reads as claimable (see ADR-0012 for
-// the alternatives measured against it). Create keeps its three arguments:
-// a source that cannot start a new task in a column — a Basecamp to-do has
-// no status to land in — does not implement this, and its caller falls back
-// to Create while saying so, which is why the method answers nothing about
-// where the task landed: a caller that reached this method already knows.
-type TodoStarter interface {
-	CreateTodo(title, body, assignee string) (string, error)
+// PhaseStarter is the optional capability of a source that files a task it
+// creates straight into a phase, in the queue's own word for it, in one
+// write: To Do — the one status the next tick reads as claimable (see
+// ADR-0012 for the alternatives measured against it) — or Triage, for an
+// idea its triager grills (TASK-88). One write matters: a card created in
+// To Do and moved after can be claimed by the queue's default agent in
+// between. Create keeps its three arguments: a source that cannot start a
+// new task in a column — one with no status to land in — does not implement
+// this, and its caller falls back to Create while saying so, which is why the
+// method answers nothing about where the task landed: a caller that reached
+// this method already knows.
+type PhaseStarter interface {
+	CreateIn(phase Phase, title, body, assignee string) (string, error)
 }
 
 // Source is the port the fleet's queue lives behind. Picking, running and the
@@ -216,12 +236,13 @@ type MultiSource interface {
 	Source
 	// Names lists the configured queues, in a stable order.
 	Names() []string
-	// CreateIn creates work in the named queue, returning its prefixed id.
-	// The second answer records where it landed, so a caller's output says
-	// it honestly (ADR-0012): started is true when the queue filed the task
-	// into its own pickup status, false when the backend filed it by its own
-	// default and nothing above the queue chose the column.
-	CreateIn(source, title, body, assignee string) (id string, started bool, err error)
+	// CreateIn creates work in the named queue, in phase where that queue
+	// can say so, returning its prefixed id. The second answer records where
+	// it landed, so a caller's output says it honestly (ADR-0012): started is
+	// true when the queue filed the task into phase itself, false when the
+	// backend filed it by its own default and nothing above the queue chose
+	// the column.
+	CreateIn(source string, phase Phase, title, body, assignee string) (id string, started bool, err error)
 }
 
 // LocalOf reads the backend's own id off a prefixed one: the part after the
@@ -277,7 +298,7 @@ var closedOrder = []Verdict{Blocked, Failed, Done}
 var phaseOrder = buildPhaseOrder()
 
 func buildPhaseOrder() []string {
-	order := []string{string(PhaseTodo), string(PhaseInProgress)}
+	order := []string{string(PhaseTriage), string(PhaseQuestion), string(PhaseTodo), string(PhaseInProgress)}
 	for _, v := range closedOrder {
 		order = append(order, v.Label())
 	}

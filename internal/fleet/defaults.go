@@ -13,13 +13,17 @@ import "github.com/DnzzL/herdr-docket/internal/work"
 type Defaults struct {
 	global   string
 	bySource map[string]string
+	// triagers is each queue's triager, keyed like bySource; the one
+	// unnamed queue is keyed "".
+	triagers map[string]string
 }
 
 // Defaults reads the settings' defaults once, so the resolution rule lives in
 // one place rather than at each of the five call sites that route a task.
 func (s Settings) Defaults() Defaults {
-	d := Defaults{global: s.DefaultAgent}
+	d := Defaults{global: s.DefaultAgent, triagers: map[string]string{"": s.Source.Triager}}
 	for name, c := range s.Sources {
+		d.triagers[name] = c.Triager
 		if c.DefaultAgent == "" {
 			continue
 		}
@@ -39,4 +43,17 @@ func (d Defaults) For(taskID string) string {
 		return a
 	}
 	return d.global
+}
+
+// Triager is the agent that grills this queue's triage cards. Empty when the
+// queue names none: there is no fleet-wide fallback, because a triager
+// publishes into its own project's tracker.
+func (d Defaults) Triager(taskID string) string {
+	return d.TriagerIn(work.SourceOf(taskID))
+}
+
+// TriagerIn is the named queue's triager, before any task of it has an id;
+// the one unnamed queue is "".
+func (d Defaults) TriagerIn(queue string) string {
+	return d.triagers[queue]
 }

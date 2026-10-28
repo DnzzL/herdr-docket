@@ -41,6 +41,13 @@ func (s Status) closes() bool {
 	return false
 }
 
+// InFlight reports whether a run whose latest record has this status is
+// still in flight: running, or timed out with the agent still listened for
+// (ADR 0014). Every reader of "in flight" asks this, so they cannot drift.
+func (s Status) InFlight() bool {
+	return s == StatusRunning || s == StatusTimedOut
+}
+
 // Trigger is why a run started.
 type Trigger string
 
@@ -54,6 +61,10 @@ const (
 	// to it with the verifier's notes.
 	TriggerVerify Trigger = "verify"
 	TriggerRework Trigger = "rework"
+	// TriggerTriage: the queue's triager grilling a card in triage (TASK-86).
+	// It ends when the card is published to To Do or asked to Question,
+	// never in the pipeline.
+	TriggerTriage Trigger = "triage"
 )
 
 // NewID names a run in the log: the task plus nanoseconds, unique enough for
@@ -270,7 +281,7 @@ func InFlight() ([]Record, error) {
 	}
 	var out []Record
 	for _, r := range runs {
-		if r.Status == StatusRunning || r.Status == StatusTimedOut {
+		if r.Status.InFlight() {
 			out = append(out, r)
 		}
 	}

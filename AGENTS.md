@@ -2,11 +2,7 @@
 
 ### Issue tracker
 
-Local markdown: specs and tickets under `.scratch/<feature>/`, committed. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-The five default roles, as a `Status:` line per ticket. See `docs/agents/triage-labels.md`.
+Backlog.md in `backlog/`: a spec is a parent task, its tickets are subtasks. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 

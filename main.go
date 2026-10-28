@@ -1,8 +1,8 @@
 // herdr-docket — the queue layer for Herdr agents: a shared task queue,
 // AGENT.md personas as the workers, and a daemon that routes open tasks to
-// real coding agents, one run at a time. The queue is a Backlog.md project, a
-// Basecamp project or a GitHub Projects board; which one is configuration, and
-// nothing above the adapter knows the difference.
+// real coding agents, one run at a time. The queue is a Backlog.md project or a
+// GitHub Projects board; which one is configuration, and nothing above the
+// adapter knows the difference.
 package main
 
 import (
@@ -18,6 +18,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/gate"
+	"github.com/DnzzL/herdr-docket/internal/grill"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
@@ -35,7 +36,9 @@ const usage = `herdr-docket — a task queue worked by your Herdr agents
 
 Usage:
   herdr-docket daemon           Run the worker (started by the plugin startup hook)
-  herdr-docket init             Bootstrap the fleet dir: Backlog.md project, example agent, dev/reviewer roles
+  herdr-docket init             Bootstrap the fleet dir: example agent, dev/reviewer roles, FLEET.md
+  herdr-docket init <repo>      Make a project repo the queue: Backlog.md, issue-tracker doc, fleet.yaml source
+  herdr-docket init <repo> --github <owner>/<n>   The same for a repo tracked on GitHub project board n
   herdr-docket auth <queue>     Sign in to a hosted queue and store its credentials ([--token <pat>])
   herdr-docket list             List the queue, grouped by phase
   herdr-docket run <task-id>    Run one open task now, whatever its phase
@@ -50,6 +53,8 @@ Usage:
   herdr-docket agent pause <n>  Stop scheduling an agent (a running task finishes)
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket runs             Show the runs in flight
+  herdr-docket status           Say whether the daemon is live, and its last tick
+  herdr-docket questions        Answer a question card's newest round: Enter = reco, a letter, or text
   herdr-docket stop <task-id>   Stop a task's run in flight (it ends cancelled, the task Blocked)
   herdr-docket pause [--now]    Pause the fleet: no new runs or pipeline stages (--now also stops runs in flight)
   herdr-docket resume           Resume the fleet
@@ -58,6 +63,7 @@ Usage:
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
   herdr-docket changelog        Preview the next release's notes ([release <version>] to cut them)
   herdr-docket install-skill    Teach your coding agent to write fleet tasks
+  herdr-docket queues           List the queue names, one per line
   herdr-docket version          Print the version
 
 Fleet dir: %s   (override: fleet.yaml in %s)
@@ -74,11 +80,7 @@ func main() {
 	case "daemon":
 		err = daemon.Run()
 	case "init":
-		arg := ""
-		if len(os.Args) > 2 {
-			arg = os.Args[2]
-		}
-		err = initCmd(arg)
+		err = initCmd(os.Args[2:])
 	case "auth":
 		err = authCmd(os.Args[2:])
 	case "list":
@@ -91,6 +93,10 @@ func main() {
 		err = agentCmd(os.Args[2:])
 	case "runs":
 		err = runsCmd(os.Args[2:], os.Stdout)
+	case "status":
+		fmt.Println(daemon.Liveness(time.Now()))
+	case "questions":
+		err = questionsCmd()
 	case "stop":
 		if len(os.Args) != 3 {
 			err = fmt.Errorf("usage: herdr-docket stop <task-id>")
@@ -115,6 +121,11 @@ func main() {
 			target = os.Args[2]
 		}
 		err = skill.Install(target)
+	case "queues":
+		var settings fleet.Settings
+		if settings, err = fleet.LoadSettings(); err == nil {
+			writeQueues(os.Stdout, settings)
+		}
 	case "version":
 		fmt.Println(Version)
 	default:
@@ -158,36 +169,53 @@ func changelogCmd(args []string, out io.Writer) error {
 	return nil
 }
 
-func initCmd(arg string) error {
-	switch arg {
-	case "":
-	case "--factory":
+func initCmd(args []string) error {
+	arg, board := "", ""
+	if len(args) > 0 {
+		arg = args[0]
+	}
+	switch {
+	case len(args) == 3 && args[1] == "--github" && !strings.HasPrefix(arg, "-"):
+		board = args[2]
+	case len(args) > 1:
+		return fmt.Errorf("init: unexpected %q — run `herdr-docket init [<repo> [--github <owner>/<project-number>]]`", strings.Join(args[1:], " "))
+	case arg == "--factory":
 		return errors.New("init: --factory was removed with the factory loop — run `herdr-docket init`, which writes the dev and reviewer roles")
-	default:
-		return fmt.Errorf("init: unknown argument %q — init takes none; run `herdr-docket init`", arg)
+	case strings.HasPrefix(arg, "-"):
+		return fmt.Errorf("init: unknown flag %q — run `herdr-docket init [<repo> [--github <owner>/<project-number>]]`", arg)
 	}
 	settings, err := fleet.LoadSettings()
 	if err != nil {
 		return err
+	}
+	if arg != "" {
+		if board != "" {
+			err = fleet.InitGithubRepo(settings, arg, board, os.Stdout)
+		} else {
+			err = fleet.InitRepo(settings, arg, os.Stdout)
+		}
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s is prepared: publish specs with to-spec + to-tickets\n", arg)
+		return nil
 	}
 	if err := fleet.Init(settings, os.Stdout); err != nil {
 		return err
 	}
 	fmt.Printf("fleet ready at %s\n", settings.Dir)
 	fmt.Println("- describe your agents in agents/<name>/AGENT.md")
-	fmt.Println("- add work: herdr-docket task create \"...\" -a <agent>")
+	fmt.Println("- name a project repo as the queue: herdr-docket init <repo>")
 	fmt.Println("- the daemon (or `herdr-docket daemon`) picks tasks up from there")
 	return nil
 }
 
 // authCmd is thin on purpose: which queues can be signed in to, and how, is
-// fleet's business, not the CLI's. The name is a queue kind — basecamp,
-// github, notara — or the name of one source when a fleet has several.
+// fleet's business, not the CLI's. The name is a queue kind — github —
+// or the name of one source when a fleet has several.
 func authCmd(args []string) error {
 	const usage = `usage: herdr-docket auth <queue> [--token <pat>]
-  queues that sign in: basecamp   a Launchpad app of your own, browser flow
-                       github     a PAT with the project scope, or gh's token
-                       notara     an ntr_ key from Notara's sidebar → API keys`
+  queues that sign in: github   a PAT with the project scope, or gh's token`
 	name, token := "", ""
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i]; {
@@ -238,6 +266,12 @@ func list() error {
 		return err
 	}
 	agents, _ := fleet.LoadAgents(settings.Dir)
+	writeList(os.Stdout, items, agents, settings.Defaults())
+	return nil
+}
+
+// writeList prints the queue by phase, each task with who it routes to.
+func writeList(w io.Writer, items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defaults) {
 	for _, phase := range work.PhasesOf(items) {
 		var lines []string
 		for _, it := range items {
@@ -247,8 +281,10 @@ func list() error {
 			// The routed agent, not the written one: with a default the two
 			// differ, and a board that showed "-" would hide who is about to
 			// pick the task up.
-			who := pick.AssigneeFor(it, settings.Defaults())
+			who := pick.AssigneeFor(it, defaults)
 			switch _, known := agents[who]; {
+			case it.Parent != "":
+				who = "ticket of " + it.Parent
 			case who == "":
 				who = "-"
 			case !known:
@@ -263,10 +299,9 @@ func list() error {
 			if heading == "" {
 				heading = "(no phase)"
 			}
-			fmt.Printf("%s:\n%s\n", heading, strings.Join(lines, "\n"))
+			fmt.Fprintf(w, "%s:\n%s\n", heading, strings.Join(lines, "\n"))
 		}
 	}
-	return nil
 }
 
 // taskCmd resolves the fleet's queue through the configured adapter and runs
@@ -278,7 +313,7 @@ func taskCmd(args []string) error {
 		return err
 	}
 	cwd, _ := os.Getwd()
-	env := taskEnv{src: src, defaultQueue: queueFor(cwd, settings), pipeline: settings.PipelineFor, forge: gate.GH{}}
+	env := taskEnv{src: src, defaultQueue: queueFor(cwd, settings), pipeline: settings.PipelineFor, forge: gate.GH{}, triager: settings.Defaults().TriagerIn}
 	return runTaskCmd(env, args, os.Stdout)
 }
 
@@ -290,6 +325,23 @@ type taskEnv struct {
 	// pipeline answers whether a task's queue verifies before it merges.
 	pipeline func(taskID string) fleet.Pipeline
 	forge    gate.Forge
+	// triager names a queue's triager by queue name ("" for the one unnamed
+	// queue); nil or "" means none.
+	triager func(queue string) string
+}
+
+// writeQueues prints the fleet's queue names, one per line, for scripts that
+// pass one back as -s. A fleet with one `source:` has no name for it and
+// prints nothing: there is no queue to choose, and no -s to pass.
+func writeQueues(w io.Writer, s fleet.Settings) {
+	names := make([]string, 0, len(s.Sources))
+	for name := range s.Sources {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		fmt.Fprintln(w, n)
+	}
 }
 
 // queueFor is the queue a `task create` lands in when the command line did not
@@ -317,7 +369,7 @@ func queueFor(cwd string, s fleet.Settings) string {
 func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 	src, defaultQueue := env.src, env.defaultQueue
 	if len(args) == 0 {
-		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|done|fail|block|verdict")
+		return fmt.Errorf("usage: herdr-docket task list|view|create|assign|note|ask|answer|done|fail|block|verdict")
 	}
 	switch args[0] {
 	case "list":
@@ -335,7 +387,7 @@ func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 		}
 		return taskView(src, args[1], out)
 	case "create":
-		return taskCreate(src, defaultQueue, args[1:], out)
+		return taskCreate(src, defaultQueue, env.triager, args[1:], out)
 	case "assign":
 		if len(args) != 3 {
 			return fmt.Errorf("usage: herdr-docket task assign <id> <agent>")
@@ -353,6 +405,20 @@ func runTaskCmd(env taskEnv, args []string, out io.Writer) error {
 		// (TASK-57).
 		fmt.Fprintf(out, "%s noted\n", args[1])
 		return nil
+	case "ask":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: herdr-docket task ask <id>")
+		}
+		if err := setPhase(src, args[1], work.PhaseQuestion); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s moved to %s\n", args[1], work.PhaseQuestion)
+		return nil
+	case "answer":
+		if len(args) != 3 {
+			return fmt.Errorf(`usage: herdr-docket task answer <id> "<answers>"`)
+		}
+		return taskAnswer(src, args[1], args[2], out)
 	case "done", "fail", "block":
 		return taskClose(env, args[0], args[1:], out)
 	case "verdict":
@@ -380,7 +446,7 @@ func taskAssign(src work.Source, id, agent string, out io.Writer) error {
 	return nil
 }
 
-func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writer) error {
+func taskCreate(src work.Source, defaultQueue string, triager func(string) string, args []string, out io.Writer) error {
 	const usage = `usage: herdr-docket task create "<title>" [-a <agent>] [-d "<body>"] [-s <source>] [--ac "<criterion>"...]`
 	var title, body, assignee, queue string
 	var criteria []string
@@ -432,7 +498,18 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 			return fmt.Errorf("task create: an empty acceptance criterion stores nothing — say what a run must show")
 		}
 	}
-	id, started, err := createTask(src, queue, defaultQueue, title, body, assignee)
+	queue, err := chooseQueue(src, queue, defaultQueue)
+	if err != nil {
+		return err
+	}
+	// An idea filed with nobody named goes to the queue's triager to be
+	// grilled (TASK-88); an assignee, or a queue with no triager, lands in
+	// To Do (ADR-0012, amended).
+	phase := work.PhaseTodo
+	if assignee == "" && triager != nil && triager(queue) != "" {
+		phase = work.PhaseTriage
+	}
+	id, started, err := createTask(src, queue, phase, title, body, assignee)
 	if err != nil {
 		return err
 	}
@@ -454,41 +531,36 @@ func taskCreate(src work.Source, defaultQueue string, args []string, out io.Writ
 	// chose it, the queue's own default and an admission it did not choose
 	// otherwise (ADR-0012) — the column a daemon will never read is exactly
 	// what a friend would want to know about.
-	if started {
-		fmt.Fprintf(out, "created %s (in To Do)\n", id)
-		return nil
+	switch {
+	case started:
+		fmt.Fprintf(out, "created %s (in %s)\n", id, phase)
+	case phase == work.PhaseTriage:
+		// A queue that cannot create into a column gets the card moved after
+		// the create, and says so: until the move, it stood where the queue's
+		// default put it. The card exists by now, so a failed move names it
+		// rather than inviting a second create.
+		if err := setPhase(src, id, work.PhaseTriage); err != nil {
+			return fmt.Errorf("task create: created %s but could not file it into %s: %w", id, work.PhaseTriage, err)
+		}
+		fmt.Fprintf(out, "created %s (in %s — this queue cannot create into a column, so it was moved there after the create)\n", id, work.PhaseTriage)
+	default:
+		fmt.Fprintf(out, "created %s (filed in the queue's own default — the fleet did not choose the column)\n", id)
 	}
-	fmt.Fprintf(out, "created %s (filed in the queue's own default — the fleet did not choose the column)\n", id)
 	return nil
 }
 
-// createTask chooses the queue a new task lands in, in one order: what -s
-// named, then the fleet's default_source, then the only queue there is. A
-// fleet with several queues and no default is the one case left that refuses,
-// because filing work into a queue nobody chose is worse than stopping.
-//
-// Where the task lands in that queue is the queue's own business and the
-// second answer records it: true when the queue filed it into its own pickup
-// status (as the fleet wanted, ADR-0012), false when the backend filed it by
-// its own default — so the caller's output can say which happened rather
-// than implying the fleet chose. Criteria are not this function's business:
-// the caller writes them through the returned id (ADR-0019), so every landing
-// path keeps one criteria seam instead of three.
-func createTask(src work.Source, queue, defaultQueue, title, body, assignee string) (string, bool, error) {
+// chooseQueue is the queue a new task lands in, in one order: what -s named,
+// then the fleet's default_source, then the only queue there is. A fleet with
+// several queues and no default is the one case left that refuses, because
+// filing work into a queue nobody chose is worse than stopping. A fleet with
+// one unnamed queue answers "".
+func chooseQueue(src work.Source, queue, defaultQueue string) (string, error) {
 	ms, ok := src.(work.MultiSource)
 	if !ok {
 		if queue != "" {
-			return "", false, fmt.Errorf("task create: -s/--source is only for a fleet with several queues")
+			return "", fmt.Errorf("task create: -s/--source is only for a fleet with several queues")
 		}
-		if st, can := src.(work.TodoStarter); can {
-			id, err := st.CreateTodo(title, body, assignee)
-			if err != nil {
-				return "", false, err
-			}
-			return id, true, nil
-		}
-		id, err := src.Create(title, body, assignee)
-		return id, false, err
+		return "", nil
 	}
 	if queue == "" {
 		queue = defaultQueue
@@ -496,11 +568,33 @@ func createTask(src work.Source, queue, defaultQueue, title, body, assignee stri
 	if queue == "" {
 		names := ms.Names()
 		if len(names) != 1 {
-			return "", false, fmt.Errorf("task create: this fleet has %d queues (%s) — name one with -s/--source, or set default_source in fleet.yaml", len(names), strings.Join(names, ", "))
+			return "", fmt.Errorf("task create: this fleet has %d queues (%s) — name one with -s/--source, or set default_source in fleet.yaml", len(names), strings.Join(names, ", "))
 		}
 		queue = names[0]
 	}
-	return ms.CreateIn(queue, title, body, assignee)
+	return queue, nil
+}
+
+// createTask creates the task in the chosen queue, in phase where the queue
+// can file it there itself. The second answer records where it landed: true
+// when the queue filed it into phase (ADR-0012), false when the backend filed
+// it by its own default — so the caller's output can say which happened
+// rather than implying the fleet chose. Criteria are not this function's
+// business: the caller writes them through the returned id (ADR-0019), so
+// every landing path keeps one criteria seam instead of three.
+func createTask(src work.Source, queue string, phase work.Phase, title, body, assignee string) (string, bool, error) {
+	if ms, ok := src.(work.MultiSource); ok {
+		return ms.CreateIn(queue, phase, title, body, assignee)
+	}
+	if st, can := src.(work.PhaseStarter); can {
+		id, err := st.CreateIn(phase, title, body, assignee)
+		if err != nil {
+			return "", false, err
+		}
+		return id, true, nil
+	}
+	id, err := src.Create(title, body, assignee)
+	return id, false, err
 }
 
 // putCriteria writes criteria onto a freshly created task. A source with no
@@ -516,6 +610,55 @@ func putCriteria(caller string, src work.Source, id string, criteria []string) e
 		return fmt.Errorf("%s: %s does not store acceptance criteria — put the bar in -d instead:\n  %s", caller, id, strings.Join(criteria, "; "))
 	}
 	return w.WriteCriteria(id, criteria)
+}
+
+// taskAnswer answers the card's newest round: the answers go on as an
+// `## Answer N` note, then the card goes back to the triager. Nothing is
+// written when the card has no round to answer.
+func taskAnswer(src work.Source, id, answers string, out io.Writer) error {
+	// A live run still reads the card when it settles: an answer landing in
+	// Triage under it would read as a triager that did nothing.
+	if runHeld(id) {
+		return fmt.Errorf("%s: a run holds the card right now — retry once it settles (herdr-docket runs)", id)
+	}
+	t, err := src.Get(id)
+	if err != nil {
+		return err
+	}
+	if !t.Question {
+		where := t.Phase
+		if where == "" {
+			where = "no phase the fleet knows"
+		}
+		return fmt.Errorf("%s is in %s, not %s — only a card waiting on an answer takes one", id, where, work.PhaseQuestion)
+	}
+	n, _, ok := grill.LatestRound(t.Notes)
+	if !ok {
+		return fmt.Errorf("%s: no ## Round note to answer", id)
+	}
+	if err := src.Comment(id, fmt.Sprintf("## Answer %d\n%s", n, answers)); err != nil {
+		return err
+	}
+	if err := setPhase(src, id, work.PhaseTriage); err != nil {
+		return fmt.Errorf("%s: answer to round %d posted, but the card did not move: %w", id, n, err)
+	}
+	fmt.Fprintf(out, "%s: answered round %d, moved to %s\n", id, n, work.PhaseTriage)
+	return nil
+}
+
+// runHeld asks whether a run holds a task's lock; a variable so a test can
+// stand in for a live run.
+var runHeld = runner.Held
+
+// setPhase moves a card where the grill needs it. Unlike the runner's
+// best-effort In Progress, this phase routes the card, so a queue that cannot
+// write it says so.
+func setPhase(src work.Source, id string, phase work.Phase) error {
+	p, ok := src.(work.Phaser)
+	if !ok {
+		return fmt.Errorf("%s: this queue cannot move a card to %s", id, phase)
+	}
+	return p.SetPhase(id, phase)
 }
 
 // closeVerbs is the CLI's spelling of the verdict vocabulary: the verbs are
@@ -715,6 +858,9 @@ func runCmd(args []string) error {
 // explicit intent, so pausing an agent parks the scheduler without forbidding
 // the work. Every manual route goes through here, or the two drift apart.
 func routedAgent(agents map[string]fleet.Agent, it work.Task, defaults fleet.Defaults) (fleet.Agent, error) {
+	if it.Parent != "" {
+		return fleet.Agent{}, fmt.Errorf("a ticket of %s is never run on its own — run %s", it.Parent, it.Parent)
+	}
 	name := pick.AssigneeFor(it, defaults)
 	agent, ok := agents[name]
 	if !ok {

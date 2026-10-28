@@ -1,6 +1,6 @@
 # 0022 — A Notara database is a queue, and the status table is shared
 
-Date: 2026-10-14 · Status: accepted
+Date: 2026-10-14 · Status: superseded
 
 ## The problem
 
@@ -48,3 +48,5 @@ cards without an agent ever calling Notara itself.
   key's name, not the agent's.
 - `fragile` — `List` reads the whole database each tick (163 cards: 31 ms,
   53 kB on localhost); no paging until Notara has one.
+
+**Status:** superseded by [0023](0023-the-repos-own-tracker-is-the-queue.md) — the Notara adapter is removed; the repo's own tracker is the queue

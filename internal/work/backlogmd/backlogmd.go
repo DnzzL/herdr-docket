@@ -95,18 +95,22 @@ func (s *Source) Get(id string) (work.Task, error) {
 
 // Create adds a task to the project and returns its new id, filed wherever
 // the project's own default puts it — the behaviour that preceded the pickup
-// capability below. Callers that want the fleet-opted landing use CreateTodo.
+// capability below. Callers that want the fleet-opted landing use CreateIn.
 func (s *Source) Create(title, body, assignee string) (string, error) {
 	return s.client.Create(title, body, assignee, "")
 }
 
-// CreateTodo files a new task into the project's own pickup status — the
-// word this project's mapping calls To Do — in one backend write, so the
-// next tick can claim it (ADR-0012). A project with no word mapped is not
-// refused: a vocabulary that names no todo is refused at configuration, and
-// the empty word would arrive here only through one that slipped past.
-func (s *Source) CreateTodo(title, body, assignee string) (string, error) {
-	return s.client.Create(title, body, assignee, s.vocab.Todo)
+// CreateIn files a new task into a phase in this project's own word for it —
+// To Do so the next tick can claim it (ADR-0012), Triage for an idea to grill
+// — in one backend write. A grill phase the project has no word for is
+// refused before anything is written; a vocabulary that names no todo is
+// refused at configuration already.
+func (s *Source) CreateIn(phase work.Phase, title, body, assignee string) (string, error) {
+	word := s.vocab.Word(phase)
+	if word == "" && phase != work.PhaseTodo {
+		return "", fmt.Errorf("this project's statuses name no %s word — add `%s:` to the source's statuses", strings.ToLower(string(phase)), strings.ToLower(string(phase)))
+	}
+	return s.client.Create(title, body, assignee, word)
 }
 
 // WriteCriteria replaces a task's acceptance criteria, numbering them from
@@ -155,18 +159,28 @@ func (s *Source) BaseBranch(string) (string, error) {
 	return s.client.DefaultBranch(s.repo)
 }
 
-// SetPhase shows the task as being worked on. This is the only phase the
-// fleet ever writes, and it is display only — the run lock is what keeps two
-// runs apart, so nothing reads this back. A project with no word for it is
-// left alone: writing one its CLI rejects would fail a run over decoration.
+// SetPhase shows the task as being worked on. That phase is display only —
+// the run lock is what keeps two runs apart, so nothing reads this back. A
+// project with no word for it is left alone: writing one its CLI rejects
+// would fail a run over decoration. The grill's phases are the exception:
+// they route the card, so they are written in the project's word for them, and
+// a project with no such word is told so rather than silently skipped.
 func (s *Source) SetPhase(id string, phase work.Phase) error {
-	if phase != work.PhaseInProgress {
+	word := s.vocab.Word(phase)
+	switch phase {
+	case work.PhaseQuestion, work.PhaseTriage:
+		if word == "" {
+			role := strings.ToLower(string(phase))
+			return fmt.Errorf("%s: this project's statuses name no %s word — add `%s:` to the source's statuses", id, role, role)
+		}
+	case work.PhaseInProgress:
+		if word == "" {
+			return nil
+		}
+	default:
 		return fmt.Errorf("phase %q: the backlogmd adapter does not know it", phase)
 	}
-	if s.vocab.InProgress == "" {
-		return nil
-	}
-	return s.client.SetStatus(id, s.vocab.InProgress)
+	return s.client.SetStatus(id, word)
 }
 
 // asTask maps a Backlog.md task onto the fleet's vocabulary. A task is open
@@ -179,12 +193,15 @@ func (s *Source) asTask(t task) work.Task {
 		Assignee:  assignee(t.Assignees),
 		Open:      s.vocab.Open(t.Status),
 		Blocked:   s.vocab.Parked(t.Status),
+		Triage:    s.vocab.InTriage(t.Status),
+		Question:  s.vocab.InQuestion(t.Status),
 		Phase:     s.vocab.Phase(t.Status),
 		Verdict:   s.vocab.VerdictOf(t.Status),
 		Priority:  rank(t.Priority),
 		Ordinal:   t.Ordinal,
 		CreatedAt: t.CreatedAt,
 		Labels:    t.Labels,
+		Parent:    t.ParentTaskID,
 	}
 }
 

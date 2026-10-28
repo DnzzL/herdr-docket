@@ -18,7 +18,7 @@ import (
 // be two token scopes and two error shapes to keep straight.
 const GraphQLURL = "https://api.github.com/graphql"
 
-// UserAgent identifies the fleet, as Basecamp's does.
+// UserAgent identifies the fleet.
 const UserAgent = "herdr-docket (+https://github.com/DnzzL/herdr-docket)"
 
 // maxRetries bounds the rate-limit retry loop, and maxBackoff caps a wait.
@@ -28,7 +28,7 @@ const (
 	maxBackoff = 60 * time.Second
 )
 
-// tokens supplies an access token. Unlike Basecamp's, it can be told to forget
+// tokens supplies an access token. It can be told to forget
 // what it resolved: a GitHub token has no expiry the fleet can see, so the
 // only notice it gets that one was revoked is a 401.
 type tokens interface {
@@ -200,10 +200,6 @@ func rateLimited(resp *http.Response, body []byte) bool {
 // Retry-After when it gave one, otherwise the moment the hour's budget comes
 // back. Anything unreadable waits a second — the point is to stop hammering,
 // not to wait out an outage.
-//
-// The arithmetic is Basecamp's, spelled again here rather than shared: the two
-// agree on twenty lines of header parsing and on nothing else, and the second
-// adapter is early for a package.
 func backoff(resp *http.Response, now time.Time) time.Duration {
 	if v := strings.TrimSpace(resp.Header.Get("Retry-After")); v != "" {
 		if secs, err := strconv.Atoi(v); err == nil {

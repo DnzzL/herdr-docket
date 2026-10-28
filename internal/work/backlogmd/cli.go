@@ -50,6 +50,8 @@ const (
 	statusBlocked    = "Blocked"
 	statusFailed     = "Failed"
 	statusDone       = "Done"
+	statusTriage     = "Triage"
+	statusQuestion   = "Question"
 )
 
 // Statuses is that lifecycle as a list, for whoever has to write it down.
@@ -65,6 +67,9 @@ type task struct {
 	Labels    []string `json:"labels"`
 	Ordinal   float64  `json:"ordinal"`
 	CreatedAt string   `json:"createdAt"`
+	// ParentTaskID is the task this one is a subtask of (`task create
+	// --parent`); null, read as empty, for a top-level task.
+	ParentTaskID string `json:"parentTaskId"`
 }
 
 // criterion is one acceptance criterion of a task.

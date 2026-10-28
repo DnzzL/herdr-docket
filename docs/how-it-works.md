@@ -4,13 +4,14 @@
 
 ## The model
 
-Everything lives in one **fleet dir** (default `~/fleet`) — a git repo you can
-read, diff, and back up:
+The fleet lives in one **fleet dir** (default `~/fleet`) — a git repo you can
+read, diff, and back up. The queue does not: it is the project repo's own
+tracker (see [Where the queue lives](queues.md)).
 
 ```
 ~/fleet/
-├── backlog/           # the Backlog.md project: one markdown file per task
-│                      # (the default queue — see "Where the queue lives")
+├── FLEET.md           # the brief every agent shares
+├── roles/             # methods agents share: dev, reviewer, triager
 └── agents/
     ├── dev/AGENT.md       # who the agents are: an author…
     └── reviewer/AGENT.md  # …and the verifier its queue names
@@ -20,14 +21,13 @@ read, diff, and back up:
   criteria, priority, and an `assignee` that names the agent. By default that
   queue is Backlog.md, and its phases are the lifecycle:
   `To Do → In Progress → Done | Failed | Blocked`.
-- **A card is one unit of work.** The task the queue holds is usually a
-  pointer: its body carries a line `Spec: <path>` — wherever the repo's
-  `docs/agents/issue-tracker.md` keeps specs — and the
-  spec's own *Done when* and *Verify by*. The author works the spec's tickets
-  on one integration branch and delivers one pull request. A card with no `Spec:`
-  line is a single ticket, worked on its own. The ticket files are the
-  author's plan and trigger nothing: the card is the only thing the daemon
-  routes.
+- **A card is one unit of work, and the card is the spec.** Its body is the
+  spec, with its own *Done when* and *Verify by*; its tickets hang off it,
+  read the way the repo's `docs/agents/issue-tracker.md` says. The
+  author works the tickets on one integration branch and delivers one pull
+  request. A card with no tickets is a single ticket, worked on its own. The
+  tickets are the author's plan and trigger nothing: the pick skips any task
+  that has a parent, so the card is the only thing the daemon routes.
 - **An agent** is one markdown file: YAML frontmatter for the run parameters,
   body for the persona every one of its runs opens with. Every field, and the
   runtimes a post can run on: [Writing an agent](agents.md).
@@ -66,29 +66,25 @@ to the result is clear.
 
 **Unclear → grill it into a spec.** Work starts as a conversation, not a
 ticket. You grill the idea with an agent until it is settled, then the same
-session writes it down with the `to-spec` and `to-tickets` skills in their
-local mode:
+session writes it down with the `to-spec` and `to-tickets` skills, which
+publish where the repo's `docs/agents/issue-tracker.md` says
+(`herdr-docket init <repo>` writes it):
 
-```
-.scratch/<slug>/
-├── spec.md            # the problem, the decisions, Done when / Verify by
-└── issues/
-    ├── 01-<slug>.md   # one ticket each: what to build, Blocked by,
-    └── 02-<slug>.md   # Done when, Verify by
-```
+- **the spec** is a task (an issue on GitHub) assigned to an agent — the
+  problem, the decisions, *Done when* and *Verify by*. That task is the card.
+- **each ticket** hangs off it (`--parent` in Backlog.md, a sub-issue on
+  GitHub): what to build, its
+  blockers as dependencies, *Done when* and *Verify by*.
 
-The session commits that directory on the queue's base branch, then files one
-card whose body is the `Spec:` line plus the spec's *Done when* and *Verify
-by*. The queue gains no field for it: the pointer is text, and the order the
-tickets run in is the author's business — the `dev` role reads the
+The pick never routes a ticket, and the order the tickets run in is the
+author's business — the `dev` role reads the
 `implement-spec` skill and follows it, using subagents when its runtime has
 them. Both roles ship with `herdr-docket init`.
 
 **Clear → file the card itself.** A task whose outcome and the way a stranger
 proves it are already known needs no spec: you write the card with its own
-*Done when* and *Verify by*, with no `Spec:` line, and the author works it as
-one ticket's worth of work — `/tdd`, no subagents needed. Nothing is committed
-under `.scratch`, because there is nothing left to plan.
+*Done when* and *Verify by*, with no tickets, and the author works it as
+one ticket's worth of work — `/tdd`, no subagents needed.
 
 ## Anatomy of a run
 

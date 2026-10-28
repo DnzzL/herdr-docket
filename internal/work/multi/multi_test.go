@@ -88,7 +88,7 @@ func (m *memSource) Close(id string, v work.Verdict) error {
 }
 
 // phaserSource is a sub-source that can show a phase — the Backlog.md-shaped
-// one beside the Basecamp-shaped one that cannot.
+// one beside a binary one that cannot.
 type phaserSource struct {
 	*memSource
 	phases []work.Phase
@@ -100,13 +100,13 @@ func (p *phaserSource) SetPhase(id string, phase work.Phase) error {
 }
 
 // starterSource is the Backlog.md-shaped one, able to file new work into its
-// own pickup status, beside the Basecamp-shaped one that cannot.
+// own pickup status, beside a binary one that cannot.
 type starterSource struct {
 	*memSource
-	todo []string // "title|body|assignee" per CreateTodo call
+	todo []string // "title|body|assignee" per CreateIn call
 }
 
-func (s *starterSource) CreateTodo(title, body, assignee string) (string, error) {
+func (s *starterSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	s.todo = append(s.todo, title+"|"+body+"|"+assignee)
 	return s.memSource.Create(title, body, assignee)
 }
@@ -177,7 +177,7 @@ func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
 		ready := &starterSource{memSource: newMem()}
 		plain := newMem()
 		src := New(map[string]work.Source{"ready": ready, "plain": plain})
-		id, started, err := src.CreateIn("ready", "Wind it", "why", "dev")
+		id, started, err := src.CreateIn("ready", work.PhaseTodo, "Wind it", "why", "dev")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -192,11 +192,11 @@ func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
 		ready := &starterSource{memSource: newMem()}
 		plain := newMem()
 		src := New(map[string]work.Source{"ready": ready, "plain": plain})
-		_, started1, err := src.CreateIn("plain", "Wind it", "", "dev")
+		_, started1, err := src.CreateIn("plain", work.PhaseTodo, "Wind it", "", "dev")
 		if err != nil {
 			t.Fatal(err)
 		}
-		id, started, err := src.CreateIn("plain", "Wind it", "why", "dev")
+		id, started, err := src.CreateIn("plain", work.PhaseTodo, "Wind it", "why", "dev")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,7 +212,7 @@ func TestCreateInFilesTheSubOwnPickupStatus(t *testing.T) {
 	})
 	t.Run("an unknown queue is refused", func(t *testing.T) {
 		src := New(map[string]work.Source{"alpha": newMem()})
-		if _, _, err := src.CreateIn("ghost", "T", "", ""); err == nil {
+		if _, _, err := src.CreateIn("ghost", work.PhaseTodo, "T", "", ""); err == nil {
 			t.Fatal("an unknown source must error, never create somewhere")
 		}
 	})
@@ -228,7 +228,7 @@ func (ghostSource) Create(string, string, string) (string, error) { return "", n
 // fabricated "docket/", which the CLI then announced as a creation.
 func TestCreateInRefusesAnEmptySubID(t *testing.T) {
 	src := New(map[string]work.Source{"docket": &ghostSource{memSource: newMem()}})
-	if id, _, err := src.CreateIn("docket", "T", "", ""); err == nil {
+	if id, _, err := src.CreateIn("docket", work.PhaseTodo, "T", "", ""); err == nil {
 		t.Fatalf("an empty id from the queue must be an error, got id %q", id)
 	}
 }
@@ -315,7 +315,7 @@ func TestCreateNeedsATargetWhenSeveralQueuesExist(t *testing.T) {
 	if _, err := src.Create("T", "b", "dev"); err == nil {
 		t.Fatal("a bare Create with several queues must refuse rather than guess")
 	}
-	id, _, err := src.CreateIn("beta", "T", "b", "dev")
+	id, _, err := src.CreateIn("beta", work.PhaseTodo, "T", "b", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,7 +325,7 @@ func TestCreateNeedsATargetWhenSeveralQueuesExist(t *testing.T) {
 	if len(a.order) != 0 {
 		t.Errorf("CreateIn(beta) wrote to alpha: %v", a.order)
 	}
-	if _, _, err := src.CreateIn("ghost", "T", "b", "dev"); err == nil {
+	if _, _, err := src.CreateIn("ghost", work.PhaseTodo, "T", "b", "dev"); err == nil {
 		t.Fatal("CreateIn on an unknown source must error")
 	}
 }
@@ -430,7 +430,7 @@ func (f *fakeBrancher) BaseBranch(id string) (string, error) {
 // verdict about where criteria belong on somebody else's queue. The refusal
 // has to name the queue, because that is what the human has to go fix.
 func TestCriteriaForAQueueThatCannotStoreThemAreRefusedNotDropped(t *testing.T) {
-	plain := newMem() // no WriteCriteria: a Basecamp-shaped queue
+	plain := newMem() // no WriteCriteria: a binary queue
 	able := &criterSource{memSource: newMem(), criteria: map[string][]string{}}
 	mustCreate(t, plain, "no place for a bar")
 	mustCreate(t, able.memSource, "a bar fits here")
@@ -455,5 +455,32 @@ func TestCriteriaForAQueueThatCannotStoreThemAreRefusedNotDropped(t *testing.T) 
 	}
 	if len(it.Criteria) != 1 || it.Criteria[0].Text != "the bar" {
 		t.Errorf("criteria did not reach the capable sub: %v", it.Criteria)
+	}
+}
+
+// A ticket's spec is addressed like any task of the composite: by its
+// prefixed id, from List and from Get alike.
+func TestATicketNamesItsSpecByThePrefixedID(t *testing.T) {
+	acme := newMem()
+	acme.items["T1"] = work.Task{ID: "T1", Open: true}
+	acme.items["T2"] = work.Task{ID: "T2", Open: true, Parent: "T1"}
+	acme.order = []string{"T1", "T2"}
+	src := New(map[string]work.Source{"acme": acme})
+
+	items, err := src.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if want := map[string]string{"acme/T1": "", "acme/T2": "acme/T1"}[it.ID]; it.Parent != want {
+			t.Errorf("List: %s parent = %q, want %q", it.ID, it.Parent, want)
+		}
+	}
+	it, err := src.Get("acme/T2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Parent != "acme/T1" {
+		t.Errorf("Get: parent = %q, want acme/T1", it.Parent)
 	}
 }

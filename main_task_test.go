@@ -272,7 +272,7 @@ type bothCapabilitiesSource struct {
 	order        []string
 }
 
-func (f *bothCapabilitiesSource) CreateTodo(title, body, assignee string) (string, error) {
+func (f *bothCapabilitiesSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	f.started = true
 	f.order = append(f.order, "create")
 	return f.fakeSource.Create(title, body, assignee)
@@ -313,6 +313,7 @@ type multiSource struct {
 	names     []string
 	started   bool
 	createdIn []string
+	phase     work.Phase
 	err       error
 }
 
@@ -323,12 +324,13 @@ func (m *multiSource) Close(id string, v work.Verdict) error {
 	return m.err
 }
 func (m *multiSource) Create(title, body, assignee string) (string, error) {
-	_, _, err := m.CreateIn("", title, body, assignee)
+	_, _, err := m.CreateIn("", work.PhaseTodo, title, body, assignee)
 	return "", err
 }
 func (m *multiSource) Names() []string { return m.names }
-func (m *multiSource) CreateIn(source, title, body, assignee string) (string, bool, error) {
+func (m *multiSource) CreateIn(source string, phase work.Phase, title, body, assignee string) (string, bool, error) {
 	m.createdIn = []string{source, title, body, assignee}
+	m.phase = phase
 	return source + "/TASK-9", m.started, m.err
 }
 
@@ -339,7 +341,7 @@ type todoStarterSource struct {
 	started bool
 }
 
-func (f *todoStarterSource) CreateTodo(title, body, assignee string) (string, error) {
+func (f *todoStarterSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	f.started = true
 	return "TASK-9", nil
 }
@@ -751,9 +753,257 @@ func TestTaskCreateStatesWhatADegradingQueueCannotStore(t *testing.T) {
 	}
 }
 
-// bareSource is a queue with no criteria place — the Basecamp shape.
+// bareSource is a queue with no criteria place — a backend with nowhere to write them.
 type bareSource struct{ work.Source }
 
 func (f bareSource) Create(title, body, assignee string) (string, error) {
 	return "T-1", nil
+}
+
+// phasingSource is a fakeSource that records the phases it is set to.
+type phasingSource struct {
+	fakeSource
+	phases []work.Phase
+}
+
+func (p *phasingSource) SetPhase(id string, phase work.Phase) error {
+	p.phases = append(p.phases, phase)
+	return p.err
+}
+
+// The triager posts its round as a note, then parks the card on its owner.
+func TestTaskAskMovesTheCardToQuestion(t *testing.T) {
+	src := &phasingSource{}
+	got, err := runTask(t, src, "ask", "TASK-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []work.Phase{work.PhaseQuestion}; !reflect.DeepEqual(src.phases, want) {
+		t.Fatalf("phases %v, want %v", src.phases, want)
+	}
+	if !strings.Contains(got, "TASK-2") || !strings.Contains(got, string(work.PhaseQuestion)) {
+		t.Fatalf("ask must say what it did, got %q", got)
+	}
+}
+
+func TestTaskAnswerPostsTheAnswerToTheLatestRoundAndSendsItBack(t *testing.T) {
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2",
+		Question: true,
+		Notes:    "## Round 1\n1. a?\n\n## Answer 1\n1.A\n\n## Round 2\n1. b?\n   A. yes (reco)\n2. c?"}}}
+	got, err := runTask(t, src, "answer", "TASK-2", "1.A 2. keep it 30 days")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"## Answer 2\n1.A 2. keep it 30 days"}; !reflect.DeepEqual(src.comments, want) {
+		t.Fatalf("commented %q, want %q", src.comments, want)
+	}
+	if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.phases, want) {
+		t.Fatalf("phases %v, want %v", src.phases, want)
+	}
+	if !strings.Contains(got, "TASK-2") || !strings.Contains(got, "round 2") {
+		t.Fatalf("answer must say what it did, got %q", got)
+	}
+}
+
+func TestTaskAnswerWithoutARoundFailsNamingTheCard(t *testing.T) {
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Question: true, Notes: "started"}}}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "TASK-2") {
+		t.Fatalf("err = %v, want an error naming TASK-2", err)
+	}
+	if len(src.comments) != 0 || len(src.phases) != 0 {
+		t.Fatalf("nothing must be written: comments %v phases %v", src.comments, src.phases)
+	}
+}
+
+func TestTaskAskAndAnswerNeedTheirArguments(t *testing.T) {
+	for _, args := range [][]string{{"ask"}, {"answer", "TASK-2"}} {
+		if _, err := runTask(t, &phasingSource{}, args...); err == nil {
+			t.Errorf("%v must be a usage error", args)
+		}
+	}
+}
+
+// runTaskTriaged runs a task verb in a queue whose triager is the one given.
+func runTaskTriaged(t *testing.T, src work.Source, triager string, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	env := taskEnv{src: src, pipeline: func(string) fleet.Pipeline { return fleet.Pipeline{} },
+		triager: func(string) string { return triager }}
+	err := runTaskCmd(env, args, &out)
+	return out.String(), err
+}
+
+// An idea filed with nobody named goes to the queue's triager to be grilled;
+// a card with an assignee, or a queue with no triager, lands as it always did.
+func TestTaskCreateFilesUnassignedWorkIntoTriage(t *testing.T) {
+	t.Run("unassigned, queue with a triager: Triage", func(t *testing.T) {
+		src := &phasingSource{}
+		got, err := runTaskTriaged(t, src, "pm", "create", "an idea")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.phases, want) {
+			t.Fatalf("phases %v, want %v", src.phases, want)
+		}
+		if want := "created TASK-9 (in Triage"; !strings.Contains(got, want) || !strings.Contains(got, "moved") {
+			t.Fatalf("output %q, want %q and a word that it was moved after the create", got, want)
+		}
+	})
+	t.Run("assigned, queue with a triager: To Do", func(t *testing.T) {
+		src := &phasingSource{}
+		if _, err := runTaskTriaged(t, src, "pm", "create", "T", "-a", "dev"); err != nil {
+			t.Fatal(err)
+		}
+		if len(src.phases) != 0 {
+			t.Fatalf("an assigned card must not be moved, got phases %v", src.phases)
+		}
+	})
+	t.Run("unassigned, no triager: To Do", func(t *testing.T) {
+		src := &phasingSource{}
+		if _, err := runTaskTriaged(t, src, "", "create", "T"); err != nil {
+			t.Fatal(err)
+		}
+		if len(src.phases) != 0 {
+			t.Fatalf("without a triager nothing grills triage, got phases %v", src.phases)
+		}
+	})
+}
+
+// Scripts (the phone's idea widget) ask the box which queues it has.
+func TestQueuesListsOneNamePerLine(t *testing.T) {
+	var out bytes.Buffer
+	writeQueues(&out, fleet.Settings{Sources: map[string]fleet.SourceConfig{"web": {}, "api": {}}})
+	if got, want := out.String(), "api\nweb\n"; got != want {
+		t.Fatalf("queues = %q, want %q", got, want)
+	}
+	out.Reset()
+	writeQueues(&out, fleet.Settings{})
+	if got := out.String(); got != "" {
+		t.Fatalf("one unnamed source: queues = %q, want nothing — there is no name to pass back as -s", got)
+	}
+}
+
+// An answer is only for a card waiting on one: anything else is refused,
+// naming the card and where it stands, and nothing is written.
+func TestTaskAnswerRefusesACardNotInQuestion(t *testing.T) {
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Open: true, Phase: string(work.PhaseTodo),
+		Notes: "## Round 1\n1. a?"}}}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "TASK-2") || !strings.Contains(err.Error(), "To Do") {
+		t.Fatalf("err = %v, want a refusal naming TASK-2 and its To Do", err)
+	}
+	if len(src.comments) != 0 || len(src.phases) != 0 {
+		t.Fatalf("nothing must be written: comments %v phases %v", src.comments, src.phases)
+	}
+}
+
+// An answer under a live run would land in Triage while the run settles,
+// and the run would read the card as untouched: refused, retry later.
+func TestTaskAnswerRefusesWhileARunHoldsTheCard(t *testing.T) {
+	held := runHeld
+	t.Cleanup(func() { runHeld = held })
+	runHeld = func(id string) bool { return id == "TASK-2" }
+	src := &phasingSource{fakeSource: fakeSource{item: work.Task{ID: "TASK-2", Question: true, Notes: "## Round 1\n1. a?"}}}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "retry") {
+		t.Fatalf("err = %v, want a refusal saying to retry", err)
+	}
+	if len(src.comments) != 0 || len(src.phases) != 0 {
+		t.Fatalf("nothing must be written: comments %v phases %v", src.comments, src.phases)
+	}
+}
+
+// statusSource is a queue that creates straight into a phase, recording
+// every status written to the card — at the create and after it.
+type statusSource struct {
+	fakeSource
+	written []work.Phase
+}
+
+func (s *statusSource) CreateIn(phase work.Phase, title, body, assignee string) (string, error) {
+	s.written = append(s.written, phase)
+	return "TASK-9", nil
+}
+
+func (s *statusSource) SetPhase(id string, phase work.Phase) error {
+	s.written = append(s.written, phase)
+	return nil
+}
+
+// An idea filed with nobody named is created in Triage, in one write: a card
+// that passed through To Do first could be claimed by the queue's
+// default_agent before it was moved.
+func TestTaskCreateWithATriagerNeverPassesThroughToDo(t *testing.T) {
+	src := &statusSource{}
+	got, err := runTaskTriaged(t, src, "tri", "create", "an idea")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.written, want) {
+		t.Fatalf("statuses written %v, want only %v", src.written, want)
+	}
+	if !strings.Contains(got, "created TASK-9 (in Triage)") {
+		t.Fatalf("output %q", got)
+	}
+	m := &multiSource{names: []string{"solo"}, started: true}
+	if _, err := runTaskTriaged(t, m, "tri", "create", "an idea"); err != nil {
+		t.Fatal(err)
+	}
+	if m.phase != work.PhaseTriage {
+		t.Fatalf("a queue of a composite was created in %q, want Triage", m.phase)
+	}
+}
+
+// A queue with no way to move a card cannot hold a grill, and says so rather
+// than leaving the card where it stood.
+func TestTaskAskOnAQueueThatCannotMoveCardsSaysSo(t *testing.T) {
+	_, err := runTask(t, &fakeSource{}, "ask", "TASK-2")
+	if err == nil || !strings.Contains(err.Error(), "cannot move a card to Question") {
+		t.Fatalf("err = %v, want the queue cannot move a card", err)
+	}
+}
+
+// stuckSource creates, but its notes or its moves can fail.
+type stuckSource struct {
+	phasingSource
+	noteErr, moveErr error
+}
+
+func (s *stuckSource) Comment(id, text string) error {
+	if s.noteErr != nil {
+		return s.noteErr
+	}
+	return s.phasingSource.Comment(id, text)
+}
+
+func (s *stuckSource) SetPhase(id string, phase work.Phase) error {
+	s.phases = append(s.phases, phase)
+	return s.moveErr
+}
+
+// A queue that can only move a card after the create, and fails the move:
+// the card exists, so the error names it rather than inviting a second one.
+func TestTaskCreateNamesTheCardItCouldNotFileIntoTriage(t *testing.T) {
+	src := &stuckSource{moveErr: errors.New("no such status")}
+	_, err := runTaskTriaged(t, src, "tri", "create", "an idea")
+	if err == nil || !strings.Contains(err.Error(), "created TASK-9 but could not file it into Triage") {
+		t.Fatalf("err = %v, want it to name the created card", err)
+	}
+}
+
+// An answer that could not be posted moves nothing; one posted whose move
+// failed says the answer is on the card, so nobody posts it twice.
+func TestTaskAnswerReportsAFailedPostAndAFailedMove(t *testing.T) {
+	card := work.Task{ID: "TASK-2", Question: true, Notes: "## Round 1\n1. a?"}
+	src := &stuckSource{phasingSource: phasingSource{fakeSource: fakeSource{item: card}}}
+	src.noteErr = errors.New("disk full")
+	if _, err := runTask(t, src, "answer", "TASK-2", "1.A"); err == nil || !strings.Contains(err.Error(), "disk full") || len(src.phases) != 0 {
+		t.Fatalf("a failed post: err %v, moves %v — want an error and no move", err, src.phases)
+	}
+	src = &stuckSource{phasingSource: phasingSource{fakeSource: fakeSource{item: card}}, moveErr: errors.New("no such status")}
+	_, err := runTask(t, src, "answer", "TASK-2", "1.A")
+	if err == nil || !strings.Contains(err.Error(), "posted, but the card did not move") || len(src.comments) != 1 {
+		t.Fatalf("a failed move: err %v, comments %v", err, src.comments)
+	}
 }

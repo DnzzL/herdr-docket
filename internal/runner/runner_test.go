@@ -546,7 +546,7 @@ func TestAgentsOwnVerdictIsRespectedEvenAfterAHostError(t *testing.T) {
 	}
 }
 
-// The claim is display only. A backend that cannot show a phase — a Basecamp
+// The claim is display only. A backend that cannot show a phase — a binary
 // to-do — must run exactly the same, and one whose phase write fails must not
 // lose the run over it.
 func TestAPhaseWriteIsBestEffort(t *testing.T) {

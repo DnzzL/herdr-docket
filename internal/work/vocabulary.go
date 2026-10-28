@@ -3,20 +3,26 @@ package work
 import "fmt"
 
 // Vocabulary is one queue's status words, in the fleet's terms. A queue the
-// fleet did not lay down has its own — notara says `ready-for-agent` where
-// the fleet says `To Do` — and this is the whole translation: Backlog.md and
-// Notara read the same `statuses:` block through it (ADR-0022).
+// fleet did not lay down has its own — a project may say `ready-for-agent`
+// where the fleet says `To Do` — and this is the whole translation: a
+// Backlog.md project's `statuses:` block is read through it.
 //
 // Read it as a whitelist: a status not named below is not the fleet's
-// business. That matters more than it sounds — a project's triage and wontfix
-// columns are statuses too, and a fleet that read them as open work would run
-// an agent on them.
+// business. That matters more than it sounds — a project's wontfix column is
+// a status too, and a fleet that read it as open work would run an agent on
+// it. Triage is open only once it is named here, and then only for the
+// queue's triager.
 type Vocabulary struct {
 	Todo       string `yaml:"todo"`
 	InProgress string `yaml:"in_progress"`
 	Done       string `yaml:"done"`
 	Failed     string `yaml:"failed"`
 	Blocked    string `yaml:"blocked"`
+	// Triage and Question are the grill's two statuses (TASK-86): an idea
+	// waiting for the triager, and one waiting on the owner's answer. Both
+	// optional — a project without them has no grill.
+	Triage   string `yaml:"triage"`
+	Question string `yaml:"question"`
 }
 
 // Validate refuses a half-written vocabulary. Every ending must have a word:
@@ -45,8 +51,8 @@ func (v Vocabulary) Validate() error {
 // List is the vocabulary in board order, for whoever has to write it down.
 // A word the project does not have is left out rather than written empty.
 func (v Vocabulary) List() []string {
-	out := make([]string, 0, 5)
-	for _, s := range []string{v.Todo, v.InProgress, v.Blocked, v.Failed, v.Done} {
+	out := make([]string, 0, 7)
+	for _, s := range []string{v.Triage, v.Question, v.Todo, v.InProgress, v.Blocked, v.Failed, v.Done} {
 		if s != "" {
 			out = append(out, s)
 		}
@@ -105,23 +111,58 @@ func (v Vocabulary) Phase(status string) string {
 		return string(PhaseTodo)
 	case v.InProgress:
 		return string(PhaseInProgress)
+	case v.Triage:
+		return string(PhaseTriage)
+	case v.Question:
+		return string(PhaseQuestion)
 	}
 	return status
 }
 
 // Open reports whether a status is work the fleet may pick up. A whitelist,
-// deliberately: a project has columns the fleet has no business in — triage,
+// deliberately: a project has columns the fleet has no business in —
 // wontfix, waiting on a human — and reading anything unrecognised as open
 // would put an agent on them.
 func (v Vocabulary) Open(status string) bool {
 	if status == "" {
 		return false
 	}
-	return status == v.Todo || status == v.InProgress
+	return status == v.Todo || status == v.InProgress || status == v.Triage
 }
 
-// Parked reports whether a status is the one that waits on a human — this
-// project's own blocked word. Written only where the queue names one, a
+// InTriage reports whether a status is this project's triage word: open work,
+// but the triager's whatever the assignee (TASK-86).
+func (v Vocabulary) InTriage(status string) bool {
+	return status != "" && status == v.Triage
+}
+
+// InQuestion reports whether a status is this project's question word: a
+// grill round the owner has not answered (TASK-86).
+func (v Vocabulary) InQuestion(status string) bool {
+	return status != "" && status == v.Question
+}
+
+// Word is the table read the other way: the project's word for a phase the
+// fleet writes, empty when the project has none. The one phase↔word mapping
+// every adapter with a status vocabulary writes through.
+func (v Vocabulary) Word(p Phase) string {
+	switch p {
+	case PhaseTodo:
+		return v.Todo
+	case PhaseInProgress:
+		return v.InProgress
+	case PhaseTriage:
+		return v.Triage
+	case PhaseQuestion:
+		return v.Question
+	}
+	return ""
+}
+
+// Parked reports whether a status is one that waits on a human — this
+// project's own blocked word. A question waits on a human too, but it is
+// the grill's own state (InQuestion), not a block. Written only where the
+// queue names one, a
 // task the vocabulary does not know at all is not parked by guess: the
 // whitelist above already leaves it invisible to routing, and inventing a
 // parked state for a column the fleet never mapped would be a second

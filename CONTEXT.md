@@ -1,7 +1,7 @@
 # herdr-docket
 
 A shared task queue worked by your coding agents. The queue lives in a backend
-(a Backlog.md project, a Basecamp project or a GitHub Projects project) and the
+(a Backlog.md project or a GitHub Projects project) and the
 fleet keeps no copy of it.
 
 ## The queue
@@ -26,9 +26,11 @@ to pick a task up.
 _Avoid_: unfinished, active, pending, in-progress
 
 **Phase**:
-Where a task stands, in the fleet's words: _To Do_ and _In Progress_, plus the
+Where a task stands, in the fleet's words: _Triage_, _Question_, _To Do_ and _In Progress_, plus the
 three endings it shares with Verdict. Display only — nothing about a phase
-decides what runs.
+decides what runs: Triage and Question route a card, so the adapter carries
+them as their own flags on the task, and the fleet reads those, never the
+phase word.
 _Avoid_: status, state, column
 
 **Verdict**:
@@ -50,28 +52,27 @@ _Avoid_: checklist, steps, subtasks
 
 **Spec**:
 The unit of work: one idea, grilled with the human and written with
-`to-spec` into the repo's issue tracker (`docs/agents/issue-tracker.md`; here
-`.scratch/<slug>/spec.md`) on the queue's base branch. It carries
-its own _Done when_ and _Verify by_, and ships as one pull request.
+`to-spec` into the repo's tracker (`docs/agents/issue-tracker.md`) as a task
+assigned to an agent: that task is its card. It carries its own _Done when_
+and _Verify by_, and ships as one pull request.
 _Avoid_: PRD, epic, plan
 
 **Ticket**:
-One slice of a spec, written with `to-tickets` beside it (here
-`.scratch/<slug>/issues/<NN>-<slug>.md`): what to build, what blocks it, its
-_Done when_ and _Verify by_. The ticket files are the implementer's plan and
-trigger nothing; the queue never sees them.
+One slice of a spec, written with `to-tickets` as a subtask of the spec's
+task (a sub-issue on GitHub): what to build, what blocks it, its _Done when_
+and _Verify by_. Tickets are the implementer's plan and trigger nothing: the
+queue sees them, and the pick skips any task that has a parent.
 _Avoid_: subtask, issue
 
 **Card**:
-The task filed for a spec, and the only thing that triggers a run. Its body
-is a line `Spec: <path to the spec>` plus the spec's _Done when_ and
-_Verify by_. A card with no `Spec:` line is still a card: its body carries
-its own _Done when_ and _Verify by_, and its run works it as one ticket's
-worth of work, with no spec.
+The task with no parent, and the only thing that triggers a run. The card is
+the spec: its body is the spec, and its tickets hang off it. A card with no
+tickets is still a card: its body carries its own _Done when_ and
+_Verify by_, and its run works it as one ticket's worth of work.
 _Avoid_: story, epic
 
-`.scratch` is a plan, not a tracker: the queue holds cards, the repo holds
-specs and tickets, and no adapter learns the graph between them.
+The queue knows one edge of the graph, a ticket's parent, and only to skip
+it; the order tickets run in is the implementer's business.
 
 ## The workers
 
@@ -127,6 +128,24 @@ A verifier's _PASS_ or _FAIL_ on a delivery, pinned to the patch-id of the
 diff it judged. Not a Verdict: a verdict ends a task, a verification feeds
 the gate.
 _Avoid_: review, approval
+
+**Triage**:
+The status of a card whose idea is not yet a spec, carried as the task's
+Triage flag. The queue's triager gets it whatever its assignee says, and
+either publishes it as a spec back to the author in _To Do_ or asks a
+Question. No triager, the card waits. A triage run works in the repo root,
+never a worktree.
+_Avoid_: inbox, draft, grooming
+
+**Question**:
+The status of a card whose grill waits on the owner's answer: a round of
+numbered questions in a note, carried as the task's Question flag — not
+Blocked. Never picked; the answer sends it back to Triage.
+_Avoid_: blocked (a Verdict), waiting, needs-info
+
+**Triager**:
+The agent a queue names to grill its Triage cards.
+_Avoid_: groomer, PM
 
 **Gate**:
 The code that merges a verified delivery or holds it: PASS on the current

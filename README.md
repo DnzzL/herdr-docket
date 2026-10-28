@@ -15,7 +15,7 @@ agents work the queue in parallel, in workspaces you can watch, join or close.
 ```text
  idea (unclear) ──► grill ──► spec + tickets ──┐
                                                ├──► card ──► author ──► one PR ──► verifier ──► gate ──► merged
- idea (clear) ─────────────────────────────────┘   (Spec: line, or its own Done when / Verify by)
+ idea (clear) ─────────────────────────────────┘   (the spec + its tickets, or its own Done when / Verify by)
                                                                           ▲           │ FAIL       │
                                                                           └───────────┘            └──► held: your Blocked column
 ```
@@ -33,16 +33,22 @@ agents work the queue in parallel, in workspaces you can watch, join or close.
 Requires Herdr ≥ 0.8 (Linux or macOS), an agent CLI Herdr can start — Claude
 Code by default; pi, Codex, Gemini, opencode and [others](docs/agents.md#running-a-post-on-another-agent-runtime)
 work too — and `gh` for pull requests.
+On a fresh always-on box (VPS), [`scripts/box-setup`](scripts/box-setup) walks you through all of it; `--dry-run` shows the commands first.
 
 ```bash
 herdr plugin install DnzzL/herdr-docket
-herdr-docket init                          # a task queue + an example agent in ~/fleet
-$EDITOR ~/fleet/agents/example/AGENT.md     # point it at your repo
+herdr-docket init ~/Projects/myapp         # the repo's Backlog.md is the queue; agents in ~/fleet
+$EDITOR ~/fleet/agents/example/AGENT.md     # set workdir: ~/Projects/myapp
 herdr-docket task create "Search ignores accents" -a example \
   -d "Users who type « creme » find none of the « crème » products.
 Done when: a query matches with or without accents.
 Verify by: a search test for « creme » that is red on main, green after."
 ```
+
+`init` runs `backlog init` in the repo when it has no `backlog/`, which also
+writes Backlog.md's agent guidelines into the repo's `AGENTS.md`. The agent's
+`workdir` is not optional: a run works in that checkout, so it must be the repo
+whose queue the task is in.
 
 Within 15 seconds Herdr opens a workspace on the agent's repo and starts the
 agent with its persona and the task. It reports back through the CLI, closes
@@ -51,11 +57,15 @@ the task with a verdict, and the run lands in `herdr-docket history`.
 ## How it works
 
 1. **A grill** turns an unclear idea into a spec and its tickets, committed
-   to the repo's issue tracker (here `.scratch/<slug>/`) — each says what to do and how a stranger proves
-   it is done.
-2. **A card** either points at a spec with a `Spec:` line and carries the
-   spec's own *Done when* and *Verify by*, or — when the task is clear —
-   carries its own and is worked as one ticket's worth of work.
+   in the repo's own tracker — each says what to do and how a stranger proves
+   it is done. The grill is a card state: an idea filed in `Triage` goes to
+   the queue's `triager`, which posts a round of questions and moves it to
+   `Question`; you answer from anywhere with `herdr-docket task answer <id>
+   "1.A 2.B"`, and once you confirm its assumptions it publishes the spec in
+   `To Do` for the author.
+2. **A card** either is the spec — its body the spec, with its tickets under
+   it — or, when the task is clear, carries its own *Done when* and
+   *Verify by* and is worked as one ticket's worth of work.
 3. **The daemon** routes the card to the agent it names and starts a run in a
    Herdr workspace — one run per agent, agents in parallel.
 4. **The author** works whatever the card carries — the spec's tickets or one
@@ -70,6 +80,30 @@ the task with a verdict, and the run lands in `herdr-docket history`.
    waits in your `Blocked` column with the one reason it stopped.
 
 More: [how it works](docs/how-it-works.md).
+
+## Day to day
+
+**On the phone**, in Termux with `herdr --remote` on the box:
+`herdr-docket status` says whether the daemon is alive, `herdr-docket
+questions` answers a grill round one tap at a time, and a new idea is one tap
+on the `idea` widget. Merge what passed in GitHub mobile.
+
+**On the laptop**: the big grills, reviewing the PRs that wait on you, and
+`backlog browser` for the whole board.
+
+To set up the widget, install Termux, Termux:API and Termux:Widget (F-Droid),
+then in Termux:
+
+```bash
+pkg install openssh termux-api
+mkdir -p ~/.shortcuts ~/.config/herdr-docket
+curl -fsSL https://raw.githubusercontent.com/DnzzL/herdr-docket/main/scripts/termux/idea -o ~/.shortcuts/idea
+chmod +x ~/.shortcuts/idea
+echo 'BOX=me@my-box' > ~/.config/herdr-docket/idea.env   # ssh target, key auth
+```
+
+Add the Termux:Widget widget to the home screen and tap `idea`: pick the
+queue, type the idea, and a toast shows the new card's id.
 
 ## How much autonomy
 
@@ -87,7 +121,7 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
 ## Features
 
 - **Your queue, where it already lives** — a [Backlog.md](https://backlog.md)
-  project in git, Basecamp, or a GitHub Projects board, and several at once
+  project in git or a GitHub Projects board, and several at once
   ([where the queue lives](docs/queues.md)).
 - **Agents are markdown** — one `AGENT.md` each: run parameters plus a persona
   ([writing an agent](docs/agents.md), [worked examples](docs/examples.md)).
@@ -102,7 +136,7 @@ columns stay yours. Every lever: [how it works](docs/how-it-works.md#the-levers)
   decide *when*, the fleet decides *what* and *who*.
 - **Not a workflow engine.** A card is one unit of work, spec or not; its only
   fixed sequence is author → verifier → gate. The ticket graph is the author's
-  plan, not the queue's: `.scratch` triggers nothing.
+  plan, not the queue's: a ticket triggers nothing.
 - **Not an environment.** An agent needs a repo it can run, test data and a
   way to check a fix the way a user would; that lives in your repo, and the
   `AGENT.md` points at it.

@@ -192,21 +192,21 @@ func TestClosedWorkIsLeftAlone(t *testing.T) {
 
 // Two projects behind one fleet means two intakes. An agent carries its own
 // workdir, so a single default would hand dishnow's work to an agent that
-// opens the notara checkout — the routing has to follow the task's queue.
+// opens the notionalt checkout — the routing has to follow the task's queue.
 func TestUnassignedWorkGoesToItsOwnProjectsIntake(t *testing.T) {
 	d := fleet.Settings{
 		DefaultAgent: "dev",
 		Sources: map[string]fleet.SourceConfig{
-			"notara":  {DefaultAgent: "notara-pm"},
-			"dishnow": {DefaultAgent: "dishnow-pm"},
+			"notionalt": {DefaultAgent: "notionalt-pm"},
+			"dishnow":   {DefaultAgent: "dishnow-pm"},
 		},
 	}.Defaults()
 	for _, tc := range []struct{ id, want string }{
 		{"dishnow/TASK-19", "dishnow-pm"},
-		{"notara/NOT-92", "notara-pm"},
+		{"notionalt/NOT-92", "notionalt-pm"},
 		{"loose/TASK-1", "dev"}, // a queue with no intake of its own
 	} {
-		res := Next([]work.Task{open(tc.id, 0, "")}, agents("dev", "notara-pm", "dishnow-pm"), d)
+		res := Next([]work.Task{open(tc.id, 0, "")}, agents("dev", "notionalt-pm", "dishnow-pm"), d)
 		if res.Task == nil || res.Agent.Name != tc.want {
 			t.Errorf("%s: routed to %+v, want %s", tc.id, res.Agent.Name, tc.want)
 		}
@@ -280,5 +280,81 @@ func TestBlockedIsNotPicked(t *testing.T) {
 	// no comment — the queue has already said what it is waiting for.
 	if res := Next([]work.Task{blocked}, agents("a"), defaults("a")); res.Task != nil || len(res.Unknown) != 0 {
 		t.Fatalf("blocked as the only work must leave the tick bare: %+v", res)
+	}
+}
+
+// A ticket is the implementer's plan for its spec, not a card: the spec is
+// what the fleet routes, and its tickets are never offered on their own —
+// however urgent, and even once the spec itself is no longer pickable.
+func TestATicketOfASpecIsNeverPicked(t *testing.T) {
+	spec := open("TASK-1", 1, "a")
+	t1, t2 := open("TASK-1.1", 3, "a"), open("TASK-1.2", 3, "a")
+	t1.Parent, t2.Parent = "TASK-1", "TASK-1"
+
+	res := Next([]work.Task{t1, spec, t2}, agents("a"), defaults(""))
+	if res.Task == nil || res.Task.ID != "TASK-1" {
+		t.Fatalf("got %+v, want the spec TASK-1", res.Task)
+	}
+
+	res = Next([]work.Task{t1, t2}, agents("a"), defaults(""))
+	if res.Task != nil {
+		t.Fatalf("a ticket was picked on its own: %+v", res.Task)
+	}
+}
+
+// triage is a card in the queue's triage status: an idea to grill, not work.
+func triage(id, assignee string) work.Task {
+	t := open(id, 0, assignee)
+	t.Triage = true
+	return t
+}
+
+// A triage card is the triager's, whatever its assignee says: the assignee is
+// the author it goes back to once the grill is over, not who grills it.
+func TestATriageCardRoutesToTheTriagerWhateverItsAssignee(t *testing.T) {
+	s := fleet.Settings{Source: fleet.SourceConfig{Triager: "tri"}}
+	for _, assignee := range []string{"dev", ""} {
+		res := Next([]work.Task{triage("T-1", assignee)}, agents("dev", "tri"), s.Defaults())
+		if res.Task == nil || res.Agent.Name != "tri" {
+			t.Fatalf("assignee %q: got %+v to %q, want T-1 to the triager", assignee, res.Task, res.Agent.Name)
+		}
+	}
+}
+
+// Each queue names its own triager: an idea is grilled by the agent of the
+// project it was filed in.
+func TestEachQueueHasItsOwnTriager(t *testing.T) {
+	s := fleet.Settings{Sources: map[string]fleet.SourceConfig{
+		"a": {Triager: "tri-a"},
+		"b": {},
+	}}
+	if got := AssigneeFor(triage("a/T-1", "dev"), s.Defaults()); got != "tri-a" {
+		t.Errorf("a/T-1 routes to %q, want tri-a", got)
+	}
+	if got := AssigneeFor(triage("b/T-1", "dev"), s.Defaults()); got != "" {
+		t.Errorf("b/T-1 routes to %q, want nobody: queue b names no triager", got)
+	}
+}
+
+// No triager, no grill: the card waits, rather than its assignee building an
+// idea nobody has made clear yet. It is not reported unknown either.
+func TestATriageCardWithNoTriagerIsNotPicked(t *testing.T) {
+	res := Next([]work.Task{triage("T-1", "dev")}, agents("dev"), defaults("dev"))
+	if res.Task != nil {
+		t.Fatalf("picked %+v with no triager configured", res.Task)
+	}
+	if len(res.Unknown) != 0 {
+		t.Fatalf("a triage card with no triager is not an unknown agent: %v", res.Unknown)
+	}
+}
+
+// A card in Question waits on its owner's answer: open on a board that has
+// only open and closed, yet no run can answer for the owner.
+func TestAQuestionCardIsNeverPicked(t *testing.T) {
+	q := open("T-1", 0, "dev")
+	q.Question = true
+	s := fleet.Settings{Source: fleet.SourceConfig{Triager: "dev"}}
+	if res := Next([]work.Task{q}, agents("dev"), s.Defaults()); res.Task != nil {
+		t.Fatalf("picked a question card: %+v", res.Task)
 	}
 }

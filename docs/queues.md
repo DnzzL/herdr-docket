@@ -2,10 +2,26 @@
 
 [Back to the README](../README.md)
 
-By default the queue is the Backlog.md project in the fleet dir, and there is
-nothing to configure. Three things change that, in rising order of how much
-config they cost: a project you already have, several projects at once, and a
-hosted queue.
+The queue is a project repo's own tracker: its Backlog.md project, or a GitHub
+Projects board ([ADR 0023](adr/0023-the-repos-own-tracker-is-the-queue.md)).
+The fleet dir holds agents and roles, never a queue. One command makes a repo
+the queue:
+
+```sh
+herdr-docket init ~/Projects/myapp
+```
+
+It creates the fleet if it is missing, then in the repo: runs `backlog init`
+if there is no `backlog/` (which also writes Backlog.md's agent guidelines into
+the repo's `AGENTS.md`), adds the fleet's statuses to `backlog/config.yml`
+(the repo's own columns are kept), writes `docs/agents/issue-tracker.md` — how
+the skills publish, fetch and resolve Specs and Tickets there — unless the repo
+already has one, and names the repo as the source in `fleet.yaml`. Running it
+again changes nothing. A `fleet.yaml` that already names another queue gets the
+repo beside it: `source:` becomes `sources:`, each entry named after its repo
+directory, and the old queue stays `default_source`. The file is edited in
+place, comments and order kept. A `fleet.yaml` from before the repo was the
+queue — a Backlog.md `source:` with no `dir` — gets the repo set as its `dir`.
 
 ## The file all of it goes in
 
@@ -15,14 +31,13 @@ Config is optional — `fleet.yaml` in the plugin config dir:
 dir: ~/somewhere/else     # fleet dir (default ~/fleet)
 default_agent: dev        # picks up unassigned tasks; unset = leave them alone
 source:
-  kind: backlogmd         # where the queue lives (default: the Backlog.md
-                          # project in the fleet dir — see "Work a project you
-                          # already have", below)
+  kind: backlogmd         # where the queue lives (the default kind)
+  dir: ~/Projects/myapp   # the repo whose Backlog.md is the queue (required)
 ```
 
 | Key | What it does |
 | --- | --- |
-| `dir` | Where the fleet lives: `agents/`, and the queue too unless a source names another. |
+| `dir` | Where the fleet lives: `agents/`, `roles/`, `FLEET.md`. Never the queue. |
 | `default_agent` | Who picks up a task with no assignee. Unset: nobody — unassigned work is left alone. |
 | `source` | One queue. |
 | `sources` | Several, as a map of name → the same block `source:` takes. Each name becomes the id prefix on that queue's tasks. |
@@ -35,29 +50,28 @@ And the block both of them take:
 
 | Key | What it does |
 | --- | --- |
-| `kind` | `backlogmd` (the default), `basecamp`, `github`, or `notara`. |
-| `dir` | A Backlog.md project other than the fleet's own: absolute, `~`, or relative to the fleet dir. |
+| `kind` | `backlogmd` (the default) or `github`. |
+| `dir` | The project repo whose Backlog.md is the queue: absolute, `~`, or relative to the fleet dir. Required for `backlogmd`: a block without it fails to load with "source.dir must name a project repo". |
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
 | `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)). Unset: no pipeline, a run ends on the agent's own verdict. |
+| `triager` | The agent that grills a card in the `triage` status: it gets the card whatever its assignee says, and its run always works in the repo root (no worktree) whatever its `workspace` says, so its edits land in the queue the daemon reads. Unset: triage cards wait. A card in `question` is never picked — it waits on the owner's answer. |
 | `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
 | `max_runs` | This queue's cap, under the fleet's: a repo whose test suite cannot run twice at once says `1`. Unset or `0`: no cap. A run's verifier and rework stages count as the one run. |
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |
-| `statuses` | The project's own status words — [a project you already have](#work-a-project-you-already-have). Required for `notara`. |
-| `basecamp` | `account_id` and `lists` — [a hosted queue](#a-hosted-queue-basecamp). |
+| `statuses` | The project's own status words — [a project you already have](#work-a-project-you-already-have). |
 | `github` | `owner`, `project`, `repo`, `agent_field`, `status_field`, `in_progress`, `trusted` — [a hosted board](#a-hosted-queue-github-projects). |
-| `notara` | `url`, `workspace`, `database`, `agent_field`, `status_field` — [a Notara database](#a-hosted-queue-notara). |
 
 ## Work a project you already have
 
-Point a source at your own repo with `dir:` — absolute, `~`, or relative to the
-fleet dir. Your project has its own status words, and there are two ways to
+`herdr-docket init <repo>` points a source at your repo, or write `dir:`
+yourself — absolute, `~`, or relative to the fleet dir. Your project has its own status words, and there are two ways to
 meet:
 
-**Let the fleet own the vocabulary.** Add its five statuses to your
-`backlog/config.yml` and there is nothing else to configure:
+**Let the fleet own the vocabulary.** `init <repo>` adds its seven statuses to
+your `backlog/config.yml` and there is nothing else to configure:
 
 ```yaml
-statuses: ["To Do", "In Progress", "Blocked", "Failed", "Done"]
+statuses: ["Triage", "Question", "To Do", "In Progress", "Blocked", "Failed", "Done"]
 ```
 
 **Or keep your own words** — usually the right call on a board humans already
@@ -74,6 +88,8 @@ sources:
       failed: ready-for-human     # your word for "a human now"
       blocked: needs-info
       # in_progress omitted: this project has no word for it
+      triage: needs-triage        # ideas the source's triager grills
+      question: needs-answer      # a grill round waiting on you
 ```
 
 Read `statuses:` as a whitelist: **a status not named there is not the fleet's
@@ -86,8 +102,11 @@ exactly how much of your board you are handing over.
 `todo`, `done`, `failed` and `blocked` are required — a queue the fleet can
 pick from but cannot close leaves every task open for the next tick to pick up
 again. `in_progress` is optional: it is display only, so a project with no word
-for it simply never shows one. A source with a `dir:` of its own is never
-scaffolded or patched by `herdr-docket init`; its config stays yours.
+for it simply never shows one. `triage` and `question` are optional too: without
+them a project has no grill, and its triage column stays none of the fleet's
+business. Plain `herdr-docket init` never touches a
+repo; `init <repo>` only adds missing statuses (the source's own words when it
+names them) and never removes one.
 
 Assignees are agent names. Backlog.md prints one as `@name` and accepts one
 written that way, so a task filed from its own interface carries the sigil into
@@ -107,16 +126,16 @@ sources:
     kind: backlogmd
     dir: ~/Projects/myapp
     statuses: {todo: ready-for-agent, done: done, failed: ready-for-human, blocked: needs-info}
-  agency:                     # a client's Basecamp, worked alongside it
-    kind: basecamp
-    basecamp:
-      account_id: "9999999"
-      lists:
-        dev: "1111111"
+  agency:                     # a client's GitHub board, worked alongside it
+    kind: github
+    github:
+      owner: agency
+      project: 3
+      repo: agency/site
 ```
 
 Each source's tasks carry its name as an id prefix — `myapp/TASK-12`,
-`agency/987654` — so every command that takes an id (`task view`, `note`,
+`agency/987` — so every command that takes an id (`task view`, `note`,
 `done|fail|block`) routes to the right project, and `herdr-docket list` and the
 board show them all together (the board gives each queue a column of its own
 and shows the id without the prefix, which is the part a person retypes).
@@ -137,7 +156,7 @@ sources:
     dir: ~/Projects/myapp
     default_agent: myapp-pm     # this project's intake
   agency:
-    kind: basecamp
+    kind: github
     default_agent: agency-pm
 ```
 
@@ -161,49 +180,20 @@ the agent knowing a second queue exists. `source:` and `sources:` are mutually
 exclusive; `source:` stays exactly what it was — one unnamed queue, no prefix
 anywhere.
 
-## A hosted queue: Basecamp
-
-If the work already lives somewhere else, the queue does not have to be local:
-
-```yaml
-source:
-  kind: basecamp
-  basecamp:
-    account_id: "9999999"     # the account the lists are in
-    lists:                    # Basecamp has no labels, so the container is
-      dev: "1111111"          # the routing key: one to-do list per agent
-      pm: "2222222"
-```
-
-Basecamp wants an account, so sign in once. The fleet doesn't ship an
-application of its own — register one at
-[launchpad.37signals.com/integrations](https://launchpad.37signals.com/integrations)
-with the redirect URI `http://localhost:8917/callback`, then:
-
-```sh
-export HERDR_DOCKET_BASECAMP_CLIENT_ID=...
-export HERDR_DOCKET_BASECAMP_CLIENT_SECRET=...   # only if your app has one
-herdr-docket auth basecamp
-```
-
-The tokens land in `credentials.yaml` (0600) beside `fleet.yaml` and never in
-it — `fleet.yaml` is the file you paste into a bug report. A Basecamp access
-token lives two weeks, so the fleet refreshes it on the way out: a machine left
-alone for a month heals itself on the next poll instead of failing every one of
-them.
-
-Agents never see any of this. `task list`, `view`, `create`, `note` and
-`done|fail|block` are the same commands, and the fleet CLI is the only thing
-they talk to. What differs is what the backend can hold: Basecamp has no labels
-(the list is the assignee), no priority, and one word for an ending — so a
-`fail` or `block` completes the to-do and says which it was in a comment. A
-to-do in a list the fleet doesn't know about is simply not its work.
-
 ## A hosted queue: GitHub Projects
 
 A GitHub Projects v2 board is a queue too — useful when the work is already
 issues in a repo, and the board is how you and a human colleague already look
-at it:
+at it. One command prepares the repo, reading `repo` from its `origin`:
+
+```sh
+herdr-docket init ~/Projects/app --github your-org/3   # owner/project-number
+```
+
+It writes a GitHub `docs/agents/issue-tracker.md` (a Spec is an issue on the
+board with its Agent set, a Ticket a sub-issue of it) and adds the block
+below to `fleet.yaml` — beside any queue it already names.
+No `backlog/` is created. By hand, the block is:
 
 ```yaml
 source:
@@ -249,6 +239,11 @@ the name it needs is already a field of another type.
 
 What the board can hold, and what that costs:
 
+- A new task is filed into a Status column as it is created: `Todo`, or
+  `Triage` for an idea headed for the `triager`. The board needs those
+  options — GitHub's default board has `Todo`; add `Triage` and `Question`
+  for the grill — and a create says which one is missing before it writes
+  an issue.
 - A closed issue is closed work, whatever column it sits in: the issue decides,
   the column only describes. The **verdict** is a `Verdict: done` comment on the
   issue (with `closed as completed` / `not planned` alongside it), because
@@ -265,58 +260,6 @@ What the board can hold, and what that costs:
 
 Why a board can be a queue at all, and what that costs:
 [ADR 0007](adr/0007-a-board-is-a-queue.md).
-
-## A hosted queue: Notara
-
-A [Notara](https://github.com/DnzzL/notara) database is a backlog people and
-agents share: the humans work it in Notara's board and inbox, the fleet over
-its REST API. Notara knows nothing of runs — what a status *means* is this
-block's `statuses:`, read exactly as a Backlog.md project's
-([ADR 0022](adr/0022-a-notara-database-is-a-queue-and-the-status-table-is-shared.md)):
-
-```yaml
-source:
-  kind: notara
-  default_agent: notara-dev
-  worktree_base: origin/main   # a hosted queue has no repo to derive one from
-  statuses:                    # required: a database has no lifecycle to assume
-    todo: ready-for-agent
-    in_progress: in-progress
-    done: done
-    failed: failed
-    blocked: blocked
-  notara:
-    url: http://localhost:3100
-    workspace: 01M4…           # workspace id
-    database: 01M4…            # the database that is the queue
-    # agent_field: Agent       # the select carrying the agent
-    # status_field: Status     # the select carrying the status
-```
-
-Sign in once, with a key from Notara's sidebar → **API keys** (a write key —
-a read key cannot close anything):
-
-```sh
-herdr-docket auth notara --token ntr_...   # checks it, stores it (0600), provisions the selects
-```
-
-The key is looked for in `HERDR_DOCKET_NOTARA_TOKEN`, then in the copy
-`auth notara` stored in `credentials.yaml`. Notara refuses a select value that
-is not one of its options, so signing in adds every `statuses:` word and every
-`agents/<name>/` as an option of the Status and Agent selects — after the ones
-already there, never removing one. A comment the fleet writes is signed by the
-key's owner and shows the key's name.
-
-What the database holds, and how the fleet reads it:
-
-- A card is a record; its id is the short `PREFIX-n` (`NOT-12`). `Labels`
-  (multi-select) and `Priority` (`high`/`medium`/`low`) are read when present —
-  a `critical` label keeps a PR for a human, as on every queue.
-- Acceptance criteria are the to-dos of the card's page; `task create --ac`
-  appends them under an *Acceptance Criteria* heading.
-- New work lands in the `todo` word: a Notara select has no default, and a
-  card with no status is invisible to the fleet.
-- `List` reads every card in one request; a trashed card is not work.
 
 ## Writing an adapter — contributions welcome
 

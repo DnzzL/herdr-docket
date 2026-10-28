@@ -115,6 +115,38 @@ func TestListShowsAClosedTaskOnlyByItsColumn(t *testing.T) {
 	}
 }
 
+// A sub-issue is a ticket of the spec it hangs off: the queue's page carries
+// its parent's number, so pick can leave it alone without a call per item.
+func TestListCarriesASubIssuesParent(t *testing.T) {
+	f := newFakeBoard()
+	f.provisionAgent("dev")
+	spec := f.add("spec", "")
+	ticket := f.add("ticket", "")
+	f.issue(ticket).parent = spec
+
+	items, err := f.source(t).List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	byID := map[string]work.Task{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	if got := byID[strconv.Itoa(spec)].Parent; got != "" {
+		t.Errorf("the spec reads parent %q, want none", got)
+	}
+	if got, want := byID[strconv.Itoa(ticket)].Parent, strconv.Itoa(spec); got != want {
+		t.Errorf("the ticket reads parent %q, want %q", got, want)
+	}
+	// The fake answers parent whatever was asked; GitHub only if asked.
+	if q := f.requests()[0].query; !strings.Contains(q, "parent { number }") {
+		t.Errorf("the queue does not ask for the parent:\n%s", q)
+	}
+	if n := f.requestCount(); n != 1 {
+		t.Errorf("List took %d requests, want 1", n)
+	}
+}
+
 // The column describes and the issue's state decides: a task somebody moved
 // into Done without closing it is still work the fleet will run.
 //
@@ -143,6 +175,33 @@ func TestAnOpenTaskParkedInTheBlockedColumnIsMarkedBlocked(t *testing.T) {
 	}
 	if got := byID[strconv.Itoa(plain)]; !got.Open || got.Blocked {
 		t.Errorf("plain = open=%v blocked=%v, want open and not blocked", got.Open, got.Blocked)
+	}
+}
+
+// The grill's two columns on a board: a card in Triage is the triager's, and
+// one in Question waits on the owner's answer, so pick leaves it alone.
+func TestTheTriageAndQuestionColumnsAreTheGrills(t *testing.T) {
+	f := newFakeBoard()
+	f.provisionAgent("dev")
+	f.fields = []*fakeField{f.newField("Status", "Triage", "Question", "Todo", "Done")}
+	idea := f.add("idea", "dev")
+	f.setStatus(idea, "Triage")
+	asked := f.add("asked", "dev")
+	f.setStatus(asked, "Question")
+
+	items, err := f.source(t).List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	byID := map[string]work.Task{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	if got := byID[strconv.Itoa(idea)]; !got.Open || !got.Triage || got.Blocked || got.Phase != "Triage" {
+		t.Errorf("idea = %+v, want open, in triage, not blocked", got)
+	}
+	if got := byID[strconv.Itoa(asked)]; !got.Question || got.Blocked || got.Triage || got.Phase != "Question" {
+		t.Errorf("asked = %+v, want a question, not blocked, not in triage", got)
 	}
 }
 
@@ -535,6 +594,31 @@ func TestCreateWithoutARoutingKeyWritesNoRouting(t *testing.T) {
 	}
 }
 
+// An idea for the triager lands in the Triage column in the create's own
+// pass: the column is checked before the issue is written, and the item never
+// stands unfiled where the default agent would claim it.
+func TestCreateInFilesTheItemIntoThePhasesColumn(t *testing.T) {
+	f := newFakeBoard()
+	f.fields = []*fakeField{f.newField("Status", "Triage", "Question", "Todo", "Done")}
+	f.provisionAgent("dev")
+
+	id, err := f.source(t).CreateIn(work.PhaseTriage, "an idea", "", "dev")
+	if err != nil {
+		t.Fatalf("CreateIn: %v", err)
+	}
+	number, _ := strconv.Atoi(id)
+	if item := f.itemOf(number); item.status != "Triage" || item.agent != "dev" {
+		t.Fatalf("item = %+v, want in Triage, routed to dev", item)
+	}
+
+	f = newFakeBoard()
+	f.fields = []*fakeField{f.newField("Status", "Todo", "Done")}
+	f.provisionAgent("dev")
+	if _, err := f.source(t).CreateIn(work.PhaseTriage, "an idea", "", ""); err == nil || len(f.issues) != 0 {
+		t.Fatalf("a board with no Triage column must refuse before writing: err %v, %d issues", err, len(f.issues))
+	}
+}
+
 // A board can belong to a person as easily as to an organization, and which
 // one it is is not something the configuration says.
 func TestABoardOwnedByAUserIsFoundTheSameWay(t *testing.T) {
@@ -596,6 +680,40 @@ func TestARepositoryIsAnOwnerAndAName(t *testing.T) {
 		if r, err := parseRepo(s); err == nil {
 			t.Errorf("parseRepo(%q) = %+v, want a refusal", s, r)
 		}
+	}
+}
+
+// A repo's origin, in any form git writes it, names the repository the
+// source block reads; anything not on GitHub is refused.
+func TestRepoFromOrigin(t *testing.T) {
+	for _, url := range []string{"git@github.com:org/app.git", "https://github.com/org/app", "https://github.com/org/app.git", "ssh://git@github.com/org/app.git"} {
+		if got, err := RepoFromOrigin(url); err != nil || got != "org/app" {
+			t.Errorf("RepoFromOrigin(%q) = %q, %v; want org/app", url, got, err)
+		}
+	}
+	if _, err := RepoFromOrigin("git@gitlab.com:org/app.git"); err == nil {
+		t.Error("a non-GitHub origin must be refused")
+	}
+}
+
+// Get and List agree: a sub-issue read on its own is still a ticket of its
+// spec, or `run` and `task view` would treat it as a card.
+func TestGetCarriesASubIssuesParent(t *testing.T) {
+	f := newFakeBoard()
+	f.provisionAgent("dev")
+	spec := f.add("spec", "")
+	ticket := f.add("ticket", "")
+	f.issue(ticket).parent = spec
+
+	got, err := f.source(t).Get(strconv.Itoa(ticket))
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if want := strconv.Itoa(spec); got.Parent != want {
+		t.Errorf("the ticket reads parent %q, want %q", got.Parent, want)
+	}
+	if q := f.requests()[0].query; !strings.Contains(q, "parent { number }") {
+		t.Errorf("the issue query does not ask for the parent:\n%s", q)
 	}
 }
 

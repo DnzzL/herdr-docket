@@ -138,6 +138,47 @@ for context, is %s.)
 `, pr, v.ID, pr, v.ID, pr, fleetDir)
 }
 
+// Triage is the triager's prompt (TASK-86): the same layers and card, its
+// notes carrying every round and answer so far, and the two moves that end a
+// triage run. Neither closes the card: publishing hands it to author in To
+// Do, asking parks it in Question for the owner.
+func Triage(a fleet.Agent, v work.Task, author, fleetDir string) string {
+	return triage(a, v, author, readBrief(fleetDir), fleetDir)
+}
+
+func triage(a fleet.Agent, v work.Task, author, brief, fleetDir string) string {
+	if author == "" {
+		author = "<the agent that builds it>"
+	}
+	return head(a, v, brief) + fmt.Sprintf(`## Ending the triage run — required, exactly once
+
+This card is in triage: an idea to grill, not work to build. Its notes above
+hold every round asked and answered so far. End the run with exactly one of
+two moves — the last tool call of the run, **execute it, then summarise**:
+
+**Publish** — the idea is clear and the last round's "Build on these
+assumptions?" was answered yes. The card already exists: edit its body into
+the spec, set it to To Do and create its tickets the way the repo's
+`+"`docs/agents/issue-tracker.md`"+` says for a card that already exists — never a
+second spec — and hand it to its author:
+
+  herdr-docket task assign %s %s
+
+**Ask** — a question is still open: post the round, then park the card on
+the owner's answer:
+
+  herdr-docket task note %s "## Round <n>
+  1. <question>
+     A. <option> (reco)
+     B. <option>"
+  herdr-docket task ask %s
+
+Never close the card, never open a pull request, never write code. A run
+that leaves the card in triage is filed as a failed run. (The fleet dir, for
+context, is %s.)
+`, v.ID, author, v.ID, v.ID, fleetDir)
+}
+
 // head is everything a run is told before how to report: the layers, the
 // persona and the task in full.
 func head(a fleet.Agent, v work.Task, brief string) string {
@@ -155,6 +196,9 @@ func head(a fleet.Agent, v work.Task, brief string) string {
 	b.WriteString("\n\n")
 
 	fmt.Fprintf(&b, "# Your task: %s — %s\n\n", v.ID, v.Title)
+	if len(v.Labels) > 0 {
+		fmt.Fprintf(&b, "Labels: %s\n\n", strings.Join(v.Labels, ", "))
+	}
 	if v.Body != "" {
 		fmt.Fprintf(&b, "## Description\n\n%s\n\n", v.Body)
 	}

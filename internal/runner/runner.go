@@ -17,9 +17,11 @@ import (
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/gate"
+	"github.com/DnzzL/herdr-docket/internal/grill"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
+	"github.com/DnzzL/herdr-docket/internal/pick"
 	"github.com/DnzzL/herdr-docket/internal/prompt"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
@@ -261,6 +263,24 @@ func drop(path string, f *os.File) {
 	f.Close()
 }
 
+// Held reports whether a run — of any process — holds the task's lock right
+// now (ADR 0018): what a writer outside the runner asks before it moves a
+// card a run is still reading. A probe takes the flock for an instant and
+// gives it back without removing the file, so a run starting in that instant
+// is refused once and the next tick takes it.
+func Held(taskID string) bool {
+	f, err := os.OpenFile(lockPath(taskKey(taskID)), os.O_RDWR, 0o644)
+	if err != nil {
+		return false // no file, no run
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return true
+	}
+	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return false
+}
+
 // SweepLocks removes the run lock files no run holds: leftovers of runs that
 // settled before removal existed, and of crashes. A live claim — the
 // daemon's or a manual `herdr-docket run`'s, its flock held across
@@ -320,6 +340,13 @@ func sanitize(s string) string {
 // on to the pipeline (ADR 0013) under the same task lock; the author's own
 // slot is given back first, so the verifier can share its checkout.
 func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger) error {
+	// A triage run edits the card through the tracker's own CLI, and the
+	// daemon reads the queue from the repo itself: a worktree copy would take
+	// the edit where nothing reads it. So it works in the repo root, whatever
+	// the agent's workspace says, and locks the root like any root run.
+	if t.Triage {
+		a.Workspace = string(host.WorkspaceRoot)
+	}
 	key := LockKey(a)
 	tk := taskKey(t.ID)
 	taken, ok := r.acquire(key, tk)
@@ -338,9 +365,15 @@ func (r *Runner) Run(src work.Source, t work.Task, a fleet.Agent, trigger histor
 		delete(r.tasks, t.ID)
 		r.mu.Unlock()
 	}()
+	// A card in triage is the triager's (TASK-86): its run publishes the card
+	// or asks the owner, and either move hands it back to the queue. There is
+	// no pull request to judge, so nothing follows it.
+	if t.Triage {
+		trigger = history.TriggerTriage
+	}
 	res, err := r.attempt(src, t, a, trigger, "")
 	r.release(key)
-	if err != nil || !res.delivered {
+	if err != nil || !res.delivered || trigger == history.TriggerTriage {
 		return err
 	}
 	return r.pipeline(src, t, a, res.pr)
@@ -354,11 +387,73 @@ type outcome struct {
 	verdict, patch string
 }
 
+// turn is what one kind of run makes of an attempt: what the agent is told,
+// whether the card shows In Progress while it works, and how a clean end is
+// read — what it delivered, and whether that hands the card on whatever the
+// queue now reads of it.
+type turn struct {
+	text  string
+	claim bool
+	ended func(src work.Source, rec recorder) (out outcome, handsOn bool, err error)
+}
+
+// turnFor is the turn an attempt takes: a triage run, a verifier's, or an
+// author's — with or without a pipeline after it.
+func (r *Runner) turnFor(v work.Task, a fleet.Agent, trigger history.Trigger, pr string) turn {
+	words := r.settings.WordsFor(v.ID)
+	switch {
+	case trigger == history.TriggerTriage:
+		return r.triageTurn(v, a)
+	case pr != "" && trigger == history.TriggerVerify:
+		return turn{text: prompt.Verify(a, v, pr, r.fleetDir), claim: true, ended: verified}
+	case r.settings.PipelineFor(v.ID).Verifier != "":
+		return turn{text: prompt.Deliver(a, v, pr, r.fleetDir, words), claim: true, ended: authored}
+	}
+	return turn{text: prompt.Assemble(a, v, r.fleetDir, words), claim: true, ended: authored}
+}
+
+// authored reads what an author delivered through the CLI: a pull request
+// recorded on the run keeps the task open on purpose, like a handoff.
+func authored(_ work.Source, rec recorder) (outcome, bool, error) {
+	pr, _ := history.PullRequestFor(rec.id)
+	return outcome{delivered: pr != "", pr: pr}, false, nil
+}
+
+// verified reads the verdict a verifier recorded on its run.
+func verified(_ work.Source, rec recorder) (outcome, bool, error) {
+	verdict, patch, _ := history.VerificationFor(rec.id)
+	return outcome{delivered: verdict != "", verdict: verdict, patch: patch}, false, nil
+}
+
+// triageTurn is a triage run (TASK-86): the triager's prompt, naming the
+// author the card goes back to — the same author routing would pick — and no
+// In Progress claim, since the card's status is the grill's state. Its whole
+// report is the card's move: out of triage — published to To Do, asked to
+// Question — or the run did nothing. A card back in triage with an answer it
+// did not have at the start was asked and answered while the run settled:
+// handed on twice, not left alone.
+func (r *Runner) triageTurn(v work.Task, a fleet.Agent) turn {
+	author := pick.AuthorFor(v, r.settings.Defaults())
+	answered := grill.LatestAnswer(v.Notes)
+	return turn{
+		text: prompt.Triage(a, v, author, r.fleetDir),
+		ended: func(src work.Source, rec recorder) (outcome, bool, error) {
+			after, err := src.Get(v.ID)
+			if err == nil && after.Triage && grill.LatestAnswer(after.Notes) <= answered {
+				return outcome{}, false, fmt.Errorf("%s: the triager left the card in triage — neither published nor asked", v.ID)
+			}
+			// A card the triager asked about may read closed to the fleet (a
+			// question waits on a human), yet it was handed back, not abandoned.
+			return outcome{delivered: true}, true, nil
+		},
+	}
+}
+
 // attempt is one agent's run on the task, start to reconcile: the author's
-// first run, a rework, or a verifier's run when pr names what it judges.
+// first run, a rework, a triage run, or a verifier's run when pr names what
+// it judges.
 func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger history.Trigger, pr string) (outcome, error) {
 	verifying := pr != "" && trigger == history.TriggerVerify
-	piped := r.settings.PipelineFor(t.ID).Verifier != ""
 	rec := recorder{id: history.NewID(t.ID), task: t.ID, agent: a.Name, trigger: trigger, started: time.Now()}
 	var errInspect error
 	v, err := src.Get(t.ID)
@@ -367,15 +462,11 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 		r.notifyFailed(t, err.Error())
 		return outcome{}, err
 	}
-	r.claim(src, t.ID)
-	words := r.settings.WordsFor(t.ID)
-	text := prompt.Assemble(a, v, r.fleetDir, words)
-	switch {
-	case verifying:
-		text = prompt.Verify(a, v, pr, r.fleetDir)
-	case piped:
-		text = prompt.Deliver(a, v, pr, r.fleetDir, words)
+	tn := r.turnFor(v, a, trigger, pr)
+	if tn.claim {
+		r.claim(src, t.ID)
 	}
+	text := tn.text
 	rec.record(history.StatusScheduled, host.Session{}, "")
 
 	spec := host.Spec{
@@ -455,14 +546,9 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 	// fleet.yaml as it is now, and a PR left on an open task is a delivery
 	// either way, never a silent run to close Failed.
 	var out outcome
+	var handsOn bool
 	if err == nil {
-		if verifying {
-			out.verdict, out.patch, _ = history.VerificationFor(rec.id)
-			out.delivered = out.verdict != ""
-		} else {
-			out.pr, _ = history.PullRequestFor(rec.id)
-			out.delivered = out.pr != ""
-		}
+		out, handsOn, err = tn.ended(src, rec)
 	}
 	// The agent never settled: the fleet gives it up. The agent goes before
 	// the report — nothing may keep working on a task the fleet is closing —
@@ -486,6 +572,7 @@ func (r *Runner) attempt(src work.Source, t work.Task, a fleet.Agent, trigger hi
 		err = fmt.Errorf("%s: the agent never settled — %s past its timeout, %s", t.ID, lateWindow(a), ending)
 	}
 	final, handedOn, reported := r.reconcile(src, t.ID, a.Name, err, out.delivered)
+	handedOn = handedOn || (handsOn && err == nil)
 	out.delivered = out.delivered && handedOn
 	// The guard exists to keep a workspace a run left behind. A give-up
 	// closed its own on purpose and said why on the task and in the

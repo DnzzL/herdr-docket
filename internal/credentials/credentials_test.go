@@ -39,28 +39,28 @@ func TestSaveThenLoadRoundTripsASection(t *testing.T) {
 // knows its own shape.
 func TestSavingOneSectionLeavesTheOthersAlone(t *testing.T) {
 	f := inTempFile(t)
-	if err := f.Save("basecamp", section{Token: "bc"}); err != nil {
-		t.Fatalf("Save basecamp: %v", err)
+	if err := f.Save("gitlab", section{Token: "gl"}); err != nil {
+		t.Fatalf("Save gitlab: %v", err)
 	}
 	if err := f.Save("github", section{Token: "gh"}); err != nil {
 		t.Fatalf("Save github: %v", err)
 	}
-	if err := f.Save("basecamp", section{Token: "bc-refreshed"}); err != nil {
-		t.Fatalf("Save basecamp again: %v", err)
+	if err := f.Save("gitlab", section{Token: "gl-refreshed"}); err != nil {
+		t.Fatalf("Save gitlab again: %v", err)
 	}
 
-	var bc, gh section
-	if err := f.Load("basecamp", &bc); err != nil {
-		t.Fatalf("Load basecamp: %v", err)
+	var gl, gh section
+	if err := f.Load("gitlab", &gl); err != nil {
+		t.Fatalf("Load gitlab: %v", err)
 	}
 	if err := f.Load("github", &gh); err != nil {
 		t.Fatalf("Load github: %v", err)
 	}
-	if bc.Token != "bc-refreshed" {
-		t.Errorf("basecamp = %q, want the refreshed token", bc.Token)
+	if gl.Token != "gl-refreshed" {
+		t.Errorf("gitlab = %q, want the refreshed token", gl.Token)
 	}
 	if gh.Token != "gh" {
-		t.Errorf("github = %q, want it untouched by basecamp's save", gh.Token)
+		t.Errorf("github = %q, want it untouched by gitlab's save", gh.Token)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestAMissingFileAndAnAbsentSectionAreNotErrors(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 	var missing section
-	if err := f.Load("basecamp", &missing); err != nil {
+	if err := f.Load("gitlab", &missing); err != nil {
 		t.Fatalf("Load of a section that is not there: %v", err)
 	}
 	if missing != (section{}) {

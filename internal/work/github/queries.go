@@ -1,5 +1,7 @@
 package github
 
+import "strconv"
+
 // The GraphQL documents, and the shapes they answer with, in one place: the
 // two halves of the same contract, and the thing to read against GitHub's
 // schema when something stops working.
@@ -46,7 +48,7 @@ const itemsQuery = `query Items($owner: String!, $project: Int!, $filter: String
 fragment Page on ProjectV2 {
   items(first: 100, query: $filter) {
     nodes {
-      content { __typename ... on Issue { number title state createdAt } }
+      content { __typename ... on Issue { number title state createdAt parent { number } } }
       agent: fieldValueByName(name: $agentField) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
       status: fieldValueByName(name: $statusField) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
     }
@@ -65,7 +67,7 @@ const issueQuery = `query Issue($owner: String!, $project: Int!, $repoOwner: Str
   user(login: $owner) { projectV2(number: $project) { id } }
   repository(owner: $repoOwner, name: $repoName) {
     issue(number: $issue) {
-      number title body state createdAt
+      number title body state createdAt parent { number }
       labels(first: 20) { nodes { name } }
       comments(last: 100) { nodes { body author { login } } }
       projectItems(first: 10) {
@@ -241,10 +243,25 @@ type listItem struct {
 // and a pull request decode to nothing here, which is how they are told apart
 // from work: they are on the board, and they are not the fleet's.
 type issueNode struct {
-	Number    int    `json:"number"`
-	Title     string `json:"title"`
-	State     string `json:"state"`
-	CreatedAt string `json:"createdAt"`
+	Number    int       `json:"number"`
+	Title     string    `json:"title"`
+	State     string    `json:"state"`
+	CreatedAt string    `json:"createdAt"`
+	Parent    parentRef `json:"parent"`
+}
+
+// parentRef is Issue.parent: the issue this one is a sub-issue of — a ticket
+// of that spec — and null for a top-level issue. List and Get both read it.
+type parentRef *struct {
+	Number int `json:"number"`
+}
+
+// parentID is the work.Task.Parent of an issue whose parent is p.
+func parentID(p parentRef) string {
+	if p == nil {
+		return ""
+	}
+	return strconv.Itoa(p.Number)
 }
 
 // comment is one entry of an issue's thread.

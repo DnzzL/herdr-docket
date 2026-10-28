@@ -8,10 +8,15 @@ and the corrections it keeps. The habits below are the difference.
 
 **The grill is the intake.** An idea becomes work in one session with an
 agent: it grills you until the idea is settled, then writes a spec and its
-tickets under `.scratch/<slug>/` with `to-spec` and `to-tickets`, commits
-them, and files one card that points at the spec
+tickets with `to-spec` and `to-tickets` into the repo's tracker — the spec is
+the card, its tickets hang off it
 ([from idea to card](how-it-works.md#from-idea-to-card)). The questions you
 cannot answer in that session are the ones the factory would have guessed.
+No session needed: file the idea in `Triage` and the queue's `triager`
+grills it on the card — each round a note, the card in `Question` until you
+answer with `herdr-docket task answer <id> "1.A 2.T"` from your phone, and a
+final "Build on these assumptions?" before it publishes the spec to `To Do`.
+A `grill` label forces a round even on an idea it finds clear.
 
 **The spec is the prompt.** The spec and every ticket in it answer three
 things, and the third is the one that matters:

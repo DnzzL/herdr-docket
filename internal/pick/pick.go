@@ -27,7 +27,8 @@ type Result struct {
 // Blocked is the exception a run cannot serve: work parked on a human is
 // read by running it, and the answer only a human can give does not come
 // from another read — so a task the queue marks parked (work.Task.Blocked)
-// is left alone, whatever its agent is doing.
+// is left alone, whatever its agent is doing. So is a card in Question
+// (work.Task.Question): its grill waits on the owner's answer.
 // A task whose agent is mid-run is not re-picked — its agent is simply not
 // free. And one task is kept to one run by the runner's per-task flock
 // (`run-taskid-<id>.lock`), not by routing: the agent/checkout lock keys the
@@ -39,7 +40,7 @@ func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defau
 	// word reaches pick through the task — not a literal.
 	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
-		if it.Open && !it.Blocked {
+		if it.Open && !it.Blocked && !it.Question {
 			open = append(open, it)
 		}
 	}
@@ -93,7 +94,27 @@ func Before(a, b work.Task) bool {
 // AssigneeFor is the one routing rule: the task's assignee, or the default
 // agent for the queue it came from when it has none. Every surface that routes
 // a task (daemon, board, CLI) must go through this, or they drift apart.
+//
+// A ticket of a spec (Parent set) routes to nobody: it is the implementer's
+// plan, not a card. The spec is routed; its tickets never are.
+//
+// A card in triage routes to its queue's triager whatever its assignee: the
+// assignee is the author it goes back to once the grill is done. No triager,
+// nobody — the idea waits rather than being built unclear.
 func AssigneeFor(it work.Task, defaults fleet.Defaults) string {
+	if it.Parent != "" {
+		return ""
+	}
+	if it.Triage {
+		return defaults.Triager(it.ID)
+	}
+	return AuthorFor(it, defaults)
+}
+
+// AuthorFor is who builds the task: its assignee, or its queue's default
+// agent when it has none. Outside triage it is the route itself; a triage run
+// hands the card back to it once the grill is over.
+func AuthorFor(it work.Task, defaults fleet.Defaults) string {
 	if it.Assignee != "" {
 		return it.Assignee
 	}

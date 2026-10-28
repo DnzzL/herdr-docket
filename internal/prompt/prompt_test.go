@@ -227,7 +227,7 @@ func TestNoRoleChangesNothing(t *testing.T) {
 func TestThePromptNamesTheQueuesOwnWords(t *testing.T) {
 	got := assemble(
 		fleet.Agent{Name: "pm", Persona: "P"},
-		work.Task{ID: "notara/NOT-92", Title: "T"},
+		work.Task{ID: "notionalt/NOT-92", Title: "T"},
 		"", "/fleet",
 		fleet.Words{Todo: "ready-for-agent", Done: "done", Failed: "ready-for-human", Blocked: "needs-info"},
 	)
@@ -243,7 +243,7 @@ func TestThePromptNamesTheQueuesOwnWords(t *testing.T) {
 	}
 }
 
-// A backend with no status words — a Basecamp to-do is done or not — is not
+// A backend with no status words — a binary to-do is done or not — is not
 // given Backlog.md's vocabulary by accident.
 func TestAQueueWithoutWordsIsToldSo(t *testing.T) {
 	got := assemble(fleet.Agent{Name: "pm", Persona: "P"}, work.Task{ID: "bc/987"}, "", "/fleet", fleet.Words{})
@@ -423,5 +423,27 @@ func TestTheVerifierIsToldThePRAndTheVerdictCommandOnly(t *testing.T) {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("verifier prompt teaches %q — the runner closes the task, not the verifier", unwanted)
 		}
+	}
+}
+
+// The triager's role says a card labelled `grill` always gets a round: the
+// label has to reach it, so the card's head names its labels.
+func TestThePromptNamesTheCardsLabels(t *testing.T) {
+	v := work.Task{ID: "TASK-1", Title: "Voice notes", Labels: []string{"grill", "mobile"}}
+	p := Triage(fleet.Agent{Persona: "P"}, v, "dev", t.TempDir())
+	if !strings.Contains(p, "Labels: grill, mobile") {
+		t.Fatalf("the prompt does not name the card's labels:\n%s", p)
+	}
+	if strings.Contains(Triage(fleet.Agent{Persona: "P"}, work.Task{ID: "TASK-1"}, "dev", t.TempDir()), "Labels:") {
+		t.Fatal("a card with no labels must not get an empty Labels line")
+	}
+}
+
+// A triage run publishes the card it was given: the prompt says to edit
+// that card, not to create a second spec beside it.
+func TestATriageRunIsToldToEditTheCardItPublishes(t *testing.T) {
+	p := Triage(fleet.Agent{Persona: "P"}, work.Task{ID: "TASK-1"}, "dev", t.TempDir())
+	if !strings.Contains(p, "already exists") {
+		t.Fatalf("the triage prompt must say the card already exists:\n%s", p)
 	}
 }
