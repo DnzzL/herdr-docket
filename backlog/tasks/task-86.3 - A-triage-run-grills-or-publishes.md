@@ -1,10 +1,10 @@
 ---
 id: TASK-86.3
 title: A triage run grills or publishes
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:29'
-updated_date: '2026-10-28 13:30'
+updated_date: '2026-10-28 13:42'
 labels: []
 dependencies:
   - TASK-86.1
