@@ -232,6 +232,11 @@ the name it needs is already a field of another type.
 
 What the board can hold, and what that costs:
 
+- A new task is filed into a Status column as it is created: `Todo`, or
+  `Triage` for an idea headed for the `triager`. The board needs those
+  options — GitHub's default board has `Todo`; add `Triage` and `Question`
+  for the grill — and a create says which one is missing before it writes
+  an issue.
 - A closed issue is closed work, whatever column it sits in: the issue decides,
   the column only describes. The **verdict** is a `Verdict: done` comment on the
   issue (with `closed as completed` / `not planned` alongside it), because

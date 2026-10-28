@@ -33,30 +33,39 @@
 - **A card is grilled through its notes.** `herdr-docket task ask <id>` moves a
   card to `question`; `herdr-docket task answer <id> "1.A 2. free text"` posts
   `## Answer N` for the card's newest `## Round N` note and moves it back to
-  `triage`, and fails naming the card when it has no round.
+  `triage`. It refuses, naming the card, when the card is not in `Question`,
+  has no round, or a run still holds it (retry once the run settles).
 - **`scripts/box-setup` sets up an always-on box**: a re-runnable wizard for
   Tailscale, the Herdr server, `gh` and agent CLI logins, the plugin,
   `init <repo>` per repo, one `intake` workspace per repo, and a `max_runs`
   sized from RAM. `--dry-run` prints the commands without running them.
 - **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
   tick 3s ago`, `daemon down for 4 min` once no tick has run for three
-  intervals, or `daemon never started`.
+  intervals, `daemon never started`, or `daemon unknown · heartbeat
+  unreadable`.
 - **The triager grills a card one round per run.** A `Triage` card starts a
   run of the source's `triager` (`trigger: triage` in `history`): it posts a
   `## Round N` and moves the card to `Question`, or rewrites it as the spec,
   publishes its tickets and hands it to the author in `To Do` — no pull
-  request, no verifier. A run that leaves the card in `Triage` fails. `init`
-  now writes `roles/triager.md`; name it with `role: triager`.
+  request, no verifier. It always works in the repo root, never a worktree,
+  whatever the agent's `workspace:`, so its edits land in the queue the daemon
+  reads. A run that leaves the card in `Triage` fails, unless you answered it
+  meanwhile. A card's labels now reach every run's prompt, so `grill` forces a
+  round. `init` now writes `roles/triager.md`; name it with `role: triager`.
 - **An idea filed without an assignee goes to triage.** `herdr-docket task
-  create` with no `-a` on a queue that names a `triager:` files the card in
-  `Triage` and says so; with `-a`, or no triager, it lands as before.
-  `herdr-docket queues` prints the queue names one per line, for scripts.
+  create` with no `-a` on a queue that names a `triager:` creates the card
+  straight in `Triage` — never in `To Do`, where a `default_agent` could claim
+  it first — and says so; with `-a`, or no triager, it lands as before. A
+  GitHub create now sets the board's Status too: `Todo`, or `Triage`, which
+  the board must have. `herdr-docket queues` prints the queue names one per
+  line, for scripts, and nothing for a single unnamed `source:`.
 - **The pane reads from a phone.** `herdr-docket pane` opens on the daemon
   line, then "Your turn" — question cards (`?`), Blocked cards (`!`) and PRs
   verified PASS that wait on your merge (`⇡`) — then runs in flight and the
-  last 5 settled runs, every line cut to the terminal width.
+  last 5 settled runs, every line cut to the terminal width. Runs refresh
+  every 2 s, the queue every 30 s, to spare a GitHub board's rate limit.
 - **`herdr-docket questions` answers a grill round from a phone:** it lists the
-  `question` cards, walks the newest round one question at a time — Enter takes
+  `question` cards no run holds, walks the newest round one question at a time — Enter takes
   the `(reco)`, a letter that option, other text a free answer — shows the
   line (`1.A 2.B 3. keep it`) and sends it as `task answer` on `Y`. Nothing it
   prints is wider than 45 columns.
