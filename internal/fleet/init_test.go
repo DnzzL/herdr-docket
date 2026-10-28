@@ -112,6 +112,55 @@ func TestInitBriefLeavesAnExistingBriefAlone(t *testing.T) {
 	}
 }
 
+// Backlog.md reads the last entry of statuses as the project's completed
+// status: the fleet's words are inserted before it, never after.
+func TestPatchStatusesKeepsTheDoneWordLast(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want []string
+	}{
+		{
+			name: "the fleet's Done ends the list",
+			body: "statuses: [\"To Do\", \"Done\"]\n",
+			want: []string{"To Do", "Triage", "Question", "In Progress", "Blocked", "Failed", "Done"},
+		},
+		{
+			name: "a repo's own columns keep their order",
+			body: "statuses: [\"Draft\", \"To Do\", \"Review\", \"Done\"]\n",
+			want: []string{"Draft", "To Do", "Review", "Triage", "Question", "In Progress", "Blocked", "Failed", "Done"},
+		},
+		{
+			name: "whatever the repo ends with stays last",
+			body: "statuses: [\"To Do\", \"wontfix\"]\n",
+			want: []string{"To Do", "Triage", "Question", "In Progress", "Blocked", "Failed", "Done", "wontfix"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := configWith(t, tc.body)
+			if err := patchStatuses(path); err != nil {
+				t.Fatal(err)
+			}
+			if got := writtenStatuses(t, path); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("statuses = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func writtenStatuses(t *testing.T, path string) []string {
+	t.Helper()
+	line := regexp.MustCompile(`(?m)^statuses: \[(.*)\]$`).FindStringSubmatch(read(t, path))
+	if line == nil {
+		t.Fatalf("no statuses line:\n%s", read(t, path))
+	}
+	words := strings.Split(line[1], ", ")
+	for i, w := range words {
+		words[i] = strings.Trim(w, `"`)
+	}
+	return words
+}
+
 func configWith(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yml")
