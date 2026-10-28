@@ -56,7 +56,7 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 		return err
 	}
 	if len(cards) == 0 {
-		say(out, "no card waits on an answer")
+		say(out, "no card in Question")
 		return nil
 	}
 	r := bufio.NewReader(in)

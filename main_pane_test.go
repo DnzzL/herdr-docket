@@ -68,3 +68,18 @@ func TestYourTurnListsQuestionsBlockedAndHeldMerges(t *testing.T) {
 		t.Errorf("runs in flight then settled runs come after Your turn:\n%s", out)
 	}
 }
+
+// A GitHub board's List spends rate-limited API calls, and the queue moves on
+// a human's clock: the pane re-lists it every 30 s, while the runs — a local
+// file — are re-read on every frame.
+func TestThePaneListsTheQueueEvery30Seconds(t *testing.T) {
+	lists := 0
+	p := &paneReader{list: func() ([]work.Task, error) { lists++; return nil, nil }}
+	t0 := time.Unix(1_700_000_000, 0)
+	for _, at := range []time.Duration{0, 2 * time.Second, 4 * time.Second, 29 * time.Second, 30 * time.Second, 32 * time.Second} {
+		p.read(t0.Add(at))
+	}
+	if lists != 2 {
+		t.Fatalf("listed the queue %d times over 32 s of frames, want 2 (at 0 s and 30 s)", lists)
+	}
+}
