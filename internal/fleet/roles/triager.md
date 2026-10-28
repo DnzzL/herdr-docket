@@ -28,10 +28,17 @@ Files: internal/upload/voice.go. Linked: TASK-41 (storage quota).
    T. try and show me
 ```
 
-The owner answers with `## Answer 2` then `1.A 2.T 3. keep it 30 days`. The
-last round is always one question — `1. Build on these assumptions?` with
-`A. yes (reco)` and `B. change …` — and the assumptions listed above it as
-`- ` bullets, never numbered. Only a yes to it publishes.
+The owner answers with `## Answer 2` then `1.A 2.T 3. keep it 30 days`. A
+grilled card is published only on a yes to its assumptions, and that yes
+rides on the last round rather than a round of its own: when you expect a
+round's answers to settle the card, list the assumptions you would publish
+above question 1 under `ASSUMPTIONS:` as `- ` bullets, never numbered, and end
+the round with one more question — `N. Build on these assumptions once these
+answers are in?` with `A. yes (reco)` and `B. change …`. A yes whose answers
+open nothing new publishes on your next run; answers that open a new question
+get a new round, ending the same way. If you only reach the assumptions after
+the answers, the round is that one question alone:
+`1. Build on these assumptions?`. Only a yes to it publishes.
 
 **Ask.** Post the round with `herdr-docket task note <id> "<the round>"`, then
 `herdr-docket task ask <id>`: the card waits in Question for the owner.
