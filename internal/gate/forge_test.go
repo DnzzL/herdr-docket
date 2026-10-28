@@ -3,6 +3,7 @@ package gate
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -281,5 +282,69 @@ func TestGithubRepoReadsOwnerAndRepoFromThePullUrl(t *testing.T) {
 		if _, _, err := githubRepo(bad); err == nil {
 			t.Errorf("%q parsed as a pull request url, must not", bad)
 		}
+	}
+}
+
+// The pane's golden frames are raw ANSI by ADR 0025, so a PR touching them
+// carries escape sequences into `gh pr diff`, which refuses such a diff
+// unless told the bytes are not going to a terminal. The gate reads them for
+// `git patch-id`'s stdin only, so the flag is safe and the bytes must arrive
+// unchanged — neutralising them would change the patch id the gate compares.
+func TestPatchIDAsksForEscapeSequencesAndKeepsTheBytes(t *testing.T) {
+	// A golden-frame hunk: SGR colour codes are exactly what gh's guard sees.
+	diff := "diff --git a/testdata/pane/home.golden b/testdata/pane/home.golden\n" +
+		"index 1111111..2222222 100644\n" +
+		"--- a/testdata/pane/home.golden\n" +
+		"+++ b/testdata/pane/home.golden\n" +
+		"@@ -1 +1 @@\n" +
+		"-\x1b[31mold\x1b[0m\n" +
+		"+\x1b[32mnew\x1b[0m\n"
+
+	dir := t.TempDir()
+	argsFile := filepath.Join(dir, "args")
+	diffFile := filepath.Join(dir, "diff")
+	if err := os.WriteFile(diffFile, []byte(diff), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The fake gh answers `pr diff` only when the flag is there, the way the
+	// real one refuses an escape-laden diff otherwise — so the current tree's
+	// call is visible as the failure it is.
+	script := `#!/bin/sh
+printf '%s\n' "$*" >> ` + argsFile + `
+if [ "$1" = "pr" ] && [ "$2" = "diff" ]; then
+  case "$*" in
+    *--allow-escape-sequences*) cat ` + diffFile + ` ;;
+    *) printf '%s\n' 'the diff contains terminal escape sequences; pass --allow-escape-sequences' >&2; exit 1 ;;
+  esac
+fi
+exit 0
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got, err := patchID(prURL)
+	if err != nil {
+		t.Fatalf("patchID: %v", err)
+	}
+	if got == "" {
+		t.Fatal("patchID = empty, want the id of the escape-laden diff")
+	}
+	want := strings.Join(calls(t, argsFile), "\n")
+	if want != "pr diff "+prURL+" --allow-escape-sequences" {
+		t.Fatalf("gh argv = %q, want the flag so the diff is read", want)
+	}
+
+	// The same bytes, straight into git: the gate must not strip or re-encode
+	// them on the way, or the id would stop matching the branch's diff.
+	cmd := exec.Command("git", "patch-id", "--stable")
+	cmd.Stdin = strings.NewReader(diff)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git patch-id: %v", err)
+	}
+	if fields := strings.Fields(string(out)); len(fields) == 0 || fields[0] != got {
+		t.Fatalf("patchID = %q, want the id of the raw diff %q", got, strings.TrimSpace(string(out)))
 	}
 }

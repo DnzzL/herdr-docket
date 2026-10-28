@@ -158,8 +158,18 @@ func (GH) RemoveLabel(url, label string) error {
 
 // patchID is `git patch-id --stable` over the PR's diff: the same change
 // rebased onto a newer base keeps its id, a change to the change does not.
+//
+// The diff is asked for with --allow-escape-sequences. Recent gh refuses a
+// diff holding ANSI escapes unless told the bytes will not reach a terminal;
+// they do not — this diff only ever goes into git patch-id's stdin, never
+// onto a screen or into a log — and the pane's golden frames are raw ANSI by
+// ADR 0025, so without the flag every PR touching them is unreadable. The
+// real bytes are fed on unchanged: stripping or re-encoding them would change
+// the id the gate compares. A gh too old to know the flag fails on
+// `unknown flag`; that stands as the run's failure, since such a gh has no
+// guard to bypass either.
 func patchID(url string) (string, error) {
-	diff, err := gh("pr", "diff", url)
+	diff, err := gh("pr", "diff", url, "--allow-escape-sequences")
 	if err != nil {
 		return "", err
 	}
