@@ -54,6 +54,7 @@ Usage:
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket runs             Show the runs in flight
   herdr-docket status           Say whether the daemon is live, and its last tick
+  herdr-docket questions        Answer a question card's newest round: Enter = reco, a letter, or text
   herdr-docket stop <task-id>   Stop a task's run in flight (it ends cancelled, the task Blocked)
   herdr-docket pause [--now]    Pause the fleet: no new runs or pipeline stages (--now also stops runs in flight)
   herdr-docket resume           Resume the fleet
@@ -93,6 +94,8 @@ func main() {
 		err = runsCmd(os.Args[2:], os.Stdout)
 	case "status":
 		fmt.Println(daemon.Liveness(time.Now()))
+	case "questions":
+		err = questionsCmd()
 	case "stop":
 		if len(os.Args) != 3 {
 			err = fmt.Errorf("usage: herdr-docket stop <task-id>")
