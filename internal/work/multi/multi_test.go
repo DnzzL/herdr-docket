@@ -457,3 +457,30 @@ func TestCriteriaForAQueueThatCannotStoreThemAreRefusedNotDropped(t *testing.T) 
 		t.Errorf("criteria did not reach the capable sub: %v", it.Criteria)
 	}
 }
+
+// A ticket's spec is addressed like any task of the composite: by its
+// prefixed id, from List and from Get alike.
+func TestATicketNamesItsSpecByThePrefixedID(t *testing.T) {
+	acme := newMem()
+	acme.items["T1"] = work.Task{ID: "T1", Open: true}
+	acme.items["T2"] = work.Task{ID: "T2", Open: true, Parent: "T1"}
+	acme.order = []string{"T1", "T2"}
+	src := New(map[string]work.Source{"acme": acme})
+
+	items, err := src.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if want := map[string]string{"acme/T1": "", "acme/T2": "acme/T1"}[it.ID]; it.Parent != want {
+			t.Errorf("List: %s parent = %q, want %q", it.ID, it.Parent, want)
+		}
+	}
+	it, err := src.Get("acme/T2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Parent != "acme/T1" {
+		t.Errorf("Get: parent = %q, want acme/T1", it.Parent)
+	}
+}

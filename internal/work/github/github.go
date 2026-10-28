@@ -210,10 +210,6 @@ func (s *Source) List() ([]work.Task, error) {
 			continue
 		}
 		open := n.Content.State == stateOpen
-		parent := ""
-		if n.Content.Parent != nil {
-			parent = strconv.Itoa(n.Content.Parent.Number)
-		}
 		tasks = append(tasks, work.Task{
 			ID:        strconv.Itoa(n.Content.Number),
 			Title:     n.Content.Title,
@@ -223,7 +219,7 @@ func (s *Source) List() ([]work.Task, error) {
 			Phase:     s.phase(n.Status.Name, open),
 			Ordinal:   float64(i), // the board's order is the queue's order
 			CreatedAt: n.Content.CreatedAt,
-			Parent:    parent,
+			Parent:    parentID(n.Content.Parent),
 		})
 	}
 	return tasks, nil
@@ -242,11 +238,12 @@ func (s *Source) Get(id string) (work.Task, error) {
 		User         *boardHalf `json:"user"`
 		Repository   struct {
 			Issue *struct {
-				Number    int    `json:"number"`
-				Title     string `json:"title"`
-				Body      string `json:"body"`
-				State     string `json:"state"`
-				CreatedAt string `json:"createdAt"`
+				Number    int       `json:"number"`
+				Title     string    `json:"title"`
+				Body      string    `json:"body"`
+				State     string    `json:"state"`
+				CreatedAt string    `json:"createdAt"`
+				Parent    parentRef `json:"parent"`
 				Labels    struct {
 					Nodes []struct {
 						Name string `json:"name"`
@@ -289,6 +286,7 @@ func (s *Source) Get(id string) (work.Task, error) {
 		Phase:     s.phase(item.Status.Name, open),
 		CreatedAt: issue.CreatedAt,
 		Criteria:  criteria(issue.Body),
+		Parent:    parentID(issue.Parent),
 	}
 	for _, l := range issue.Labels.Nodes {
 		task.Labels = append(task.Labels, l.Name)

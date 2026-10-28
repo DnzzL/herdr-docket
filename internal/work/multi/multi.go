@@ -63,8 +63,7 @@ func (s *Source) List() ([]work.Task, error) {
 			return nil, fmt.Errorf("source %q: %w", name, err)
 		}
 		for _, it := range items {
-			it.ID = name + "/" + it.ID
-			out = append(out, it)
+			out = append(out, prefixed(name, it))
 		}
 	}
 	return out, nil
@@ -81,8 +80,19 @@ func (s *Source) Get(id string) (work.Task, error) {
 	if err != nil {
 		return work.Task{}, err
 	}
+	it = prefixed(name, it)
 	it.ID = id
 	return it, nil
+}
+
+// prefixed is it as the composite presents it: every id it carries, its own
+// and its spec's, addressed through source name.
+func prefixed(name string, it work.Task) work.Task {
+	it.ID = name + "/" + it.ID
+	if it.Parent != "" {
+		it.Parent = name + "/" + it.Parent
+	}
+	return it
 }
 
 func (s *Source) Comment(id, text string) error {
