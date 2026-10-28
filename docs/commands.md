@@ -24,6 +24,7 @@
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket runs` | the runs in flight; a record past its timeout is marked `stale?` |
 | `herdr-docket status` | whether the daemon is alive: `daemon live · tick 3s ago`, `daemon down for 4 min` (no tick for 3 intervals), or `daemon never started` |
+| `herdr-docket questions` | the daemon line, then the `question` cards across queues; pick one and answer its newest round question by question — Enter takes the `(reco)`, a letter that option, other text a free answer — then confirm to send it as `task answer` does. Fits 45 columns |
 | `herdr-docket stop TASK-12` | stop a task's run in flight |
 | `herdr-docket pause [--now]` / `resume` | pause the whole fleet — no new runs, no pipeline stages (`--now` stops runs in flight) |
 | `herdr-docket pane` | the runs overlay (the plugin opens it for you) |
