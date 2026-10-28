@@ -5,7 +5,8 @@
 | | |
 | --- | --- |
 | `herdr-docket daemon` | the worker (Herdr starts it for you) |
-| `herdr-docket init` | bootstrap the fleet dir |
+| `herdr-docket init` | bootstrap the fleet dir: agents, roles, `FLEET.md` — no queue |
+| `herdr-docket init REPO` | make a project repo the queue: Backlog.md with the fleet's statuses, `docs/agents/issue-tracker.md`, a `source.dir` in `fleet.yaml` |
 | `herdr-docket auth github` | sign in to a GitHub Projects board, once (`--token <pat>` to store one) |
 | `herdr-docket list` | the queue, grouped by phase, with the routed agent |
 | `herdr-docket run TASK-12` | run one task now |

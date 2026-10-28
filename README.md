@@ -36,8 +36,8 @@ work too — and `gh` for pull requests.
 
 ```bash
 herdr plugin install DnzzL/herdr-docket
-herdr-docket init                          # a task queue + an example agent in ~/fleet
-$EDITOR ~/fleet/agents/example/AGENT.md     # point it at your repo
+herdr-docket init ~/Projects/myapp         # the repo's Backlog.md is the queue; agents in ~/fleet
+$EDITOR ~/fleet/agents/example/AGENT.md     # point it at the same repo
 herdr-docket task create "Search ignores accents" -a example \
   -d "Users who type « creme » find none of the « crème » products.
 Done when: a query matches with or without accents.

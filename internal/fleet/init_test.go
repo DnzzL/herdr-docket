@@ -2,6 +2,7 @@ package fleet
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,6 +48,21 @@ func TestPatchStatusesIsIdempotent(t *testing.T) {
 	}
 	if twice := read(t, path); twice != once {
 		t.Fatalf("second pass changed the file:\n%s\n%s", once, twice)
+	}
+}
+
+// init <repo> works on a repo whose board humans already use: the fleet's
+// statuses are added, the repo's own columns are kept.
+func TestPatchStatusesKeepsTheRepoOwnStatuses(t *testing.T) {
+	path := configWith(t, "statuses: [\"Draft\", \"To Do\", \"Review\", \"Done\"]\n")
+	if err := patchStatuses(path); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, path)
+	for _, status := range append([]string{"Draft", "Review"}, backlogmd.Statuses...) {
+		if !strings.Contains(got, `"`+status+`"`) {
+			t.Errorf("config lost or lacks %q:\n%s", status, got)
+		}
 	}
 }
 
@@ -198,5 +214,123 @@ func TestEveryVerdictExampleCarriesItsNote(t *testing.T) {
 				t.Errorf("%s: a task verdict example without --note teaches a bare verdict: %q", path, example)
 			}
 		}
+	}
+}
+
+// repoWithBacklog is a project repo whose Backlog.md project already exists,
+// so init <repo> needs no Backlog.md CLI, and a config dir with no fleet.yaml.
+func repoWithBacklog(t *testing.T) (Settings, string) {
+	t.Helper()
+	config, fleetDir, repo := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", config)
+	if err := os.WriteFile(filepath.Join(config, "fleet.yaml"), []byte("dir: "+fleetDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "backlog"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "backlog", "config.yml"), []byte("project_name: acme\nstatuses: [\"To Do\", \"Done\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return loaded(t), repo
+}
+
+// loaded is fleet.yaml as the CLI reads it on each run.
+func loaded(t *testing.T) Settings {
+	t.Helper()
+	s, err := LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// init <repo> makes a repo ready for the factory in one command: the fleet's
+// statuses in its Backlog.md config, the tracker doc the skills read, and the
+// repo named as the fleet's queue.
+func TestInitRepoPreparesTheRepoAndNamesItTheQueue(t *testing.T) {
+	s, repo := repoWithBacklog(t)
+	if err := InitRepo(s, repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	config := read(t, filepath.Join(repo, "backlog", "config.yml"))
+	for _, status := range backlogmd.Statuses {
+		if !strings.Contains(config, `"`+status+`"`) {
+			t.Errorf("config.yml lacks %q:\n%s", status, config)
+		}
+	}
+	doc := read(t, filepath.Join(repo, "docs", "agents", "issue-tracker.md"))
+	for _, want := range []string{"backlog task create", "--parent", "backlog task", "--plain", "--check-ac"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("issue-tracker.md does not mention %q:\n%s", want, doc)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(s.Dir, "FLEET.md")); err != nil {
+		t.Errorf("init <repo> must create the fleet too: %v", err)
+	}
+	if got := loaded(t).Source.Dir; got != repo {
+		t.Errorf("fleet.yaml source.dir = %q, want %q", got, repo)
+	}
+}
+
+// Running it twice changes nothing, and a tracker doc the repo already has is
+// its owner's: kept, and said so.
+func TestInitRepoTwiceIsANoOpAndKeepsAnExistingTrackerDoc(t *testing.T) {
+	s, repo := repoWithBacklog(t)
+	doc := filepath.Join(repo, "docs", "agents", "issue-tracker.md")
+	if err := os.MkdirAll(filepath.Dir(doc), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mine := "# Issue tracker: ours\n"
+	if err := os.WriteFile(doc, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := InitRepo(s, repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{
+		filepath.Join(repo, "backlog", "config.yml"),
+		doc,
+		filepath.Join(os.Getenv("HERDR_PLUGIN_CONFIG_DIR"), "fleet.yaml"),
+	}
+	before := map[string]string{}
+	for _, f := range files {
+		before[f] = read(t, f)
+	}
+	var out bytes.Buffer
+	if err := InitRepo(loaded(t), repo, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if got := read(t, f); got != before[f] {
+			t.Errorf("second run changed %s:\n%s\n---\n%s", f, before[f], got)
+		}
+	}
+	if got := read(t, doc); got != mine {
+		t.Errorf("an existing issue-tracker.md was overwritten:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "kept docs/agents/issue-tracker.md") {
+		t.Errorf("init must say it kept the tracker doc:\n%s", out.String())
+	}
+}
+
+// A fleet.yaml that already names another queue is the owner's YAML: init
+// never rewrites it, it prints the block to paste and leaves the file as is.
+func TestInitRepoNeverRewritesAFleetYAMLThatNamesAnotherQueue(t *testing.T) {
+	s, repo := repoWithBacklog(t)
+	path := filepath.Join(os.Getenv("HERDR_PLUGIN_CONFIG_DIR"), "fleet.yaml")
+	mine := "dir: " + s.Dir + "\n# my fleet\nsource:\n  kind: github\n  github:\n    owner: acme\n    project: 3\n"
+	if err := os.WriteFile(path, []byte(mine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := InitRepo(loaded(t), repo, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, path); got != mine {
+		t.Errorf("fleet.yaml was rewritten:\n%s", got)
+	}
+	if !strings.Contains(out.String(), "dir: "+repo) {
+		t.Errorf("init must print the block to paste:\n%s", out.String())
 	}
 }
