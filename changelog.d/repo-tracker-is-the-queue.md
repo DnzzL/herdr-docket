@@ -45,3 +45,8 @@
   create` with no `-a` on a queue that names a `triager:` files the card in
   `Triage` and says so; with `-a`, or no triager, it lands as before.
   `herdr-docket queues` prints the queue names one per line, for scripts.
+- **`herdr-docket questions` answers a grill round from a phone:** it lists the
+  `question` cards, walks the newest round one question at a time — Enter takes
+  the `(reco)`, a letter that option, other text a free answer — shows the
+  line (`1.A 2.B 3. keep it`) and sends it as `task answer` on `Y`. Nothing it
+  prints is wider than 45 columns.
