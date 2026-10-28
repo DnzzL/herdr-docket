@@ -342,3 +342,34 @@ func TestATestRunNeverResolvesTheRealHome(t *testing.T) {
 		t.Fatalf("writing the config dir must land in the temp home: %v", err)
 	}
 }
+
+// A ticket is its spec's plan, not a card: `list` shows whose ticket it is,
+// never an agent the default would route it to.
+func TestListShowsATicketAsATicketOfItsSpec(t *testing.T) {
+	agents := map[string]fleet.Agent{"dev": {Name: "dev"}}
+	items := []work.Task{
+		{ID: "TASK-1", Title: "the spec", Open: true, Phase: "To Do"},
+		{ID: "TASK-1.1", Title: "a ticket", Open: true, Phase: "To Do", Parent: "TASK-1"},
+	}
+	var out bytes.Buffer
+	writeList(&out, items, agents, defaults("dev"))
+
+	for _, line := range strings.Split(out.String(), "\n") {
+		if !strings.Contains(line, "TASK-1.1") {
+			continue
+		}
+		if !strings.Contains(line, "ticket of TASK-1") || strings.Contains(line, "dev") {
+			t.Fatalf("a ticket must read as a ticket of its spec, not routed: %q", line)
+		}
+		return
+	}
+	t.Fatalf("the ticket is missing from the list:\n%s", out.String())
+}
+
+func TestManualRunOfATicketPointsAtItsSpec(t *testing.T) {
+	agents := map[string]fleet.Agent{"dev": {Name: "dev"}}
+	_, err := routedAgent(agents, work.Task{ID: "TASK-1.1", Assignee: "dev", Parent: "TASK-1"}, defaults(""))
+	if err == nil || !strings.Contains(err.Error(), "TASK-1") || !strings.Contains(err.Error(), "ticket") {
+		t.Fatalf("running a ticket must point at its spec, got %v", err)
+	}
+}

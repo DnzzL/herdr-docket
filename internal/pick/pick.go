@@ -36,12 +36,10 @@ type Result struct {
 // task to a second agent while the first is mid-run.
 func Next(items []work.Task, agents map[string]fleet.Agent, defaults fleet.Defaults) Result {
 	// Blocked stays unrun: a parked task is standing in its own way, and the
-	// word reaches pick through the task — not a literal. A ticket of a spec
-	// (Parent set) is the implementer's plan, not a card: the spec is routed,
-	// its tickets never are.
+	// word reaches pick through the task — not a literal.
 	open := make([]work.Task, 0, len(items))
 	for _, it := range items {
-		if it.Open && !it.Blocked && it.Parent == "" {
+		if it.Open && !it.Blocked {
 			open = append(open, it)
 		}
 	}
@@ -95,7 +93,13 @@ func Before(a, b work.Task) bool {
 // AssigneeFor is the one routing rule: the task's assignee, or the default
 // agent for the queue it came from when it has none. Every surface that routes
 // a task (daemon, board, CLI) must go through this, or they drift apart.
+//
+// A ticket of a spec (Parent set) routes to nobody: it is the implementer's
+// plan, not a card. The spec is routed; its tickets never are.
 func AssigneeFor(it work.Task, defaults fleet.Defaults) string {
+	if it.Parent != "" {
+		return ""
+	}
 	if it.Assignee != "" {
 		return it.Assignee
 	}
