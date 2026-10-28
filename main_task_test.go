@@ -272,7 +272,7 @@ type bothCapabilitiesSource struct {
 	order        []string
 }
 
-func (f *bothCapabilitiesSource) CreateTodo(title, body, assignee string) (string, error) {
+func (f *bothCapabilitiesSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	f.started = true
 	f.order = append(f.order, "create")
 	return f.fakeSource.Create(title, body, assignee)
@@ -313,6 +313,7 @@ type multiSource struct {
 	names     []string
 	started   bool
 	createdIn []string
+	phase     work.Phase
 	err       error
 }
 
@@ -323,12 +324,13 @@ func (m *multiSource) Close(id string, v work.Verdict) error {
 	return m.err
 }
 func (m *multiSource) Create(title, body, assignee string) (string, error) {
-	_, _, err := m.CreateIn("", title, body, assignee)
+	_, _, err := m.CreateIn("", work.PhaseTodo, title, body, assignee)
 	return "", err
 }
 func (m *multiSource) Names() []string { return m.names }
-func (m *multiSource) CreateIn(source, title, body, assignee string) (string, bool, error) {
+func (m *multiSource) CreateIn(source string, phase work.Phase, title, body, assignee string) (string, bool, error) {
 	m.createdIn = []string{source, title, body, assignee}
+	m.phase = phase
 	return source + "/TASK-9", m.started, m.err
 }
 
@@ -339,7 +341,7 @@ type todoStarterSource struct {
 	started bool
 }
 
-func (f *todoStarterSource) CreateTodo(title, body, assignee string) (string, error) {
+func (f *todoStarterSource) CreateIn(_ work.Phase, title, body, assignee string) (string, error) {
 	f.started = true
 	return "TASK-9", nil
 }
@@ -887,5 +889,107 @@ func TestLatestRoundIsTheHighestNumber(t *testing.T) {
 		if got != tc.want || ok != tc.ok {
 			t.Errorf("latestRound(%q) = %d, %v; want %d, %v", tc.notes, got, ok, tc.want, tc.ok)
 		}
+	}
+}
+
+// runTaskTriaged runs a task verb in a queue whose triager is the one given.
+func runTaskTriaged(t *testing.T, src work.Source, triager string, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	env := taskEnv{src: src, pipeline: func(string) fleet.Pipeline { return fleet.Pipeline{} },
+		triager: func(string) string { return triager }}
+	err := runTaskCmd(env, args, &out)
+	return out.String(), err
+}
+
+// An idea filed with nobody named goes to the queue's triager to be grilled;
+// a card with an assignee, or a queue with no triager, lands as it always did.
+func TestTaskCreateFilesUnassignedWorkIntoTriage(t *testing.T) {
+	t.Run("unassigned, queue with a triager: Triage", func(t *testing.T) {
+		src := &statusSource{}
+		got, err := runTaskTriaged(t, src, "pm", "create", "an idea")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.written, want) {
+			t.Fatalf("phases %v, want %v", src.written, want)
+		}
+		if want := "created TASK-9 (in Triage)"; !strings.Contains(got, want) {
+			t.Fatalf("output %q, want %q", got, want)
+		}
+	})
+	t.Run("assigned, queue with a triager: To Do", func(t *testing.T) {
+		src := &statusSource{}
+		if _, err := runTaskTriaged(t, src, "pm", "create", "T", "-a", "dev"); err != nil {
+			t.Fatal(err)
+		}
+		if want := []work.Phase{work.PhaseTodo}; !reflect.DeepEqual(src.written, want) {
+			t.Fatalf("an assigned card must land in To Do, got phases %v", src.written)
+		}
+	})
+	t.Run("unassigned, no triager: To Do", func(t *testing.T) {
+		src := &statusSource{}
+		if _, err := runTaskTriaged(t, src, "", "create", "T"); err != nil {
+			t.Fatal(err)
+		}
+		if want := []work.Phase{work.PhaseTodo}; !reflect.DeepEqual(src.written, want) {
+			t.Fatalf("without a triager nothing grills triage, got phases %v", src.written)
+		}
+	})
+}
+
+// Scripts (the phone's idea widget) ask the box which queues it has. One
+// unnamed queue prints no name: passing that guess back as -s is refused.
+func TestQueuesListsOneNamePerLine(t *testing.T) {
+	var out bytes.Buffer
+	writeQueues(&out, fleet.Settings{Sources: map[string]fleet.SourceConfig{"web": {}, "api": {}}})
+	if got, want := out.String(), "api\nweb\n"; got != want {
+		t.Fatalf("queues = %q, want %q", got, want)
+	}
+	out.Reset()
+	writeQueues(&out, fleet.Settings{})
+	if got, want := out.String(), ""; got != want {
+		t.Fatalf("one source: queues = %q, want no name", got)
+	}
+}
+
+// statusSource is a queue that creates straight into a phase, recording
+// every status written to the card — at the create and after it.
+type statusSource struct {
+	fakeSource
+	written []work.Phase
+}
+
+func (s *statusSource) CreateIn(phase work.Phase, title, body, assignee string) (string, error) {
+	s.written = append(s.written, phase)
+	return "TASK-9", nil
+}
+
+func (s *statusSource) SetPhase(id string, phase work.Phase) error {
+	s.written = append(s.written, phase)
+	return nil
+}
+
+// An idea filed with nobody named is created in Triage, in one write: a card
+// that passed through To Do first could be claimed by the queue's
+// default_agent before it was moved.
+func TestTaskCreateWithATriagerNeverPassesThroughToDo(t *testing.T) {
+	src := &statusSource{}
+	got, err := runTaskTriaged(t, src, "tri", "create", "an idea")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.written, want) {
+		t.Fatalf("statuses written %v, want only %v", src.written, want)
+	}
+	if !strings.Contains(got, "created TASK-9 (in Triage)") {
+		t.Fatalf("output %q", got)
+	}
+	m := &multiSource{names: []string{"solo"}, started: true}
+	if _, err := runTaskTriaged(t, m, "tri", "create", "an idea"); err != nil {
+		t.Fatal(err)
+	}
+	if m.phase != work.PhaseTriage {
+		t.Fatalf("a queue of a composite was created in %q, want Triage", m.phase)
 	}
 }

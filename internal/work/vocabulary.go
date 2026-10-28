@@ -156,6 +156,23 @@ func (v Vocabulary) Asking(status string) bool {
 	return status != "" && status == v.Question
 }
 
+// Word is the table read the other way: the project's word for a phase the
+// fleet writes, empty when the project has none. The one phase↔word mapping
+// every adapter with a status vocabulary writes through.
+func (v Vocabulary) Word(p Phase) string {
+	switch p {
+	case PhaseTodo:
+		return v.Todo
+	case PhaseInProgress:
+		return v.InProgress
+	case PhaseTriage:
+		return v.Triage
+	case PhaseQuestion:
+		return v.Question
+	}
+	return ""
+}
+
 // Parked reports whether a status is the one that waits on a human — this
 // project's own blocked word. Written only where the queue names one, a
 // task the vocabulary does not know at all is not parked by guess: the

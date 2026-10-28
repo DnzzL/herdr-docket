@@ -70,3 +70,15 @@ func (d Defaults) For(taskID string) string {
 	}
 	return d.global
 }
+// Triager is the agent that grills this queue's triage cards. Empty when the
+// queue names none: there is no fleet-wide fallback, because a triager
+// publishes into its own project's tracker.
+func (d Defaults) Triager(taskID string) string {
+	return d.TriagerIn(work.SourceOf(taskID))
+}
+
+// TriagerIn is the named queue's triager, before any task of it has an id;
+// the one unnamed queue is "".
+func (d Defaults) TriagerIn(queue string) string {
+	return d.triagerFor[queue]
+}

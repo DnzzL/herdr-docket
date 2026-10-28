@@ -535,6 +535,31 @@ func TestCreateWithoutARoutingKeyWritesNoRouting(t *testing.T) {
 	}
 }
 
+// An idea for the triager lands in the Triage column in the create's own
+// pass: the column is checked before the issue is written, and the item never
+// stands unfiled where the default agent would claim it.
+func TestCreateInFilesTheItemIntoThePhasesColumn(t *testing.T) {
+	f := newFakeBoard()
+	f.fields = []*fakeField{f.newField("Status", "Triage", "Question", "Todo", "Done")}
+	f.provisionAgent("dev")
+
+	id, err := f.source(t).CreateIn(work.PhaseTriage, "an idea", "", "dev")
+	if err != nil {
+		t.Fatalf("CreateIn: %v", err)
+	}
+	number, _ := strconv.Atoi(id)
+	if item := f.itemOf(number); item.status != "Triage" || item.agent != "dev" {
+		t.Fatalf("item = %+v, want in Triage, routed to dev", item)
+	}
+
+	f = newFakeBoard()
+	f.fields = []*fakeField{f.newField("Status", "Todo", "Done")}
+	f.provisionAgent("dev")
+	if _, err := f.source(t).CreateIn(work.PhaseTriage, "an idea", "", ""); err == nil || len(f.issues) != 0 {
+		t.Fatalf("a board with no Triage column must refuse before writing: err %v, %d issues", err, len(f.issues))
+	}
+}
+
 // A board can belong to a person as easily as to an organization, and which
 // one it is is not something the configuration says.
 func TestABoardOwnedByAUserIsFoundTheSameWay(t *testing.T) {
