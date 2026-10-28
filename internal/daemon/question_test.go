@@ -210,6 +210,57 @@ func TestALeavingQuestionForgetsAndAPopOnReturn(t *testing.T) {
 	}
 }
 
+func TestTheRoundIsReadFromGetNotTheList(t *testing.T) {
+	ownStateDir(t)
+	src := newMemSource(questionCard(round2))
+	h := &notifyHost{}
+	runs, reported := daemonOver(t, h, src)
+
+	// The list is what the tick holds; the real queue's list rows carry no
+	// notes, so the round can only come from Get (TASK-93).
+	tasks, err := src.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Notes != "" {
+		t.Fatalf("list rows = %v, want no notes: a summary is not the card", tasks)
+	}
+	if card, err := src.Get("docket/TASK-93"); err != nil || card.Notes != round2 {
+		t.Fatalf("Get = %q, %v, want the notes the round lives in", card.Notes, err)
+	}
+
+	evaluate(runs, h, reported)
+
+	if got := len(h.seen()); got != 1 {
+		t.Fatalf("popups = %v, want the round the card's Get carries", h.seen())
+	}
+}
+
+func TestACardTheQueueCannotReadIsSilentAndUnrecorded(t *testing.T) {
+	ownStateDir(t)
+	src := newMemSource(questionCard(round2))
+	src.getErr = errors.New("backlog: task view failed")
+	h := &notifyHost{}
+	runs, reported := daemonOver(t, h, src)
+
+	evaluate(runs, h, reported)
+
+	if got := len(h.seen()); got != 0 {
+		t.Fatalf("popups = %v, want none: an unread card has no round to speak", h.seen())
+	}
+	if marks := questionMarkers(t); len(marks) != 0 {
+		t.Fatalf("markers = %v, want none until the card was read", marks)
+	}
+
+	// The next tick reads it cleanly and speaks: a failed read is as
+	// retryable as a failed popup.
+	src.getErr = nil
+	evaluate(runs, h, reported)
+	if got := len(h.seen()); got != 1 {
+		t.Fatalf("popups = %v, want the retry to land", h.seen())
+	}
+}
+
 func TestAPausedFleetStillAnnouncesAQuestion(t *testing.T) {
 	ownStateDir(t)
 	if err := runner.SetPaused(true); err != nil {

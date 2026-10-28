@@ -131,7 +131,7 @@ func evaluate(runs *runner.Runner, h host.Host, reported map[string]bool) {
 	// A card in Question waits on a human, not on a run: the popup speaks
 	// whether or not the fleet is scheduling, so this pass sits above the
 	// pause deliberately (TASK-93).
-	announceQuestions(h, tasks)
+	announceQuestions(h, src, tasks)
 
 	// A paused fleet starts nothing. The log says so once per pause, not once
 	// per tick.

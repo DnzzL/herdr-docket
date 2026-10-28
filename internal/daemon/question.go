@@ -39,9 +39,14 @@ func questionMarkerPath(id string, round int) string {
 // Question still owes — a card that left Question is a debt paid, so returning
 // to it on the same round speaks again and the state dir stops growing.
 //
-// Best-effort by contract (ADR 0010): a notification failure is logged and
-// retried next tick, never turned into a failed tick.
-func announceQuestions(h host.Host, tasks []work.Task) {
+// The round comes from src.Get, never from the list row: a queue's list is a
+// summary (Backlog.md's carries no notes at all), and only Get returns the
+// notes a grill round is written in. Reading notes off List would make every
+// card look roundless and every popup silently vanish.
+//
+// Best-effort by contract (ADR 0010): a failed read or notification is logged
+// and retried next tick, never turned into a failed tick.
+func announceQuestions(h host.Host, src work.Source, tasks []work.Task) {
 	type owed struct {
 		task  work.Task
 		round int
@@ -52,12 +57,17 @@ func announceQuestions(h host.Host, tasks []work.Task) {
 		if !t.Open || !t.Question {
 			continue
 		}
-		r, ok := grill.LatestRound(t.Notes)
+		card, err := src.Get(t.ID)
+		if err != nil {
+			log.Printf("%s: read the card: %v", t.ID, err)
+			continue // no marker: an unread card is not an announced one
+		}
+		r, ok := grill.LatestRound(card.Notes)
 		if !ok {
 			continue // nothing a human could be asked to answer
 		}
-		announcements = append(announcements, owed{task: t, round: r.N})
-		keep[questionMarkerPath(t.ID, r.N)] = true
+		announcements = append(announcements, owed{task: card, round: r.N})
+		keep[questionMarkerPath(card.ID, r.N)] = true
 	}
 
 	forgetQuestionMarkers(keep)

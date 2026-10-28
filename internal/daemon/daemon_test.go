@@ -23,6 +23,7 @@ type memSource struct {
 	phase   map[string]work.Phase
 	nextID  int
 	withErr error
+	getErr  error
 }
 
 func newMemSource(tasks ...work.Task) *memSource {
@@ -41,6 +42,11 @@ func (s *memSource) List() ([]work.Task, error) {
 	}
 	out := make([]work.Task, 0, len(s.items))
 	for _, t := range s.items {
+		// A list row is a summary: the real adapters (Backlog.md, GitHub) put
+		// the body and the notes on Get only. A fake that shipped them here
+		// would agree with code that read them off the list and hide a pass
+		// that never fires on the real queue (TASK-93).
+		t.Notes, t.Body = "", ""
 		out = append(out, t)
 	}
 	return out, nil
@@ -49,6 +55,9 @@ func (s *memSource) List() ([]work.Task, error) {
 func (s *memSource) Get(id string) (work.Task, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.getErr != nil {
+		return work.Task{}, s.getErr
+	}
 	t, ok := s.items[id]
 	if !ok {
 		return work.Task{}, errNoTask
