@@ -4,12 +4,12 @@
 
 **Blocked by:** 02, 03
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `roles/dev.md` and `roles/reviewer.md` name no `.scratch` path and no `Spec:` line
-- [ ] `docs/examples.md` matches (drift test green)
-- [ ] README, how-it-works, working-with-a-factory, CONTEXT.md updated; no `.scratch` left in `docs/` except ADRs
-- [ ] ADR 0021 carries "Amended by 0023"
+- [x] `roles/dev.md` and `roles/reviewer.md` name no `.scratch` path and no `Spec:` line
+- [x] `docs/examples.md` matches (drift test green)
+- [x] README, how-it-works, working-with-a-factory, CONTEXT.md updated; no `.scratch` left in `docs/` except ADRs
+- [x] ADR 0021 carries "Amended by 0023"
 
 **Done when:** an agent reading only its role and the repo's `issue-tracker.md` finds the spec and its tickets.
 
