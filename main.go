@@ -632,7 +632,8 @@ func taskAnswer(src work.Source, id, answers string, out io.Writer) error {
 		}
 		return fmt.Errorf("%s is in %s, not %s — only a card waiting on an answer takes one", id, where, work.PhaseQuestion)
 	}
-	n, _, ok := grill.LatestRound(t.Notes)
+	round, ok := grill.LatestRound(t.Notes)
+	n := round.N
 	if !ok {
 		return fmt.Errorf("%s: no ## Round note to answer", id)
 	}

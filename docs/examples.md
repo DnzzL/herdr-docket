@@ -288,11 +288,15 @@ now, not one at a time; a question whose answer depends on another waits for
 the next round. Number them, give each lettered options, mark your
 recommendation `(reco)`, and word each so a bare "yes" accepts the reco.
 `T. try and show me` is always allowed. The card's notes hold every round and
-answer so far — read them first, never ask twice. A round is a note readable
-without a tool:
+answer so far — read them first, never ask twice. Open every round with 2–3
+lines of context the owner reads before question 1: where the card stands, the
+files in play, the linked card. A round is a note readable without a tool:
 
 ```md
 ## Round 2
+Voice notes reach the card as a transcript; the audio is dropped.
+Files: internal/upload/voice.go. Linked: TASK-41 (storage quota).
+
 1. What happens to the audio when it is sent?
    A. attached as a file (reco)
    B. text in a comment

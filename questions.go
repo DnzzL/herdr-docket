@@ -46,9 +46,10 @@ func questionCards(src work.Source) ([]work.Task, error) {
 }
 
 // answerQuestions is `herdr-docket questions`: it lists the question cards,
-// walks the chosen card's newest round one question at a time (Enter = the
-// reco, a letter = that option, anything else = free text) and sends the
-// assembled line through `task answer`. Every line fits phoneWidth.
+// prints the chosen card's newest round context, walks its questions one at a
+// time (Enter = the reco, a letter = that option, anything else = free text)
+// and sends the assembled line through `task answer`. Every line fits
+// phoneWidth.
 func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) error {
 	say(out, live)
 	cards, err := questionCards(src)
@@ -68,7 +69,8 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 			return err
 		}
 		cards[i] = full
-		rounds[i], _, _ = grill.LatestRound(full.Notes)
+		r, _ := grill.LatestRound(full.Notes)
+		rounds[i] = r.N
 		head := fmt.Sprintf("%d. %s · round %d", i+1, c.ID, rounds[i])
 		say(out, head)
 		say(out, "   "+text.Truncate(c.Title, phoneWidth-3))
@@ -86,12 +88,18 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 			}
 		}
 	}
-	_, questions, ok := grill.LatestRound(card.Notes)
-	if !ok || len(questions) == 0 {
+	round, ok := grill.LatestRound(card.Notes)
+	if !ok || len(round.Questions) == 0 {
 		return fmt.Errorf("%s: no ## Round note to answer", card.ID)
 	}
+	if round.Context != "" {
+		say(out, "")
+		for _, l := range strings.Split(round.Context, "\n") {
+			say(out, l)
+		}
+	}
 	var answers []string
-	for _, q := range questions {
+	for _, q := range round.Questions {
 		a, err := askQuestion(r, out, q)
 		if err != nil {
 			return err
