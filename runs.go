@@ -10,10 +10,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/runner"
+	"github.com/DnzzL/herdr-docket/internal/text"
+	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
 // sessionCloser is the one thing stopping a run needs from the host: closing
@@ -195,7 +198,9 @@ func resumeCmd(out io.Writer) error {
 	return nil
 }
 
-// paneCmd is the overlay: the runs in flight, redrawn every two seconds.
+// paneCmd is the overlay: the daemon line, what waits on the human, the runs
+// in flight and the last settled ones, redrawn every two seconds and cut to
+// the terminal's width so a phone never wraps it.
 // Keys: j/k or 1-9 select, x stops the selected run, p pauses or resumes the
 // fleet, q quits. Everything it does is runsCmd, stopRun and SetPaused; it
 // only draws and forwards keys. Single keypresses come from stty, so the
@@ -231,11 +236,18 @@ func paneCmd() error {
 	closer := host.New()
 	sel, status := 0, ""
 	for {
-		live, _ := history.InFlight()
+		d := readPane()
+		live := inFlight(d.Runs)
 		if sel >= len(live) {
 			sel = max(len(live)-1, 0)
 		}
-		drawPane(live, sel, status)
+		d.Sel, d.Status = sel, status
+		var b strings.Builder
+		b.WriteString("\033[H\033[2J")
+		for _, line := range renderPane(d, termWidth()) {
+			b.WriteString(line + "\r\n")
+		}
+		fmt.Print(b.String())
 
 		select {
 		case <-sigs:
@@ -275,31 +287,159 @@ func paneCmd() error {
 	}
 }
 
-func drawPane(live []history.Record, sel int, status string) {
-	var b strings.Builder
-	b.WriteString("\033[H\033[2J")
+// paneData is everything one frame of the pane shows, read once per refresh.
+// Runs is the latest record per run, newest first, as history.Runs gives it.
+type paneData struct {
+	Daemon   string
+	Paused   bool
+	Queue    []work.Task
+	QueueErr error
+	Runs     []history.Record
+	Timeouts map[string]int
+	Now      time.Time
+	Sel      int
+	Status   string
+}
+
+// settledShown is how many settled runs the pane keeps under the live ones.
+const settledShown = 5
+
+// readPane reads one frame: the heartbeat, the queue (one List, nothing per
+// task) and the history file once.
+func readPane() paneData {
+	now := time.Now()
+	d := paneData{Daemon: daemon.Liveness(now), Paused: runner.Paused(), Timeouts: agentTimeouts(), Now: now}
+	if _, src, err := settingsAndSource(); err != nil {
+		d.QueueErr = err
+	} else {
+		d.Queue, d.QueueErr = src.List()
+	}
+	d.Runs, _ = history.Runs("", 0)
+	return d
+}
+
+func inFlight(runs []history.Record) []history.Record {
+	var out []history.Record
+	for _, r := range runs {
+		if r.Status == history.StatusRunning || r.Status == history.StatusTimedOut {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// heldMerges maps each task to the PR a verifier passed, from the newest PR
+// and newest verdict recorded on the task: a Blocked task with one is a merge
+// the gate held for a human (ADR 0015), not a question.
+func heldMerges(runs []history.Record) map[string]string {
+	pr, verdict := map[string]string{}, map[string]string{}
+	for _, r := range runs {
+		if _, ok := pr[r.Task]; !ok && r.PullRequest != "" {
+			pr[r.Task] = r.PullRequest
+		}
+		if _, ok := verdict[r.Task]; !ok && r.Verification != "" {
+			verdict[r.Task] = r.Verification
+		}
+	}
+	out := map[string]string{}
+	for task, url := range pr {
+		if verdict[task] == "PASS" {
+			out[task] = url
+		}
+	}
+	return out
+}
+
+// renderPane is one frame as lines, none wider than width: the daemon line,
+// Your turn (questions, Blocked cards, held merges), the runs in flight, then
+// the last settled runs.
+func renderPane(d paneData, width int) []string {
+	var lines []string
+	add := func(s string) { lines = append(lines, text.Truncate(s, width)) }
+
 	state := "running"
-	if runner.Paused() {
+	if d.Paused {
 		state = "PAUSED"
 	}
-	fmt.Fprintf(&b, "herdr-docket — fleet %s — %d in flight\r\n\r\n", state, len(live))
-	timeouts := agentTimeouts()
-	now := time.Now()
+	add(fmt.Sprintf("%s · fleet %s", d.Daemon, state))
+
+	add("")
+	add("Your turn")
+	merges := heldMerges(d.Runs)
+	var questions, blocked, held []string
+	for _, t := range d.Queue {
+		switch {
+		case t.Phase == string(work.PhaseQuestion):
+			questions = append(questions, "  ? "+t.ID+" "+t.Title)
+		case !t.Blocked && t.Verdict != work.Blocked:
+		case merges[t.ID] != "":
+			held = append(held, "  ⇡ "+t.ID+" "+merges[t.ID])
+		default:
+			blocked = append(blocked, "  ! "+t.ID+" "+t.Title)
+		}
+	}
+	turn := append(append(questions, blocked...), held...)
+	for _, l := range turn {
+		add(l)
+	}
+	if d.QueueErr != nil {
+		add("  queue: " + d.QueueErr.Error())
+	} else if len(turn) == 0 {
+		add("  nothing waits on you")
+	}
+
+	live := inFlight(d.Runs)
+	add("")
+	add(fmt.Sprintf("In flight (%d)", len(live)))
 	for i, r := range live {
 		mark := "  "
-		if i == sel {
+		if i == d.Sel {
 			mark = "> "
 		}
-		fmt.Fprintf(&b, "%s%d %s\r\n", mark, i+1, formatRun(r, timeoutFor(timeouts, r.Agent), now))
+		add(fmt.Sprintf("%s%d %s", mark, i+1, formatRun(r, timeoutFor(d.Timeouts, r.Agent), d.Now)))
 	}
 	if len(live) == 0 {
-		b.WriteString("  no run in flight\r\n")
+		add("  no run in flight")
 	}
-	if status != "" {
-		fmt.Fprintf(&b, "\r\n%s\r\n", status)
+
+	var settled []string
+	for _, r := range d.Runs {
+		if r.Status == history.StatusRunning || r.Status == history.StatusTimedOut || r.Status == history.StatusScheduled {
+			continue
+		}
+		settled = append(settled, fmt.Sprintf("  %s %s %s %s ago", r.Task, r.Agent, r.Status, shortDuration(d.Now.Sub(r.At))))
+		if len(settled) == settledShown {
+			break
+		}
 	}
-	b.WriteString("\r\nj/k select · x stop · p pause/resume · q quit\r\n")
-	fmt.Print(b.String())
+	if len(settled) > 0 {
+		add("")
+		add("Settled")
+		for _, l := range settled {
+			add(l)
+		}
+	}
+
+	if d.Status != "" {
+		add("")
+		add(d.Status)
+	}
+	add("")
+	add("j/k select · x stop · p pause · q quit")
+	return lines
+}
+
+// termWidth is the pane's width in columns, from stty; 80 when it cannot say.
+func termWidth() int {
+	out, err := stty("size")
+	if err != nil {
+		return 80
+	}
+	var rows, cols int
+	if _, err := fmt.Sscan(out, &rows, &cols); err != nil || cols <= 0 {
+		return 80
+	}
+	return cols
 }
 
 func stty(args ...string) (string, error) {

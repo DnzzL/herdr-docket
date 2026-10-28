@@ -28,7 +28,7 @@
 | `herdr-docket questions` | the daemon line, then the `question` cards across queues; pick one and answer its newest round question by question — Enter takes the `(reco)`, a letter that option, other text a free answer — then confirm to send it as `task answer` does. Fits 45 columns |
 | `herdr-docket stop TASK-12` | stop a task's run in flight |
 | `herdr-docket pause [--now]` / `resume` | pause the whole fleet — no new runs, no pipeline stages (`--now` stops runs in flight) |
-| `herdr-docket pane` | the runs overlay (the plugin opens it for you) |
+| `herdr-docket pane` | the overlay (the plugin opens it for you): the daemon line, Your turn (questions, Blocked cards, merges held for you), runs in flight, the last 5 settled; cut to the terminal width |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
 | `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |
