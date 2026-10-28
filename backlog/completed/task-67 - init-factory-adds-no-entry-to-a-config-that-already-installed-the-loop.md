@@ -1,11 +1,11 @@
 ---
 id: TASK-67
 title: init --factory adds no entry to a config that already installed the loop
-status: needs human validation
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-10-04 17:33'
-updated_date: '2026-10-04 20:20'
+updated_date: '2026-10-28 15:25'
 labels: []
 dependencies: []
 ordinal: 67000
@@ -31,4 +31,6 @@ fleet: run failed: waiting for the agent: agent wait: timeout: timed out waiting
 fleet: the run's workspace w1 (pane w1:pV) is left open — jump in to resume.
 
 verdict PASS on https://github.com/DnzzL/herdr-docket/pull/28: Verified PR head 6e87cb2 myself. Bar on head: go build ./..., go vet ./..., go test ./..., gofmt -l . all clean (same four as ci.yml). Red-first proven: at ee907f5 (parent 9299099, old installer) go test ./internal/factory/ -run TestInstallAppendsOnlyTheEntriesAConfigIsMissing FAILs at install_test.go:204 — a config with the loop minus merge-digest gets nothing from a re-run; green at 6e87cb2. Real surface (real herdr 0.9.1, HOME and XDG_CONFIG_HOME sandboxed in /tmp, owner config untouched): fresh init --factory created automations.yaml with 4 unique entries parsing under yaml.v3, repos = fleet dir; stripped merge-digest to simulate a pre-TASK-64 fleet and re-ran: "factory: appended merge-digest", diff shows only the merge-digest chunk inserted, 4 unique; third run: "already drives the loop", md5 unchanged (f632aad3... = f632aad3...). Old binary replayed the same scenario: "already drives the loop", still 3 entries — bug live before, fixed after. Probes: middle entry stripped -> "appended lookback", 4 unique; config holding only "- name: intake-followup" -> all 4 shipped entries appended, owner entry kept (substring trap handled at install.go:177 hasEntry). Criteria: append-missing-by-name at install.go:149 entryName, :177 hasEntry, :243-249 loop; idempotency test untouched (diff +49/-0) and green; fragile known-gap line (base docs/factory.md:357) deleted, other fragile lines (347/349/352) kept. Scope: exactly 2 commits, 4 files, all the ticket own; no CODEOWNERS path touched, so no human hold. Non-blocking observation for whoever merges: the PR edits CHANGELOG.md directly, which CONTRIBUTING post-#26/ADR 0016 forbids (changelog.d/TASK-67.md is the current form); its base 9299099 predates that rule and then required the CHANGELOG.md entry, no other open PR touches CHANGELOG.md (PR 27 is daemon_test only), merge is CLEAN, and changelog.go folds the legacy Unreleased section at release — lands correctly, not a block.
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/28 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->

@@ -28,8 +28,10 @@ type Round struct {
 	Questions []Question
 }
 
-// Question is one numbered question of a round, with its lettered options.
-// A question with no options takes a free-text answer.
+// Question is one question of a round: the line a run of lettered options
+// hangs from, numbered or not. Before the first such question a numbered line
+// with no options is context (the confirm round's numbered ASSUMPTIONS); after
+// it, a numbered line with no options is a free-text question.
 type Question struct {
 	N       int
 	Text    string
@@ -48,7 +50,7 @@ var (
 	// comment ("triager: ## Round 2").
 	heading  = regexp.MustCompile(`^(?:\S+: )?## (\S+)(?: (\d+))?\s*$`)
 	question = regexp.MustCompile(`^(\d+)\.\s+(.*\S)\s*$`)
-	option   = regexp.MustCompile(`^\s+([A-Z])\.\s+(.*\S)\s*$`)
+	option   = regexp.MustCompile(`^\s*([A-Z])\.\s+(.*\S)\s*$`)
 )
 
 const recoMark = "(reco)"
@@ -67,26 +69,42 @@ func LatestRound(notes string) (r Round, ok bool) {
 	if start < 0 {
 		return Round{}, false
 	}
+	// A line becomes a question only when options follow it, so lines are
+	// held as context until a run of options claims the one before it.
 	var context []string
+	open := false // the last non-blank line was an option of the last question
 	for _, l := range lines[start+1:] {
 		if heading.MatchString(l) {
 			break
 		}
-		if m := question.FindStringSubmatch(l); m != nil {
-			r.Questions = append(r.Questions, Question{N: atoi(m[1]), Text: m[2]})
+		t := strings.TrimSpace(l)
+		if t == "" {
 			continue
 		}
-		if len(r.Questions) == 0 {
-			if t := strings.TrimSpace(l); t != "" {
-				context = append(context, t)
+		if m := option.FindStringSubmatch(l); m != nil && (open || len(context) > 0) {
+			if !open {
+				q := Question{N: len(r.Questions) + 1, Text: context[len(context)-1]}
+				if n := question.FindStringSubmatch(q.Text); n != nil {
+					q.N, q.Text = atoi(n[1]), n[2]
+				}
+				context = context[:len(context)-1]
+				r.Questions = append(r.Questions, q)
+				open = true
 			}
-			continue
-		}
-		if m := option.FindStringSubmatch(l); m != nil {
 			text, reco := strings.CutSuffix(m[2], recoMark)
 			q := &r.Questions[len(r.Questions)-1]
 			q.Options = append(q.Options, Option{Letter: m[1], Text: strings.TrimSpace(text), Reco: reco})
+			continue
 		}
+		open = false
+		// Once the questions have started, a numbered line is the next one,
+		// options or not (a free-text question); before them it is context.
+		if m := question.FindStringSubmatch(l); m != nil && len(r.Questions) > 0 {
+			r.Questions = append(r.Questions, Question{N: atoi(m[1]), Text: m[2]})
+			open = true
+			continue
+		}
+		context = append(context, t)
 	}
 	r.Context = strings.Join(context, "\n")
 	return r, true

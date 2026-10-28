@@ -2,6 +2,7 @@ package grill
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,36 @@ func TestLineJoinsLettersAndFreeText(t *testing.T) {
 	got := Line([]Answer{{N: 1, Letter: "A"}, {N: 2, Text: "  only the owner \n"}, {N: 3, Letter: "T"}})
 	if want := "1.A 2. only the owner 3.T"; got != want {
 		t.Fatalf("Line = %q, want %q", got, want)
+	}
+}
+
+// The confirm round lists the triager's assumptions above its one question.
+// Numbered assumptions are context, not questions: a question is the line a
+// run of lettered options hangs from, numbered or not (TASK-93..95 shipped
+// rounds the TUI could not send).
+func TestLatestRoundTakesOnlyALineWithOptionsAsAQuestion(t *testing.T) {
+	for name, notes := range map[string]string{
+		"numbered question":   "## Round 2\nSettled.\n\nASSUMPTIONS:\n1. Hierarchy is a heading per block.\n2. Colour is semantic.\n\n3. Build on these assumptions?\n   A. yes (reco)\n   B. change …\n",
+		"unnumbered question": "## Round 2\nSettled.\n\nASSUMPTIONS:\n1. Hierarchy is a heading per block.\n2. Colour is semantic.\n\nBuild on these assumptions?\nA. yes (reco)\nB. change …\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, ok := LatestRound(notes)
+			if !ok {
+				t.Fatal("no round")
+			}
+			if len(r.Questions) != 1 {
+				t.Fatalf("questions = %+v, want only the confirm question", r.Questions)
+			}
+			q := r.Questions[0]
+			if q.Text != "Build on these assumptions?" || len(q.Options) != 2 || !q.Options[0].Reco {
+				t.Errorf("question = %+v", q)
+			}
+			if !strings.Contains(r.Context, "2. Colour is semantic.") || !strings.Contains(r.Context, "ASSUMPTIONS:") {
+				t.Errorf("context lost the assumptions: %q", r.Context)
+			}
+			if got := Line([]Answer{{N: q.N, Letter: "A"}}); !strings.HasSuffix(got, ".A") {
+				t.Errorf("answer line = %q", got)
+			}
+		})
 	}
 }

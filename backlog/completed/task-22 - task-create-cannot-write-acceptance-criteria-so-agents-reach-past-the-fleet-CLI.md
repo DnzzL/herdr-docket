@@ -3,11 +3,11 @@ id: TASK-22
 title: >-
   task create cannot write acceptance criteria, so agents reach past the fleet
   CLI
-status: needs human validation
+status: Done
 assignee:
   - plugin-dev
 created_date: '2026-09-13 16:51'
-updated_date: '2026-10-03 23:30'
+updated_date: '2026-10-28 15:25'
 labels: []
 dependencies: []
 ordinal: 22000
@@ -75,4 +75,6 @@ Verdicts on the boxes:
 #3 MET on behavior, with finding 2 as the enforcement gap — basecamp takes no CriterionWriter (zero hits in internal/work/basecamp); the CLI refusal names -d and carries the words back (TestTaskCreateStatesWhatADegradingQueueCannotStore passes, and its putCriteria mutation is caught); worktest writes-then-reads through the port: backlogmd PASS, github PASS, basecamp SKIP with a stated message, multi PASS; backlogmd argv pinned (cli_criteria_test.go:16); the write path proven live on the real backlog CLI above. The composite branch that says the same words is stated in code but untested — that is finding 2.
 
 Commits are the ticket own: 4 commits, all criteria-scoped; ADR renumber verified (docs/adr/0014-criteria-are-a-capability-not-a-column-on-create.md exists, refs at work.go:139 and main.go:424 point to 0014); PR body claims checked and true.
+
+fleet: https://github.com/DnzzL/herdr-docket/pull/9 is merged — the pull request settles this task done.
 <!-- SECTION:NOTES:END -->
