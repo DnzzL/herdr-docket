@@ -19,8 +19,33 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
 )
 
-// Client talks to the herdr CLI. It holds nothing: the zero value is ready.
-type Client struct{}
+// Client talks to the herdr CLI. It holds one thing — which session to talk
+// to — and the zero value is the default session, ready.
+type Client struct {
+	// Session, when non-empty, names the herdr session every call talks to:
+	// `--session <name>` leads the argv. The zero value emits exactly the
+	// argv the client always emitted, because production runs everything in
+	// the one default session.
+	//
+	// It earns its place in the shipping type because the contract suite
+	// execs this same client against a throwaway session (TASK-94): a test
+	// that reached the default session would draw panes into the owner's
+	// live one.
+	Session string
+}
+
+// args leads a subcommand with the client's session. --session is a herdr
+// global option, so it has to come before the subcommand it applies to.
+func (c Client) args(args ...string) []string {
+	if c.Session == "" {
+		return args
+	}
+	return append([]string{"--session", c.Session}, args...)
+}
+
+// do runs a subcommand in this client's session. It is how every method here
+// reaches run, so the session cannot be forgotten by one of them.
+func (c Client) do(out any, args ...string) error { return run(out, c.args(args...)...) }
 
 // run executes a herdr subcommand and decodes the socket-API JSON envelope
 // ({"id": ..., "result": {...}}) into out when out is non-nil.
@@ -133,7 +158,7 @@ func (r createResult) ids(what string) (string, string, error) {
 // returns its workspace and root pane IDs. Base names the ref the worktree
 // branches from; empty inherits whatever the checkout has checked out, and
 // then no --base is sent so nothing new is asked of herdr.
-func (Client) WorktreeCreate(repo, branch, base, label string) (workspaceID, paneID string, err error) {
+func (c Client) WorktreeCreate(repo, branch, base, label string) (workspaceID, paneID string, err error) {
 	args := []string{"worktree", "create",
 		"--cwd", repo, "--branch", branch}
 	if base != "" {
@@ -141,7 +166,7 @@ func (Client) WorktreeCreate(repo, branch, base, label string) (workspaceID, pan
 	}
 	args = append(args, "--label", label, "--no-focus")
 	var res createResult
-	err = run(&res, args...)
+	err = c.do(&res, args...)
 	if err != nil {
 		return "", "", err
 	}
@@ -149,9 +174,9 @@ func (Client) WorktreeCreate(repo, branch, base, label string) (workspaceID, pan
 }
 
 // WorkspaceCreate opens a workspace directly on a directory (root mode).
-func (Client) WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error) {
+func (c Client) WorkspaceCreate(cwd, label string) (workspaceID, paneID string, err error) {
 	var res createResult
-	err = run(&res, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
+	err = c.do(&res, "workspace", "create", "--cwd", cwd, "--label", label, "--no-focus")
 	if err != nil {
 		return "", "", err
 	}
@@ -170,11 +195,11 @@ type Worktree struct {
 
 // WorktreeList returns every worktree Herdr knows about for repo, including
 // the source checkout itself.
-func (Client) WorktreeList(repo string) ([]Worktree, error) {
+func (c Client) WorktreeList(repo string) ([]Worktree, error) {
 	var res struct {
 		Worktrees []Worktree `json:"worktrees"`
 	}
-	if err := run(&res, "worktree", "list", "--cwd", repo); err != nil {
+	if err := c.do(&res, "worktree", "list", "--cwd", repo); err != nil {
 		return nil, err
 	}
 	return res.Worktrees, nil
@@ -187,7 +212,7 @@ func (Client) WorktreeList(repo string) ([]Worktree, error) {
 // that cares most, could not then tell "I closed it" from "there was nothing
 // left to close".
 func (c Client) WorkspaceClose(workspaceID string) error {
-	err := run(nil, "workspace", "close", workspaceID)
+	err := c.do(nil, "workspace", "close", workspaceID)
 	if HasCode(err, CodeWorkspaceGone) {
 		return ErrGone
 	}
@@ -196,13 +221,13 @@ func (c Client) WorkspaceClose(workspaceID string) error {
 
 // AgentStart launches an interactive agent in a pane sitting at a shell
 // prompt. extraArgs are forwarded to the agent executable (e.g. --mcp-config).
-func (Client) AgentStart(name, kind, paneID string, extraArgs []string) error {
+func (c Client) AgentStart(name, kind, paneID string, extraArgs []string) error {
 	args := []string{"agent", "start", name, "--kind", kind, "--pane", paneID}
 	if len(extraArgs) > 0 {
 		args = append(args, "--")
 		args = append(args, extraArgs...)
 	}
-	return run(nil, args...)
+	return c.do(nil, args...)
 }
 
 // CodePaneBusy is herdr's refusal to start an agent in a pane that is not
@@ -239,19 +264,19 @@ const CodeStalled = "agent_prompt_stalled"
 // AgentSubmit types a prompt into the agent and asks herdr to confirm the
 // agent reacted. A CodeStalled error is inconclusive; callers should check the
 // status before giving up.
-func (Client) AgentSubmit(target, text string) error {
-	return run(nil, "agent", "prompt", target, text, "--wait", "--until", "working",
+func (c Client) AgentSubmit(target, text string) error {
+	return c.do(nil, "agent", "prompt", target, text, "--wait", "--until", "working",
 		"--timeout", "30000")
 }
 
 // AgentStatus reports the agent's current state: idle, working, blocked…
-func (Client) AgentStatus(target string) (string, error) {
+func (c Client) AgentStatus(target string) (string, error) {
 	var res struct {
 		Agent struct {
 			AgentStatus string `json:"agent_status"`
 		} `json:"agent"`
 	}
-	if err := run(&res, "agent", "get", target); err != nil {
+	if err := c.do(&res, "agent", "get", target); err != nil {
 		return "", err
 	}
 	return res.Agent.AgentStatus, nil
@@ -259,13 +284,13 @@ func (Client) AgentStatus(target string) (string, error) {
 
 // AgentSubmitPending presses Enter on the pane, submitting anything already
 // sitting in the composer. Harmless when the composer is empty.
-func (Client) AgentSubmitPending(paneID string) error {
-	return run(nil, "pane", "send-keys", paneID, "enter")
+func (c Client) AgentSubmitPending(paneID string) error {
+	return c.do(nil, "pane", "send-keys", paneID, "enter")
 }
 
 // AgentWait blocks until the agent settles (idle, done or blocked).
-func (Client) AgentWait(target string, timeout time.Duration) error {
-	return run(nil, "agent", "wait", target,
+func (c Client) AgentWait(target string, timeout time.Duration) error {
+	return c.do(nil, "agent", "wait", target,
 		"--timeout", fmt.Sprintf("%d", timeout.Milliseconds()))
 }
 
@@ -274,7 +299,7 @@ func (Client) AgentWait(target string, timeout time.Duration) error {
 // reports through the host rather than owning a channel of its own. Reports
 // only — nothing here decides anything. sound travels verbatim to `--sound`
 // (herdr's none, done or request); empty leaves the flag off entirely.
-func (Client) Notify(title, body, sound string) error {
+func (c Client) Notify(title, body, sound string) error {
 	args := []string{"notification", "show", title}
 	if body != "" {
 		args = append(args, "--body", body)
@@ -282,7 +307,7 @@ func (Client) Notify(title, body, sound string) error {
 	if sound != "" {
 		args = append(args, "--sound", sound)
 	}
-	return run(nil, args...)
+	return c.do(nil, args...)
 }
 
 // ErrGone means the run's workspace no longer exists — the expected outcome
@@ -294,9 +319,9 @@ var ErrGone = errors.New("workspace already closed")
 
 // Focus brings a run's workspace to the front, then its agent pane when one
 // is known — the "jump to what this automation did" move.
-func (Client) Focus(workspaceID, paneID string) error {
+func (c Client) Focus(workspaceID, paneID string) error {
 	if workspaceID != "" {
-		if err := run(nil, "workspace", "focus", workspaceID); err != nil {
+		if err := c.do(nil, "workspace", "focus", workspaceID); err != nil {
 			if HasCode(err, CodeWorkspaceGone) {
 				return ErrGone
 			}
@@ -305,22 +330,24 @@ func (Client) Focus(workspaceID, paneID string) error {
 	}
 	if paneID != "" {
 		// Best-effort: the pane may be gone while the workspace lives on.
-		_ = run(nil, "agent", "focus", paneID)
+		_ = c.do(nil, "agent", "focus", paneID)
 	}
 	return nil
 }
 
 // PaneRun executes a shell command in a pane (used to delegate to hwf).
-func (Client) PaneRun(paneID string, command ...string) error {
-	return run(nil, append([]string{"pane", "run", paneID}, command...)...)
+func (c Client) PaneRun(paneID string, command ...string) error {
+	return c.do(nil, append([]string{"pane", "run", paneID}, command...)...)
 }
 
 // PaneRead returns the pane's recent terminal output. A pane is the only
 // channel a delegated command has, so this is how its result gets read back.
 // Unlike the rest of the API this one prints the screen, not a JSON envelope.
-func (Client) PaneRead(paneID string, lines int) (string, error) {
-	cmd := exec.Command(hostpath.Bin(), "pane", "read", paneID,
-		"--source", "recent", "--lines", fmt.Sprintf("%d", lines), "--format", "text")
+func (c Client) PaneRead(paneID string, lines int) (string, error) {
+	// Pane read prints the screen rather than a JSON envelope, so it cannot
+	// go through do; it shares the session prefix instead of re-deriving it.
+	cmd := exec.Command(hostpath.Bin(), c.args("pane", "read", paneID,
+		"--source", "recent", "--lines", fmt.Sprintf("%d", lines), "--format", "text")...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -344,9 +371,9 @@ type tabResult struct {
 
 // TabCreate opens a tab on cwd inside an existing workspace and returns the
 // pane to work in and the tab to close afterwards.
-func (Client) TabCreate(workspaceID, cwd, label string) (paneID, tabID string, err error) {
+func (c Client) TabCreate(workspaceID, cwd, label string) (paneID, tabID string, err error) {
 	var res tabResult
-	err = run(&res, "tab", "create",
+	err = c.do(&res, "tab", "create",
 		"--workspace", workspaceID, "--cwd", cwd, "--label", label, "--no-focus")
 	if err != nil {
 		return "", "", err
@@ -360,7 +387,7 @@ func (Client) TabCreate(workspaceID, cwd, label string) (paneID, tabID string, e
 // TabClose closes one tab. It is how a run that borrowed a workspace gives it
 // back: closing the workspace would take every sibling run — and the human's
 // own tab — with it.
-func (c Client) TabClose(tabID string) error { return run(nil, "tab", "close", tabID) }
+func (c Client) TabClose(tabID string) error { return c.do(nil, "tab", "close", tabID) }
 
 // workspaceList is the shape of `workspace list` this package needs: which
 // repository each workspace is a checkout of, and whether it is the primary
@@ -382,9 +409,9 @@ type workspaceList struct {
 //
 // Derived rather than configured on purpose: a workspace id written into a
 // config file is a reference that rots the first time somebody closes it.
-func (Client) PrimaryWorkspace(repoRoot string) (string, error) {
+func (c Client) PrimaryWorkspace(repoRoot string) (string, error) {
 	var res workspaceList
-	if err := run(&res, "workspace", "list"); err != nil {
+	if err := c.do(&res, "workspace", "list"); err != nil {
 		return "", err
 	}
 	for _, w := range res.Workspaces {

@@ -217,3 +217,59 @@ exit 0
 		t.Fatalf("argv = %q, want %q", got, want)
 	}
 }
+
+// TASK-94: the contract suite talks to a throwaway session so it cannot draw
+// panes into the owner's live one. That only holds if the session reaches the
+// argv, and the zero value must stay byte-for-byte what every production call
+// sends — pinned at the process boundary, like the flags above.
+func TestANamedSessionLeadsEveryHerdrCommand(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	path := filepath.Join(t.TempDir(), "herdr")
+	script := `#!/bin/sh
+printf '%s\n' "$@" > ` + argsFile + `
+exit 0
+`
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_BIN_PATH", path)
+
+	argv := func(t *testing.T, c Client, call func(Client) error) []string {
+		t.Helper()
+		if err := call(c); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(argsFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(strings.TrimSpace(string(raw)), "\n")
+	}
+	closeWorkspace := func(c Client) error { return c.WorkspaceClose("w1:p1") }
+	readPane := func(c Client) error { _, err := c.PaneRead("w1:p1", 5); return err }
+
+	for _, tc := range []struct {
+		name    string
+		session string
+		lead    []string
+	}{
+		{"default session emits today's argv", "", nil},
+		{"named session leads every call", "x", []string{"--session", "x"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := Client{Session: tc.session}
+			want := append(append([]string{}, tc.lead...), "workspace", "close", "w1:p1")
+			if got := argv(t, c, closeWorkspace); !reflect.DeepEqual(got, want) {
+				t.Errorf("workspace close argv = %q, want %q", got, want)
+			}
+			// Pane read is the one call that prints a screen instead of an
+			// envelope; it builds its own exec, so it can lose the session
+			// on its own.
+			want = append(append([]string{}, tc.lead...), "pane", "read", "w1:p1",
+				"--source", "recent", "--lines", "5", "--format", "text")
+			if got := argv(t, c, readPane); !reflect.DeepEqual(got, want) {
+				t.Errorf("pane read argv = %q, want %q", got, want)
+			}
+		})
+	}
+}

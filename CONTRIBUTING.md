@@ -39,6 +39,13 @@ config, state or skill directory has a `testmain_test.go` calling
 before the tests run. A new package that does the same wants one too. A live
 probe that must see the real queue opts out with `HERDR_DOCKET_TESTENV=real`.
 
+A test never touches your Herdr session either. The herdr package's contract
+suite execs the real binary, so its `TestMain` starts a throwaway session
+(`docket-contract-<pid>`) and every call names it: `go test ./...` opens no
+pane, agent or workspace in the session you are typing into, and the session
+is stopped and deleted when the run ends — including a run that failed or timed
+out. Where herdr is not installed (CI) those tests skip instead.
+
 Tests that exec `git` or `gh` are outside that guard: they still read your real
 `~/.gitconfig` and gh config. Keep them read-only.
 

@@ -29,6 +29,12 @@ import (
 // unit tests hold the read logic; this suite holds the facts about herdr.
 // Everything here owns what it touches — workspaces this suite opens are
 // closed by it, and nobody else's pane, agent or workspace is contacted.
+//
+// Which session "nobody else's" means was the TASK-94 bug: the suite used the
+// default one, so it opened and closed `docket contract` panes in whatever
+// session the owner had open. Every client below names the throwaway session
+// TestMain starts, so a contract call cannot reach the default session even
+// though HERDR_SOCKET_PATH is exported in the owner's shell.
 
 func requireHerdr(t *testing.T) {
 	t.Helper()
@@ -36,7 +42,13 @@ func requireHerdr(t *testing.T) {
 	if _, err := exec.LookPath(bin); err != nil {
 		t.Skipf("herdr (%s) is not installed: %v — the contract suite holds against the real binary only; the unit tests stand in for it", bin, err)
 	}
-	t.Logf("herdr contract held against %s", bin)
+	if contractSessionErr != nil {
+		t.Fatalf("herdr is installed but the suite's own session is not: %v", contractSessionErr)
+	}
+	if contractSession == "" {
+		t.Fatal("no throwaway herdr session was started: a contract call would land in the owner's live session")
+	}
+	t.Logf("herdr contract held against %s in session %s", bin, contractSession)
 }
 
 // TestTheClientReadsTheCodeOutOfARealHerdrError is the test that would have
@@ -48,9 +60,9 @@ func requireHerdr(t *testing.T) {
 func TestTheClientReadsTheCodeOutOfARealHerdrError(t *testing.T) {
 	requireHerdr(t)
 
-	var c Client
+	c := Client{Session: contractSession}
 	gone := fmt.Sprintf("contract-gone-%d", time.Now().UnixNano())
-	err := run(nil, "workspace", "close", gone)
+	err := c.do(nil, "workspace", "close", gone)
 	if !HasCode(err, CodeWorkspaceGone) {
 		t.Fatalf("workspace close of an unknown id: HasCode(CodeWorkspaceGone) = false: %v — the fleet's vanished-workspace recovery cannot fire", err)
 	}
@@ -84,7 +96,7 @@ func TestTheClientReadsTheCodeOutOfARealHerdrError(t *testing.T) {
 func TestHerdrAnswersAVanishedAgentWithAgentNotFound(t *testing.T) {
 	requireHerdr(t)
 
-	var c Client
+	c := Client{Session: contractSession}
 	target := fmt.Sprintf("contract-missing-%d", time.Now().UnixNano())
 	_, statusErr := c.AgentStatus(target)
 	if !HasCode(statusErr, CodeAgentGone) {
@@ -117,7 +129,7 @@ func TestHerdrAnswersAVanishedAgentWithAgentNotFound(t *testing.T) {
 func TestARealBusyPaneRefusesAnAgentStartWithTheCodeTheFleetRetriesOn(t *testing.T) {
 	requireHerdr(t)
 
-	var c Client
+	c := Client{Session: contractSession}
 	workspaceID, paneID, err := c.WorkspaceCreate(t.TempDir(), "docket contract")
 	if err != nil {
 		t.Fatalf("own throwaway workspace: %v", err)
