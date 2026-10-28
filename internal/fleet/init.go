@@ -484,9 +484,12 @@ func initBacklog(dir string, vocab backlogmd.Vocabulary, out io.Writer) error {
 // does not declare.
 func patchStatuses(path string) error { return patchStatusesTo(path, backlogmd.Statuses) }
 
-// patchStatusesTo adds the statuses in want the config lacks, after the ones
-// it has: a repo's own columns are its humans' board, never the fleet's to
-// drop. Leaves the file alone when nothing is missing.
+// patchStatusesTo adds the statuses in want the config lacks, before its last
+// entry: a repo's own columns are its humans' board, never the fleet's to drop
+// or reorder, and Backlog.md reads the last entry as the project's completed
+// status, so nothing is ever added after it. A config with fewer than two
+// entries has no such entry to protect and takes the fleet's order instead.
+// Leaves the file alone when nothing is missing.
 func patchStatusesTo(path string, want []string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -498,12 +501,7 @@ func patchStatusesTo(path string, want []string) error {
 	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
-	merged := cfg.Statuses
-	for _, w := range want {
-		if !slices.Contains(merged, w) {
-			merged = append(merged, w)
-		}
-	}
+	merged := insertStatuses(cfg.Statuses, want)
 	if len(merged) == len(cfg.Statuses) {
 		return nil
 	}
@@ -513,6 +511,30 @@ func patchStatusesTo(path string, want []string) error {
 		return fmt.Errorf("%s: no one-line statuses list to patch — set it by hand to %s", path, statusesYAML(merged))
 	}
 	return os.WriteFile(path, re.ReplaceAll(raw, []byte(statusesYAML(merged))), 0o644)
+}
+
+// insertStatuses adds the words in want that have lacks, in want's order,
+// just before have's last entry. With fewer than two
+// entries there is no completed status to keep last, and the missing words
+// are appended: want already ends with the fleet's done word.
+func insertStatuses(have, want []string) []string {
+	missing := make([]string, 0, len(want))
+	for _, w := range want {
+		if !slices.Contains(have, w) {
+			missing = append(missing, w)
+		}
+	}
+	if len(missing) == 0 {
+		return have
+	}
+	if len(have) < 2 {
+		return append(slices.Clone(have), missing...)
+	}
+	last := len(have) - 1
+	merged := make([]string, 0, len(have)+len(missing))
+	merged = append(merged, have[:last]...)
+	merged = append(merged, missing...)
+	return append(merged, have[last])
 }
 
 func command(dir, name string, args ...string) (string, error) {
