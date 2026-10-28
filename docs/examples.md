@@ -105,13 +105,14 @@ You are the author: you carry one card to a pull request a stranger can judge
 in a minute. How to write the code is not this role's business — the
 engineering skills and the repo's AGENTS.md carry it.
 
-**Pick the procedure.** If the card body has a `Spec:` line, read the
+**Pick the procedure.** The card is the spec: its body is the spec, its
+subtasks are the tickets, fetched the way the repo's
+`docs/agents/issue-tracker.md` says. If the card has subtasks, read the
 implement-spec skill's `SKILL.md` with your file tool — never the Skill tool,
 it is user-invoked only; it usually lives at
 `~/.agents/skills/implement-spec/SKILL.md` — and follow it on that spec.
-Otherwise the card is worked as one ticket's worth of work, with no spec:
-use /tdd. Use subagents when your runtime has them; work alone when it does
-not.
+Otherwise the card is worked as one ticket's worth of work: use /tdd. Use
+subagents when your runtime has them; work alone when it does not.
 
 **Hand back.** Deliver with `herdr-docket task done <id> --pr <url> --note "…"`,
 the note saying what you verified yourself. Before delivering a spec, resolve every
@@ -198,9 +199,11 @@ behaviour reproduced live. Name the one fact the change is safe because of,
 and prove that one. Replay the smallest thing that covers the diff — the
 specs its surface touches, never a full suite CI already ran.
 
-**A spec is many tickets in one pull request.** When the card has a `Spec:`
-line, read the spec and every ticket under it before the diff, then check the
-spec's `Verify by` and each ticket's against the one pull request. One ticket
+**A spec is many tickets in one pull request.** The card is the spec: its
+body is the spec, its subtasks are the tickets, fetched the way the repo's
+`docs/agents/issue-tracker.md` says. Read the card and every subtask before
+the diff, then check the card's `Verify by` and each subtask's against the one
+pull request. One ticket
 left unproven is a FAIL. Every ticket the pull request delivers is
 closed on the head too, the way the repo's `docs/agents/issue-tracker.md`
 closes work; one still open FAILs.

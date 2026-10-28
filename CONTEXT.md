@@ -50,28 +50,27 @@ _Avoid_: checklist, steps, subtasks
 
 **Spec**:
 The unit of work: one idea, grilled with the human and written with
-`to-spec` into the repo's issue tracker (`docs/agents/issue-tracker.md`; here
-`.scratch/<slug>/spec.md`) on the queue's base branch. It carries
-its own _Done when_ and _Verify by_, and ships as one pull request.
+`to-spec` into the repo's tracker (`docs/agents/issue-tracker.md`) as a task
+assigned to an agent: that task is its card. It carries its own _Done when_
+and _Verify by_, and ships as one pull request.
 _Avoid_: PRD, epic, plan
 
 **Ticket**:
-One slice of a spec, written with `to-tickets` beside it (here
-`.scratch/<slug>/issues/<NN>-<slug>.md`): what to build, what blocks it, its
-_Done when_ and _Verify by_. The ticket files are the implementer's plan and
-trigger nothing; the queue never sees them.
+One slice of a spec, written with `to-tickets` as a subtask of the spec's
+task (a sub-issue on GitHub): what to build, what blocks it, its _Done when_
+and _Verify by_. Tickets are the implementer's plan and trigger nothing: the
+queue sees them, and the pick skips any task that has a parent.
 _Avoid_: subtask, issue
 
 **Card**:
-The task filed for a spec, and the only thing that triggers a run. Its body
-is a line `Spec: <path to the spec>` plus the spec's _Done when_ and
-_Verify by_. A card with no `Spec:` line is still a card: its body carries
-its own _Done when_ and _Verify by_, and its run works it as one ticket's
-worth of work, with no spec.
+The task with no parent, and the only thing that triggers a run. The card is
+the spec: its body is the spec, its subtasks are the tickets. A card with no
+subtasks is still a card: its body carries its own _Done when_ and
+_Verify by_, and its run works it as one ticket's worth of work.
 _Avoid_: story, epic
 
-`.scratch` is a plan, not a tracker: the queue holds cards, the repo holds
-specs and tickets, and no adapter learns the graph between them.
+The queue knows one edge of the graph, a ticket's parent, and only to skip
+it; the order tickets run in is the implementer's business.
 
 ## The workers
 

@@ -8,8 +8,8 @@ and the corrections it keeps. The habits below are the difference.
 
 **The grill is the intake.** An idea becomes work in one session with an
 agent: it grills you until the idea is settled, then writes a spec and its
-tickets under `.scratch/<slug>/` with `to-spec` and `to-tickets`, commits
-them, and files one card that points at the spec
+tickets with `to-spec` and `to-tickets` into the repo's tracker — the spec is
+the card, its tickets are subtasks
 ([from idea to card](how-it-works.md#from-idea-to-card)). The questions you
 cannot answer in that session are the ones the factory would have guessed.
 
