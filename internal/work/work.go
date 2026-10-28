@@ -121,6 +121,13 @@ const (
 	PhaseInProgress Phase = "In Progress"
 )
 
+// The grill's two phases (spec TASK-86): a card waiting on its owner's answers,
+// and one waiting on the triager. Written by `task ask` and `task answer`.
+const (
+	PhaseQuestion Phase = "question"
+	PhaseTriage   Phase = "triage"
+)
+
 // Phaser is the optional capability of a source that can show a task as
 // being worked on. Backlog.md has an In Progress state to write, a GitHub
 // board a Status column. The run lock is what actually keeps two runs apart,

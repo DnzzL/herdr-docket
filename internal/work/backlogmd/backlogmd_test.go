@@ -619,3 +619,18 @@ func TestCliDefaultBranchReadsTheRemoteHead(t *testing.T) {
 		t.Fatalf("DefaultBranch = %q, want origin/main", ref)
 	}
 }
+
+// The grill's phases route the card, so they are written, not dropped: until
+// the vocabulary names them, the status is the phase's own word.
+func TestTheGrillPhasesAreWritten(t *testing.T) {
+	c := &fakeClient{}
+	s := NewWith("", c, Vocabulary{}, nil)
+	for _, p := range []work.Phase{work.PhaseQuestion, work.PhaseTriage} {
+		if err := s.SetPhase("T-1", p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if want := []string{"question", "triage"}; !reflect.DeepEqual(c.stages, want) {
+		t.Fatalf("wrote %v, want %v", c.stages, want)
+	}
+}

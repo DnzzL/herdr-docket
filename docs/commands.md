@@ -16,6 +16,8 @@
 | `herdr-docket task create "…" -a AGENT` | add work to the queue (`-s SOURCE` when several, repeatable `--ac "…"` for acceptance criteria) |
 | `herdr-docket task assign ID AGENT` | hand a task to another agent, same id, same thread |
 | `herdr-docket task note ID "…"` | say where things stand without closing |
+| `herdr-docket task ask ID` | park a card in `question` once its `## Round N` note is posted |
+| `herdr-docket task answer ID "1.A 2.T 3. …"` | answer the card's newest round (`## Answer N` note) and send it back to `triage` |
 | `herdr-docket task done\|fail\|block ID` | close with a verdict (`--note "…"` for the evidence; `--pr URL` delivers a PR to the verifier) |
 | `herdr-docket task verdict ID PASS\|FAIL --pr URL --note "…"` | a verifier's verdict, pinned to the PR's diff; the note is the evidence it carries |
 | `herdr-docket agent list` | the agents, and which are parked |

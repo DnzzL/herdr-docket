@@ -25,6 +25,10 @@
   `herdr-docket init <repo> --github <owner>/<project-number>` writes the
   GitHub tracker doc and a `kind: github` source whose `repo` is read from
   `origin`, with no Backlog.md project.
+- **A card is grilled through its notes.** `herdr-docket task ask <id>` moves a
+  card to `question`; `herdr-docket task answer <id> "1.A 2. free text"` posts
+  `## Answer N` for the card's newest `## Round N` note and moves it back to
+  `triage`, and fails naming the card when it has no round.
 - **`herdr-docket status` says whether the daemon is alive:** `daemon live ·
   tick 3s ago`, `daemon down for 4 min` once no tick has run for three
   intervals, or `daemon never started`.

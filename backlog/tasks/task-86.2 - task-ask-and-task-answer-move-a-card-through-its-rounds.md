@@ -1,9 +1,10 @@
 ---
 id: TASK-86.2
 title: task ask and task answer move a card through its rounds
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:29'
+updated_date: '2026-10-28 13:34'
 labels: []
 dependencies: []
 parent_task_id: TASK-86
