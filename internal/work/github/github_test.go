@@ -628,3 +628,16 @@ func TestARepositoryIsAnOwnerAndAName(t *testing.T) {
 		}
 	}
 }
+
+// A repo's origin, in any form git writes it, names the repository the
+// source block reads; anything not on GitHub is refused.
+func TestRepoFromOrigin(t *testing.T) {
+	for _, url := range []string{"git@github.com:org/app.git", "https://github.com/org/app", "https://github.com/org/app.git", "ssh://git@github.com/org/app.git"} {
+		if got, err := RepoFromOrigin(url); err != nil || got != "org/app" {
+			t.Errorf("RepoFromOrigin(%q) = %q, %v; want org/app", url, got, err)
+		}
+	}
+	if _, err := RepoFromOrigin("git@gitlab.com:org/app.git"); err == nil {
+		t.Error("a non-GitHub origin must be refused")
+	}
+}

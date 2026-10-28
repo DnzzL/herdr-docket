@@ -16,8 +16,11 @@ if there is no `backlog/`, adds the fleet's statuses to `backlog/config.yml`
 (the repo's own columns are kept), writes `docs/agents/issue-tracker.md` — how
 the skills publish, fetch and resolve Specs and Tickets there — unless the repo
 already has one, and names the repo as the source in `fleet.yaml`. Running it
-again changes nothing. A `fleet.yaml` that already names another queue is never
-rewritten: init prints the `sources:` block to paste instead.
+again changes nothing. A `fleet.yaml` that already names another queue gets the
+repo beside it: `source:` becomes `sources:`, each entry named after its repo
+directory, and the old queue stays `default_source`. The file is edited in
+place, comments and order kept. A `fleet.yaml` from before the repo was the
+queue — a Backlog.md `source:` with no `dir` — gets the repo set as its `dir`.
 
 ## The file all of it goes in
 
@@ -182,8 +185,8 @@ herdr-docket init ~/Projects/app --github your-org/3   # owner/project-number
 ```
 
 It writes a GitHub `docs/agents/issue-tracker.md` (a Spec is an issue on the
-board with its Agent set, a Ticket a sub-issue of it) and appends the block
-below to `fleet.yaml` — or prints it, if `fleet.yaml` already names a queue.
+board with its Agent set, a Ticket a sub-issue of it) and adds the block
+below to `fleet.yaml` — beside any queue it already names.
 No `backlog/` is created. By hand, the block is:
 
 ```yaml

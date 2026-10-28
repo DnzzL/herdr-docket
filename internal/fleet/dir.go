@@ -59,20 +59,10 @@ func LoadSettings() (Settings, error) {
 		if hasSource && hasSources {
 			return Settings{}, fmt.Errorf("fleet.yaml sets both source: and sources: — use one arrangement of queues, not both")
 		}
-		// A fleet.yaml with no source: at all is a fleet with no queue yet,
-		// which init can still work on; a source: that names no repo is not.
-		if hasSource {
-			if err := s.Source.check(); err != nil {
-				return Settings{}, err
-			}
-		}
+		// A source that names no repo still loads: it is a fleet from before
+		// ADR 0023, and init <repo> is how it gets one. NewSource refuses it.
 	} else if !os.IsNotExist(err) {
 		return Settings{}, err
-	}
-	for name, c := range s.Sources {
-		if err := c.check(); err != nil {
-			return Settings{}, fmt.Errorf("source %q: %w", name, err)
-		}
 	}
 	if s.DefaultSource != "" {
 		if _, ok := s.Sources[s.DefaultSource]; !ok {

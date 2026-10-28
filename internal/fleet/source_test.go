@@ -474,13 +474,18 @@ func TestARetiredQueueIsRefusedNamingTheKindsLeft(t *testing.T) {
 
 // The queue is a project repo's own tracker (ADR 0023): a Backlog.md source
 // that names no repo would be a queue in the fleet dir, which no longer exists.
+// The settings still load, so init <repo> can name the repo on that source.
 func TestABacklogmdSourceWithNoDirIsRefused(t *testing.T) {
 	for _, body := range []string{
 		"source:\n  kind: backlogmd\n",
 		"sources:\n  acme:\n    max_runs: 1\n",
 	} {
 		writeFleetYAML(t, body)
-		_, err := LoadSettings()
+		s, err := LoadSettings()
+		if err != nil {
+			t.Fatalf("%q: settings must load for init to migrate them: %v", body, err)
+		}
+		_, err = NewSource(s)
 		if err == nil || !strings.Contains(err.Error(), "source.dir must name a project repo") {
 			t.Errorf("%q: want the repo error, got %v", body, err)
 		}
