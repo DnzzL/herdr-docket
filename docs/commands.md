@@ -25,10 +25,10 @@
 | `herdr-docket agent pause\|resume NAME` | park an agent, or unschedule nothing more for it |
 | `herdr-docket runs` | the runs in flight; a record past its timeout is marked `stale?` |
 | `herdr-docket status` | whether the daemon is alive: `daemon live · tick 3s ago`, `daemon down for 4 min` (no tick for 3 intervals), `daemon never started`, or `daemon unknown · heartbeat unreadable` |
-| `herdr-docket questions` | the daemon line, then the `question` cards across queues; pick one and answer its newest round question by question — Enter takes the `(reco)`, a letter that option, other text a free answer — then confirm to send it as `task answer` does. Fits 45 columns |
+| `herdr-docket questions` | on a terminal, the pane's Round screen: straight on the round when one card waits, on the pane's Home when several do; tap or click the options, then Send, which posts as `task answer` does. Piped (no terminal), the line prompt: the daemon line, the `question` cards across queues; pick one and answer its newest round question by question — Enter takes the `(reco)`, a letter that option, other text a free answer — then confirm to send. Fits 45 columns |
 | `herdr-docket stop TASK-12` | stop a task's run in flight |
 | `herdr-docket pause [--now]` / `resume` | pause the whole fleet — no new runs, no pipeline stages (`--now` stops runs in flight) |
-| `herdr-docket pane` | the overlay (the plugin opens it for you): the daemon line, Your turn (questions, Blocked cards, merges held for you), runs in flight, the last 5 settled; cut to the terminal width |
+| `herdr-docket pane` | the overlay (the plugin opens it for you): the daemon line, Your turn (questions, Blocked cards, merges held for you), runs in flight, the last 5 settled; cut to the terminal width. A question card opens its Round, answered by taps and Send |
 | `herdr-docket history [TASK-12]` | recent runs: how long, the verdict, what it produced — branch, commits, PR |
 | `herdr-docket logs` | the daemon log's tail (`-n LINES`), without guessing where it lives |
 | `herdr-docket install-skill` | teach your coding agent to write fleet tasks |

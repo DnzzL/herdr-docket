@@ -10,6 +10,7 @@ import (
 
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
+	"github.com/DnzzL/herdr-docket/internal/grill"
 	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/runner"
@@ -199,7 +200,17 @@ func resumeCmd(out io.Writer) error {
 // paneCmd is the overlay: the Home screen, a bubbletea app (ADR 0024) in the
 // alt screen with mouse cell motion, so a click or a Termux tap reaches it.
 func paneCmd() error {
-	m := paneModel{reader: &paneReader{list: listQueue}, closer: host.New()}
+	return runPane(newPane(listQueue, func() (work.Source, error) {
+		_, src, err := settingsAndSource()
+		return src, err
+	}))
+}
+
+func newPane(list func() ([]work.Task, error), source func() (work.Source, error)) paneModel {
+	return paneModel{reader: &paneReader{list: list}, closer: host.New(), source: source}
+}
+
+func runPane(m paneModel) error {
 	_, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	return err
 }
@@ -230,10 +241,23 @@ type paneModel struct {
 	chosen        bool // sel was picked by a key or a click, not the default
 	top           int
 	status        string
+
+	// source opens the queue a Round reads its card from and answers on.
+	source func() (work.Source, error)
+	// open is the card whose Round shows first: `questions` with one card.
+	open string
+	// round is the Round screen while one is open; it takes the keys and
+	// clicks, Home keeps its clock.
+	round *roundModel
 }
 
 func (m paneModel) Init() tea.Cmd {
-	return func() tea.Msg { return paneTick(time.Now()) }
+	tick := func() tea.Msg { return paneTick(time.Now()) }
+	if m.open != "" {
+		id := m.open
+		return tea.Batch(tick, func() tea.Msg { return openRoundMsg{ID: id} })
+	}
+	return tick
 }
 
 func (m paneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -245,7 +269,26 @@ func (m paneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.clamped(), tea.Tick(paneEvery, func(t time.Time) tea.Msg { return paneTick(t) })
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		if m.round != nil {
+			r, _ := m.round.Update(msg)
+			m.round = &r
+		}
 		return m.clamped(), nil
+	case openRoundMsg:
+		return m.openRound(msg.ID), nil
+	case roundDoneMsg:
+		m.round, m.status = nil, msg.status
+		if msg.status != "" && m.reader != nil {
+			m.reader.listed = time.Time{} // the answered card leaves Your turn on the next frame
+		}
+		return m.clamped(), nil
+	}
+	if m.round != nil {
+		r, cmd := m.round.Update(msg)
+		m.round = &r
+		return m, cmd
+	}
+	switch msg := msg.(type) {
 	case tea.MouseMsg:
 		return m.mouse(msg)
 	case tea.KeyMsg:
@@ -367,7 +410,42 @@ func (m *paneModel) follow(rows []paneRow) {
 	}
 }
 
+// openRound reads the card and opens its newest Round; a card that cannot
+// be read, or holds no round, stays on Home with the reason.
+func (m paneModel) openRound(id string) paneModel {
+	if m.source == nil {
+		m.status = id + ": no queue to read the card from"
+		return m
+	}
+	src, err := m.source()
+	if err != nil {
+		m.status = err.Error()
+		return m
+	}
+	t, err := src.Get(id)
+	if err != nil {
+		m.status = err.Error()
+		return m
+	}
+	round, ok := grill.LatestRound(t.Notes)
+	if !ok || len(round.Questions) == 0 {
+		m.status = id + ": no ## Round note to answer"
+		return m
+	}
+	send := func(line string) (string, error) {
+		var b strings.Builder
+		err := taskAnswer(src, id, line, &b)
+		return b.String(), err
+	}
+	r := newRound(id, t.Title, round, send, m.width, m.height)
+	m.round, m.status = &r, ""
+	return m
+}
+
 func (m paneModel) View() string {
+	if m.round != nil {
+		return m.round.View()
+	}
 	lines, _ := m.layout()
 	if m.height > 0 && len(lines) > m.height {
 		top := max(min(m.top, len(lines)-m.height), 0)

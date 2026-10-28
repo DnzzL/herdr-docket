@@ -54,7 +54,7 @@ Usage:
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket runs             Show the runs in flight
   herdr-docket status           Say whether the daemon is live, and its last tick
-  herdr-docket questions        Answer a question card's newest round: Enter = reco, a letter, or text
+  herdr-docket questions        Answer a question card's newest round: tap buttons on a terminal, a line prompt piped
   herdr-docket stop <task-id>   Stop a task's run in flight (it ends cancelled, the task Blocked)
   herdr-docket pause [--now]    Pause the fleet: no new runs or pipeline stages (--now also stops runs in flight)
   herdr-docket resume           Resume the fleet
