@@ -1,9 +1,10 @@
 ---
 id: TASK-87.1
 title: The daemon says it is alive
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:29'
+updated_date: '2026-10-28 13:32'
 labels: []
 dependencies: []
 parent_task_id: TASK-87
