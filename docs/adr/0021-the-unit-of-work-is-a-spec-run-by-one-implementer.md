@@ -13,6 +13,9 @@ and ticket files (blocking edges as text) committed on the queue's base
 branch. The card points to the spec and carries the spec's own `Done when` /
 `Verify by`. `work.Task` does not change: the ticket graph is the run's
 business, not the queue's, so no adapter learns parents or dependencies.
+(Amended by ADR 0023: the spec is the card itself and its tickets are its
+subtasks in the repo's tracker, not `.scratch` files behind a `Spec:` line;
+`work.Task` gains `Parent`, only so the pick skips a ticket.)
 
 **One implementer per repo runs it.** The author's run reads the
 implement-spec skill's `SKILL.md` and follows it on the spec (the skill is
