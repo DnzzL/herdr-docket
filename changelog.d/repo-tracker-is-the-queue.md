@@ -50,3 +50,7 @@
   the `(reco)`, a letter that option, other text a free answer — shows the
   line (`1.A 2.B 3. keep it`) and sends it as `task answer` on `Y`. Nothing it
   prints is wider than 45 columns.
+- **An idea reaches the box in one tap from a phone.** `scripts/termux/idea`
+  is a Termux:Widget shortcut: it asks for the queue and the text, runs
+  `herdr-docket task create` over ssh, and toasts the new id. The README's
+  new "Day to day" section covers the phone and laptop loops and its install.
