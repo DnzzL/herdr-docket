@@ -1,9 +1,10 @@
 ---
 id: TASK-88.3
 title: A wizard sets up the box
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28 13:30'
+updated_date: '2026-10-28 13:34'
 labels: []
 dependencies: []
 parent_task_id: TASK-88
