@@ -148,8 +148,16 @@ commits and PR, and for a verifier run `verified PASS p=…` — and
 that fails, blocks or is held back from merging raises a Herdr notification.
 
 The fleet's own runs in flight are `herdr-docket runs`, or the plugin's
-**Herdr-Docket: runs** overlay pane — `x` stops the selected run, `p` pauses
-the fleet. A stopped run ends cancelled and leaves its task Blocked.
+**Herdr-Docket: runs** overlay pane — select a row with `j`/`k` or a
+click (a tap in Termux), `x` stops the selected run, `p` pauses the fleet, the
+wheel scrolls. A stopped run ends cancelled and leaves its task Blocked.
+A tap on the selected question card (the highlighted first row counts), or
+Enter on it, opens its **Round**: the round's
+context, each question's options as buttons with the `(reco)` preselected
+(one per line under 60 columns, inline when they fit), an "or in plain
+words…" button for a free answer, and a footer `1.A 2.– 3.–  [ Send ]`.
+Send goes through `task answer` — its lock and status checks included — and
+returns Home; Esc goes back without sending.
 
 **Pausing the fleet** (`herdr-docket pause`) is the credit brake: the daemon
 starts no run and a pipeline holds its next stage — verifier, rework — until

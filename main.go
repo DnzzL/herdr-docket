@@ -23,6 +23,7 @@ import (
 	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/hostpath"
 	"github.com/DnzzL/herdr-docket/internal/pick"
+	_ "github.com/DnzzL/herdr-docket/internal/quietterm" // before bubbletea's init: no terminal query
 	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/skill"
 	"github.com/DnzzL/herdr-docket/internal/text"
@@ -54,11 +55,11 @@ Usage:
   herdr-docket agent resume <n> Start scheduling it again
   herdr-docket runs             Show the runs in flight
   herdr-docket status           Say whether the daemon is live, and its last tick
-  herdr-docket questions        Answer a question card's newest round: Enter = reco, a letter, or text
+  herdr-docket questions        Answer a question card's newest round: tap buttons on a terminal, a line prompt piped
   herdr-docket stop <task-id>   Stop a task's run in flight (it ends cancelled, the task Blocked)
   herdr-docket pause [--now]    Pause the fleet: no new runs or pipeline stages (--now also stops runs in flight)
   herdr-docket resume           Resume the fleet
-  herdr-docket pane             The runs-in-flight overlay: select, stop, pause (the plugin's pane)
+  herdr-docket pane             The plugin's pane: Your turn, runs in flight; tap or keys to answer a round, stop, pause
   herdr-docket history [id]     Show recent runs
   herdr-docket logs             Show the daemon log's tail ([-n <lines>])
   herdr-docket changelog        Preview the next release's notes ([release <version>] to cut them)
@@ -632,7 +633,8 @@ func taskAnswer(src work.Source, id, answers string, out io.Writer) error {
 		}
 		return fmt.Errorf("%s is in %s, not %s — only a card waiting on an answer takes one", id, where, work.PhaseQuestion)
 	}
-	n, _, ok := grill.LatestRound(t.Notes)
+	round, ok := grill.LatestRound(t.Notes)
+	n := round.N
 	if !ok {
 		return fmt.Errorf("%s: no ## Round note to answer", id)
 	}
