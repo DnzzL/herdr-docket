@@ -545,6 +545,7 @@ func (f *fakeBoard) itemsNode(number int) *gqlNodes[gqlItem] {
 func (f *fakeBoard) issueData(vars map[string]any) map[string]any {
 	out := f.halves(vars, func(p *gqlProject) { p.ID = testProjectID })
 	out["repository"] = map[string]any{"issue": f.issueNode(varInt(vars, "issue"), vars)}
+	out["viewer"] = map[string]any{"login": f.viewer}
 	return out
 }
 

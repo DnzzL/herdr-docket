@@ -44,7 +44,7 @@ And the block both of them take:
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |
 | `statuses` | The project's own status words — [a project you already have](#work-a-project-you-already-have). Required for `notara`. |
 | `basecamp` | `account_id` and `lists` — [a hosted queue](#a-hosted-queue-basecamp). |
-| `github` | `owner`, `project`, `repo`, `agent_field`, `status_field`, `in_progress` — [a hosted board](#a-hosted-queue-github-projects). |
+| `github` | `owner`, `project`, `repo`, `agent_field`, `status_field`, `in_progress`, `trusted` — [a hosted board](#a-hosted-queue-github-projects). |
 | `notara` | `url`, `workspace`, `database`, `agent_field`, `status_field` — [a Notara database](#a-hosted-queue-notara). |
 
 ## Work a project you already have
@@ -215,6 +215,7 @@ source:
     # agent_field: Agent      # the single-select field carrying the agent
     # status_field: Status    # the board's column field
     # in_progress: In Progress
+    # trusted: [alice]        # logins whose comments reach an agent
 ```
 
 **The board is the queue and the repo is the container.** A task is a real
@@ -222,6 +223,12 @@ issue that has been put on the board — not one of the board's own draft cards,
 because a draft card cannot be commented on and work that leaves no trace is
 not work a fleet can hand on. An issue in the repo that is not on the board is
 somebody else's inbox: the fleet says so and never adds it for you.
+
+**Only trusted comments reach an agent.** An issue's comments become notes in
+the agent's prompt, and anyone can comment on a public repository. The fleet
+reads the comments of the login it signs in as and of the logins in
+`trusted`; it counts the others and reads none of them. A verdict written by
+anyone else does not count either.
 
 Sign in once. The token needs the `project` scope (and `repo`, to write
 issues):

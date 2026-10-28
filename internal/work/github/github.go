@@ -11,6 +11,7 @@ package github
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +50,10 @@ type Config struct {
 	AgentField  string `yaml:"agent_field"`  // default Agent
 	StatusField string `yaml:"status_field"` // default Status
 	InProgress  string `yaml:"in_progress"`  // default "In Progress"
+	// Trusted are the logins whose comments reach an agent, besides the one
+	// the fleet signs in as. Anyone else may comment on a public repository,
+	// and a comment is part of an agent's prompt.
+	Trusted []string `yaml:"trusted"`
 }
 
 func (c Config) agentField() string {
@@ -193,6 +198,9 @@ func (s *Source) Get(id string) (work.Task, error) {
 		return work.Task{}, err
 	}
 	var out struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
 		Organization *boardHalf `json:"organization"`
 		User         *boardHalf `json:"user"`
 		Repository   struct {
@@ -233,7 +241,13 @@ func (s *Source) Get(id string) (work.Task, error) {
 	}
 
 	open := issue.State == stateOpen
-	thread := notes(issue.Comments.Nodes)
+	kept, left := s.trusted(issue.Comments.Nodes, out.Viewer.Login)
+	thread := notes(kept)
+	if left > 0 {
+		// Said in the thread itself, so neither the agent nor the human takes
+		// a filtered thread for the whole of it.
+		thread = strings.TrimSpace(thread + "\n\n" + leftOut(left))
+	}
 	task := work.Task{
 		ID:        strconv.Itoa(issue.Number),
 		Title:     issue.Title,
@@ -254,6 +268,7 @@ func (s *Source) Get(id string) (work.Task, error) {
 		// closed issue: an open one still carrying "Verdict: blocked" is work
 		// a human has since unblocked, and the phase must not follow the
 		// stale word.
+		// thread is already filtered: a verdict a stranger writes is not read.
 		if v := verdictOf(thread); v != "" {
 			task.Verdict = v
 			task.Phase = v.Label()
@@ -633,6 +648,28 @@ func notes(nodes []comment) string {
 		parts = append(parts, who+": "+strings.TrimSpace(c.Body))
 	}
 	return strings.Join(parts, "\n\n")
+}
+
+// trusted keeps, in order, the comments written by the signed-in login or a
+// login the configuration names, and counts the ones it dropped.
+func (s *Source) trusted(nodes []comment, viewer string) (kept []comment, left int) {
+	for _, c := range nodes {
+		// GitHub logins ignore case: "Alice" in fleet.yaml is the "alice" who comments.
+		if c.Author.Login != "" && (strings.EqualFold(c.Author.Login, viewer) || slices.ContainsFunc(s.cfg.Trusted, func(l string) bool { return strings.EqualFold(l, c.Author.Login) })) {
+			kept = append(kept, c)
+		} else {
+			left++
+		}
+	}
+	return kept, left
+}
+
+// leftOut is the line that stands in for the comments trusted dropped.
+func leftOut(n int) string {
+	if n == 1 {
+		return "(1 comment by an author outside source.github.trusted left out)"
+	}
+	return fmt.Sprintf("(%d comments by authors outside source.github.trusted left out)", n)
 }
 
 // verdictOf reads the newest verdict comment, if there is one. Newest first,
