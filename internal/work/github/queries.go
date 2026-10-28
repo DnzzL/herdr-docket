@@ -46,7 +46,7 @@ const itemsQuery = `query Items($owner: String!, $project: Int!, $filter: String
 fragment Page on ProjectV2 {
   items(first: 100, query: $filter) {
     nodes {
-      content { __typename ... on Issue { number title state createdAt } }
+      content { __typename ... on Issue { number title state createdAt parent { number } } }
       agent: fieldValueByName(name: $agentField) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
       status: fieldValueByName(name: $statusField) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
     }
@@ -244,6 +244,11 @@ type issueNode struct {
 	Title     string `json:"title"`
 	State     string `json:"state"`
 	CreatedAt string `json:"createdAt"`
+	// Parent is the issue this one is a sub-issue of — a ticket of that spec
+	// — and null for a top-level issue.
+	Parent *struct {
+		Number int `json:"number"`
+	} `json:"parent"`
 }
 
 // comment is one entry of an issue's thread.

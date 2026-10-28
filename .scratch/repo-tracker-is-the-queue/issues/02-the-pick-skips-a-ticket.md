@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `work.Task.Parent` exists, documented as "a ticket of the spec named here; never picked"
-- [ ] backlogmd fills Parent for a subtask created with `backlog task create --parent` (test against the real CLI, as the adapter's tests do)
-- [ ] github fills Parent from `parent { number }` (fake board test)
-- [ ] A pick over a To Do parent and two To Do subtasks, all assigned, returns only the parent
+- [x] `work.Task.Parent` exists, documented as "a ticket of the spec named here; never picked"
+- [x] backlogmd fills Parent for a subtask created with `backlog task create --parent` (test against the real CLI, as the adapter's tests do)
+- [x] github fills Parent from `parent { number }` (fake board test)
+- [x] A pick over a To Do parent and two To Do subtasks, all assigned, returns only the parent
 
 **Done when:** a subtask is never routed to an agent.
 
