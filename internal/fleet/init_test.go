@@ -334,3 +334,54 @@ func TestInitRepoNeverRewritesAFleetYAMLThatNamesAnotherQueue(t *testing.T) {
 		t.Errorf("init must print the block to paste:\n%s", out.String())
 	}
 }
+
+// init <repo> --github org/3 prepares a GitHub-tracked repo: the GitHub
+// tracker doc, a github source naming the board and the repo read from its
+// origin, and no Backlog.md project.
+func TestInitGithubRepoWritesTheGithubTemplateAndSource(t *testing.T) {
+	config, fleetDir, repo := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("HERDR_PLUGIN_CONFIG_DIR", config)
+	if err := os.WriteFile(filepath.Join(config, "fleet.yaml"), []byte("dir: "+fleetDir+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "git@github.com:org/app.git"}} {
+		if out, err := command(repo, "git", args...); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	if err := InitGithubRepo(loaded(t), repo, "org/3", io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	doc := read(t, filepath.Join(repo, "docs", "agents", "issue-tracker.md"))
+	for _, want := range []string{"gh issue create", "--parent", "gh project item-add 3 --owner org", "Blocked by: #", "gh issue view", "gh issue close"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("issue-tracker.md does not mention %q:\n%s", want, doc)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(repo, "backlog")); !os.IsNotExist(err) {
+		t.Errorf("a GitHub repo must get no backlog/: %v", err)
+	}
+	got := loaded(t).Source
+	if got.Kind != "github" || got.Github.Owner != "org" || got.Github.Project != 3 || got.Github.Repo != "org/app" {
+		t.Errorf("fleet.yaml source = %+v, want kind github, owner org, project 3, repo org/app", got)
+	}
+	var out bytes.Buffer
+	before := read(t, filepath.Join(config, "fleet.yaml"))
+	if err := InitGithubRepo(loaded(t), repo, "org/3", &out); err != nil {
+		t.Fatal(err)
+	}
+	if after := read(t, filepath.Join(config, "fleet.yaml")); after != before {
+		t.Errorf("second run changed fleet.yaml:\n%s\n---\n%s", before, after)
+	}
+}
+
+func TestGithubRepoFromOrigin(t *testing.T) {
+	for _, url := range []string{"git@github.com:org/app.git", "https://github.com/org/app", "https://github.com/org/app.git", "ssh://git@github.com/org/app.git"} {
+		if got, err := githubRepo(url); err != nil || got != "org/app" {
+			t.Errorf("githubRepo(%q) = %q, %v; want org/app", url, got, err)
+		}
+	}
+	if _, err := githubRepo("git@gitlab.com:org/app.git"); err == nil {
+		t.Error("a non-GitHub origin must be refused")
+	}
+}

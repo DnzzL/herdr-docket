@@ -160,7 +160,7 @@ func TestHistoryLineShowsTheVerification(t *testing.T) {
 // init takes no flag: an unknown argument is refused before anything on disk
 // is touched, and the refusal points at plain init.
 func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
-	if err := initCmd("--frobnicate"); err == nil {
+	if err := initCmd([]string{"--frobnicate"}); err == nil {
 		t.Fatal("want an error")
 	} else if !strings.Contains(err.Error(), "herdr-docket init") {
 		t.Errorf("error must point at plain init: %v", err)
@@ -171,7 +171,7 @@ func TestInitRefusesAnUnknownFlagBeforeTouchingAnything(t *testing.T) {
 // `init --factory` must fail loudly, not silently get a plain init and believe
 // the loop is installed: the error names the removal and the way forward.
 func TestInitFactoryFailsNamingTheRemoval(t *testing.T) {
-	err := initCmd("--factory")
+	err := initCmd([]string{"--factory"})
 	if err == nil {
 		t.Fatal("init --factory must fail now that the loop is gone")
 	}

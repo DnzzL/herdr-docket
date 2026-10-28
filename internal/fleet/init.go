@@ -4,11 +4,13 @@ import (
 	_ "embed"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -190,14 +192,72 @@ func InitRepo(s Settings, repo string, out io.Writer) error {
 	if err := initBacklog(repo, statuses); err != nil {
 		return err
 	}
-	if err := initTrackerDoc(repo, out); err != nil {
+	if err := initTrackerDoc(repo, issueTracker, out); err != nil {
 		return err
 	}
 	if known {
 		fmt.Fprintf(out, "fleet.yaml already names %s\n", repo)
 		return nil
 	}
-	return addSource(s, repo, out)
+	return addSource(s, filepath.Base(repo), fmt.Sprintf("kind: backlogmd\ndir: %s\n", repo), out)
+}
+
+// issueTrackerGithub is the GitHub flavour of the tracker doc: Specs and
+// Tickets as issues and sub-issues on a Projects board. {{owner}},
+// {{project}} and {{repo}} are filled in for the repo init prepares.
+//
+//go:embed issue-tracker-github.md
+var issueTrackerGithub string
+
+// InitGithubRepo prepares a GitHub-tracked repo to be the fleet's queue: the
+// fleet, as Init lays it down; the GitHub tracker doc; and a github source
+// naming board ("owner/number") and the repo its origin remote points at.
+// No Backlog.md project: the issues are the queue. Safe to re-run.
+func InitGithubRepo(s Settings, repo, board string, out io.Writer) error {
+	owner, number, ok := strings.Cut(board, "/")
+	project, err := strconv.Atoi(number)
+	if !ok || owner == "" || err != nil || project <= 0 {
+		return fmt.Errorf("init: --github wants <owner>/<project-number>, as in acme/3 — got %q", board)
+	}
+	repo, err = filepath.Abs(expandHome(repo))
+	if err != nil {
+		return err
+	}
+	if fi, err := os.Stat(repo); err != nil || !fi.IsDir() {
+		return fmt.Errorf("init: %s is not a directory", repo)
+	}
+	url, err := command(repo, "git", "remote", "get-url", "origin")
+	if err != nil {
+		return fmt.Errorf("init: %s has no origin remote to name its GitHub repo: %s", repo, url)
+	}
+	name, err := githubRepo(url)
+	if err != nil {
+		return err
+	}
+	if err := Init(s, out); err != nil {
+		return err
+	}
+	doc := strings.NewReplacer("{{owner}}", owner, "{{project}}", number, "{{repo}}", name).Replace(issueTrackerGithub)
+	if err := initTrackerDoc(repo, doc, out); err != nil {
+		return err
+	}
+	for _, c := range append([]SourceConfig{s.Source}, slices.Collect(maps.Values(s.Sources))...) {
+		if c.kind() == kindGithub && c.Github.Owner == owner && c.Github.Project == project && c.Github.Repo == name {
+			fmt.Fprintf(out, "fleet.yaml already names %s on %s\n", name, board)
+			return nil
+		}
+	}
+	block := fmt.Sprintf("kind: github\ngithub:\n  owner: %s\n  project: %d\n  repo: %s\n", owner, project, name)
+	return addSource(s, filepath.Base(repo), block, out)
+}
+
+// githubRepo reads "owner/name" from an origin URL, ssh or https.
+func githubRepo(url string) (string, error) {
+	m := regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$`).FindStringSubmatch(strings.TrimSpace(url))
+	if m == nil {
+		return "", fmt.Errorf("init: origin %q is not a GitHub repository", url)
+	}
+	return m[1] + "/" + m[2], nil
 }
 
 // sourceFor reports whether a Backlog.md source of s already works repo, and
@@ -217,7 +277,7 @@ func (s Settings) sourceFor(repo string) (bool, backlogmd.Vocabulary) {
 
 // initTrackerDoc writes the tracker doc the skills read. One the repo already
 // has is its owner's: kept, and said so.
-func initTrackerDoc(repo string, out io.Writer) error {
+func initTrackerDoc(repo, body string, out io.Writer) error {
 	const rel = "docs/agents/issue-tracker.md"
 	path := filepath.Join(repo, rel)
 	if _, err := os.Stat(path); err == nil {
@@ -227,23 +287,23 @@ func initTrackerDoc(repo string, out io.Writer) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(issueTracker), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "wrote %s\n", rel)
 	return nil
 }
 
-// addSource names repo as the fleet's queue in fleet.yaml. A fleet.yaml with
+// addSource names a repo as the fleet's queue in fleet.yaml, block being its
+// source fields, one per line, unindented. A fleet.yaml with
 // no queue yet gets a source: block appended, the rest of the file untouched.
 // One that already names another queue is the owner's YAML: rewriting it
 // (source: into sources:) would lose its comments and layout, so the block to
 // paste is printed instead and the file is left as it is.
-func addSource(s Settings, repo string, out io.Writer) error {
+func addSource(s Settings, name, block string, out io.Writer) error {
 	path := filepath.Join(hostpath.ConfigDir(), "fleet.yaml")
 	if len(s.Sources) > 0 || s.Source != (SourceConfig{}) {
-		name := filepath.Base(repo)
-		fmt.Fprintf(out, "fleet.yaml already names another queue; left it as it is. To add this repo, list it under sources: (turning a source: block into one entry of it):\n\nsources:\n  %s:\n    kind: backlogmd\n    dir: %s\n\n", name, repo)
+		fmt.Fprintf(out, "fleet.yaml already names another queue; left it as it is. To add this repo, list it under sources: (turning a source: block into one entry of it):\n\nsources:\n  %s:\n%s\n", name, indent(block, "    "))
 		return nil
 	}
 	raw, err := os.ReadFile(path)
@@ -253,15 +313,26 @@ func addSource(s Settings, repo string, out io.Writer) error {
 	if len(raw) > 0 && raw[len(raw)-1] != '\n' {
 		raw = append(raw, '\n')
 	}
-	raw = append(raw, fmt.Sprintf("source:\n  kind: backlogmd\n  dir: %s\n", repo)...)
+	raw = append(raw, "source:\n"+indent(block, "  ")...)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "named %s as the queue in %s\n", repo, path)
+	fmt.Fprintf(out, "named %s as the queue in %s\n", name, path)
 	return nil
+}
+
+// indent prefixes every line of block with pad.
+func indent(block, pad string) string {
+	lines := strings.SplitAfter(block, "\n")
+	for i, l := range lines {
+		if l != "" {
+			lines[i] = pad + l
+		}
+	}
+	return strings.Join(lines, "")
 }
 
 // initBacklog lays down the repo's Backlog.md project when it has none, and
