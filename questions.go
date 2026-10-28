@@ -100,7 +100,10 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 	line := strings.Join(answers, " ")
 	say(out, line)
 	reply, err := ask(r, out, "send? [Y/n] ")
-	if err != nil {
+	// Input that ends at the confirmation is a send: a script or a phone
+	// paste ends after the last answer, and nothing is left to decide
+	// (TASK-87). Any real read error still stops the round.
+	if err != nil && !errors.Is(err, errInputEnded) {
 		return err
 	}
 	if reply != "" && !strings.EqualFold(reply, "y") {
@@ -142,14 +145,18 @@ func askQuestion(r *bufio.Reader, out io.Writer, q grill.Question) (string, erro
 	}
 }
 
+// errInputEnded is a read that found no line at all: a half-answered round is
+// never sent. The confirmation is the one place that treats it as a yes.
+var errInputEnded = errors.New("input ended, nothing sent")
+
 // ask prompts and reads one trimmed line. Input that ends before a line is
-// an error: nothing is sent on a half-answered round.
+// errInputEnded: nothing is sent on a half-answered round.
 func ask(r *bufio.Reader, out io.Writer, prompt string) (string, error) {
 	fmt.Fprint(out, prompt)
 	line, err := r.ReadString('\n')
 	if err != nil && (line == "" || !errors.Is(err, io.EOF)) {
 		fmt.Fprintln(out)
-		return "", fmt.Errorf("input ended, nothing sent")
+		return "", errInputEnded
 	}
 	return strings.TrimSpace(line), nil
 }

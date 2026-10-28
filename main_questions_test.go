@@ -15,9 +15,9 @@ const threeQuestionRound = "## Round 2\n" +
 	"2. Who reads it first?\n   A. the triager (reco)\n   B. the owner\n" +
 	"3. How long is it kept?\n   A. forever (reco)\n   B. 30 days\n"
 
-func questionSource(title string) *phasingSource {
+func questionSource(title string) *grillSource {
 	card := work.Task{ID: "TASK-2", Title: title, Phase: string(work.PhaseQuestion), Notes: threeQuestionRound}
-	return &phasingSource{fakeSource: fakeSource{
+	return &grillSource{fakeSource: &fakeSource{
 		items: []work.Task{card, {ID: "TASK-3", Title: "busy", Open: true, Phase: string(work.PhaseInProgress)}},
 		item:  card,
 	}}
@@ -35,11 +35,11 @@ func runQuestions(t *testing.T, src work.Source, input string) string {
 func TestQuestionsAnswersARoundWithEnterLettersAndFreeText(t *testing.T) {
 	src := questionSource("Voice notes")
 	got := runQuestions(t, src, "\nB\nkeep it\n\n")
-	if want := []string{"## Answer 2\n1.A 2.B 3. keep it"}; !reflect.DeepEqual(src.comments, want) {
+	if want := []string{"## Answer 2\n\n1.A 2.B 3. keep it"}; !reflect.DeepEqual(src.comments, want) {
 		t.Fatalf("commented %q, want %q\n%s", src.comments, want, got)
 	}
-	if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.phases, want) {
-		t.Fatalf("phases %v, want %v", src.phases, want)
+	if want := []work.Phase{work.PhaseTriage}; !reflect.DeepEqual(src.moves, want) {
+		t.Fatalf("moves %v, want %v", src.moves, want)
 	}
 	if !strings.HasPrefix(got, "daemon live") {
 		t.Fatalf("first line must be the daemon line, got %q", got)
@@ -62,8 +62,16 @@ func TestQuestionsFitsA45ColumnTerminal(t *testing.T) {
 	}
 }
 
+func TestQuestionsSendsWhenTheInputEndsAfterTheLastAnswer(t *testing.T) {
+	src := questionSource("Voice notes")
+	got := runQuestions(t, src, "\n B\n keep it\n")
+	if want := []string{"## Answer 2\n\n1.A 2.B 3. keep it"}; !reflect.DeepEqual(src.comments, want) {
+		t.Fatalf("commented %q, want %q\n%s", src.comments, want, got)
+	}
+}
+
 func TestQuestionsWithNoQuestionCardsSaysSo(t *testing.T) {
-	src := &phasingSource{fakeSource: fakeSource{items: []work.Task{{ID: "TASK-3", Open: true, Phase: string(work.PhaseTodo)}}}}
+	src := &fakeSource{items: []work.Task{{ID: "TASK-3", Open: true, Phase: string(work.PhaseTodo)}}}
 	got := runQuestions(t, src, "")
 	if !strings.Contains(got, "no card") {
 		t.Fatalf("must say nothing waits, got %q", got)
