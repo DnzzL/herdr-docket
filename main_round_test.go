@@ -21,7 +21,12 @@ const contextRound = "## Round 2\n" +
 // way Home opens it: an openRoundMsg.
 func roundPane(t *testing.T, width, height int) (paneModel, *phasingSource) {
 	t.Helper()
-	card := work.Task{ID: "TASK-2", Title: "Voice notes", Question: true, Phase: string(work.PhaseQuestion), Notes: contextRound}
+	return roundPaneOn(t, contextRound, width, height)
+}
+
+func roundPaneOn(t *testing.T, notes string, width, height int) (paneModel, *phasingSource) {
+	t.Helper()
+	card := work.Task{ID: "TASK-2", Title: "Voice notes", Question: true, Phase: string(work.PhaseQuestion), Notes: notes}
 	src := &phasingSource{fakeSource: fakeSource{items: []work.Task{card}, item: card}}
 	m := paneModel{data: paneData{Queue: []work.Task{card}}, closer: &closer{},
 		source: func() (work.Source, error) { return src, nil }}
@@ -211,5 +216,28 @@ func TestQuestionsOnATerminalOpensTheRoundOfTheOneCard(t *testing.T) {
 	src.items = nil
 	if _, ok, _ = questionsPane(src); ok {
 		t.Fatal("no card waiting: the line prompt says so, no pane")
+	}
+}
+
+const wideRound = "## Round 1\n" +
+	"1. 音声はどこに保存しますか？ The audio goes where once the note is sent to the card?\n" +
+	"   A. 添付ファイルとしてカードに保存する 📎 (reco)\n   B. 東京のサーバー\n" +
+	"2. Keep it?\n   A. yes (reco)\n   B. no\n"
+
+// A CJK or emoji option is two cells a character: it stays inside the
+// screen, and its tap box is where it is drawn.
+func TestAWideOptionFitsAndItsTapLands(t *testing.T) {
+	for _, width := range []int{45, 120} {
+		m, src := roundPaneOn(t, wideRound, width, 40)
+		for _, line := range strings.Split(m.View(), "\n") {
+			if n := lipgloss.Width(line); n > width {
+				t.Errorf("at %d: %d cells: %q", width, n, line)
+			}
+		}
+		m = tap(t, m, "B 東京")
+		m = tap(t, m, "[ Send ]")
+		if want := []string{"## Answer 1\n1.B 2.A"}; !reflect.DeepEqual(src.comments, want) {
+			t.Fatalf("at %d: commented %q, want %q\n%s", width, src.comments, want, m.View())
+		}
 	}
 }

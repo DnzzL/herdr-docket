@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/grill"
@@ -203,27 +206,34 @@ func say(out io.Writer, s string) {
 	}
 }
 
+// wrap breaks s into lines of at most width terminal cells, continuation
+// lines indented like the first; a word longer than a line is cut.
 func wrap(s string, width int) []string {
 	indent := s[:len(s)-len(strings.TrimLeft(s, " "))]
 	words := strings.Fields(s)
 	if len(words) == 0 {
 		return []string{""}
 	}
+	room := max(width-len(indent), 1)
 	var lines []string
 	cur := indent
 	for _, w := range words {
-		for len([]rune(indent+w)) > width { // a word longer than a line is cut
+		for ansi.StringWidth(w) > room {
 			if strings.TrimSpace(cur) != "" {
 				lines = append(lines, cur)
 			}
-			rw := []rune(w)
-			lines = append(lines, indent+string(rw[:width-len(indent)]))
-			w, cur = string(rw[width-len(indent):]), indent
+			head := ansi.Truncate(w, room, "")
+			if head == "" { // a wide character on a one-cell line
+				_, n := utf8.DecodeRuneInString(w)
+				head = w[:n]
+			}
+			lines = append(lines, indent+head)
+			w, cur = w[len(head):], indent
 		}
 		switch {
 		case strings.TrimSpace(cur) == "":
 			cur = indent + w
-		case len([]rune(cur+" "+w)) <= width:
+		case ansi.StringWidth(cur+" "+w) <= width:
 			cur += " " + w
 		default:
 			lines = append(lines, cur)

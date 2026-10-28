@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/DnzzL/herdr-docket/internal/grill"
 )
@@ -273,7 +274,7 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 			body = append(body, strings.Repeat(" ", indent)+l)
 		}
 	}
-	if head := fmt.Sprintf("%s %s  round %d", m.id, m.title, m.round.N); len([]rune(head)) <= w {
+	if head := fmt.Sprintf("%s %s  round %d", m.id, m.title, m.round.N); ansi.StringWidth(head) <= w {
 		body = append(body, head)
 	} else {
 		add(head, 0)
@@ -313,12 +314,8 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 			if editing {
 				text += "▏"
 			}
-			r := []rune(text)
-			if room := w - 4; len(r) > room { // one line: the tail being typed stays in view
-				r = append([]rune("…"), r[len(r)-room+1:]...)
-			}
 			bodyHits = append(bodyHits, roundHit{0, w, len(body), len(body), focus{kind: wordsButton, q: qi}})
-			body = append(body, "  > "+string(r))
+			body = append(body, "  > "+tail(text, w-4)) // one line: the end being typed stays in view
 		}
 	}
 	body = append(body, "")
@@ -350,7 +347,7 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 	summary := wrap(strings.Join(marks, " "), w)
 	last := summary[len(summary)-1]
 	foot = append(foot, summary[:len(summary)-1]...)
-	if x := len([]rune(last)) + 3; x+len(sendBtn) <= w {
+	if x := ansi.StringWidth(last) + 3; x+len(sendBtn) <= w {
 		footHits = append(footHits, roundHit{x, x + len(sendBtn), len(foot), len(foot), send})
 		foot = append(foot, last+"   "+sendDrawn)
 	} else {
@@ -382,7 +379,7 @@ func (m roundModel) buttons(body *[]string, labels []string, qi, w int) []roundH
 	inline := w >= inlineWidth
 	total := len(indent)
 	for _, l := range labels {
-		total += len([]rune(l)) + 4 // "[" + label + " ]" + gap
+		total += ansi.StringWidth(l) + 4 // "[" + label + " ]" + gap
 	}
 	if inline && total-1 <= w {
 		var b strings.Builder
@@ -390,7 +387,7 @@ func (m roundModel) buttons(body *[]string, labels []string, qi, w int) []roundH
 		x := len(indent)
 		for i, l := range labels {
 			s := "[" + l + " ]"
-			n := len([]rune(s))
+			n := ansi.StringWidth(s)
 			hits = append(hits, roundHit{x, x + n, len(*body), len(*body), at(i)})
 			b.WriteString(focused(i, s) + " ")
 			x += n + 1
@@ -455,6 +452,18 @@ func (m roundModel) laidOut(follow bool) roundModel {
 	}
 	m.lines, m.hits = append(lines, foot...), hits
 	return m
+}
+
+// tail is the end of s in at most n cells, "…" first when it is cut.
+func tail(s string, n int) string {
+	if ansi.StringWidth(s) <= n {
+		return s
+	}
+	r := []rune(s)
+	for len(r) > 0 && ansi.StringWidth(string(r))+1 > n {
+		r = r[1:]
+	}
+	return "…" + string(r)
 }
 
 func (m roundModel) View() string { return strings.Join(m.lines, "\n") }
