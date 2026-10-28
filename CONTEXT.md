@@ -140,7 +140,9 @@ _Avoid_: inbox, draft, grooming
 **Question**:
 The status of a card whose grill waits on the owner's answer: a round of
 numbered questions in a note, carried as the task's Question flag — not
-Blocked. Never picked; the answer sends it back to Triage.
+Blocked. Never picked; the daemon raises one `answer owed` popup per round,
+so the wait is heard and not only written on the board, and the answer sends
+it back to Triage.
 _Avoid_: blocked (a Verdict), waiting, needs-info
 
 **Triager**:

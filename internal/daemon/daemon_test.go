@@ -229,7 +229,7 @@ func TestATickSettlesAHeldTaskWhosePullRequestIsMerged(t *testing.T) {
 	forge := &settleForge{state: "MERGED"}
 	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}, runner.WithForge(forge))
 
-	evaluate(runs, map[string]bool{})
+	evaluate(runs, fakeHost{}, map[string]bool{})
 	waitClosed(t, src, id)
 
 	if got := src.verdict(id); got != work.Done {
@@ -255,7 +255,7 @@ func TestEachTickWritesToTheQueueItReadFrom(t *testing.T) {
 	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"})
 	reported := map[string]bool{}
 
-	evaluate(runs, reported)
+	evaluate(runs, fakeHost{}, reported)
 	waitClosed(t, first, "TASK-1")
 	if second.closed("TASK-1") {
 		t.Fatal("the first tick must not write to the queue it never read from")
@@ -265,7 +265,7 @@ func TestEachTickWritesToTheQueueItReadFrom(t *testing.T) {
 	// returns; evaluate again only once it is gone, or the in-flight check
 	// silently drops the task and the second queue never sees a run.
 	waitEnded(t, runs, "TASK-1")
-	evaluate(runs, reported)
+	evaluate(runs, fakeHost{}, reported)
 	waitClosed(t, second, "TASK-1")
 }
 
@@ -288,7 +288,7 @@ func TestWorkIsNeverRoutedToAnAgentOfAnotherProject(t *testing.T) {
 		}}, nil
 	}
 
-	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), fakeHost{}, map[string]bool{})
 
 	if src.closed("dishnow/TASK-1") {
 		t.Error("a misrouted task must not be run, and must not be closed")
@@ -316,8 +316,8 @@ func TestAnUnknownAssigneeIsToldWhoDoesAnswer(t *testing.T) {
 	reported := map[string]bool{}
 	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"})
 
-	evaluate(runs, reported)
-	evaluate(runs, reported)
+	evaluate(runs, fakeHost{}, reported)
+	evaluate(runs, fakeHost{}, reported)
 
 	if src.closed("TASK-1") {
 		t.Fatal("an unknown assignee must not run the task")
@@ -372,8 +372,8 @@ func TestABlockedTaskIsNeverRunAndNeverTalkedTo(t *testing.T) {
 		}}, nil
 	}
 
-	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
-	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), fakeHost{}, map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), fakeHost{}, map[string]bool{})
 
 	if src.closed("fleet/TASK-1") {
 		t.Fatal("parked work must not be run nor closed by a refusal")
@@ -402,7 +402,7 @@ func TestAClosedTaskIsNeverCalledMisrouted(t *testing.T) {
 		}}, nil
 	}
 
-	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), fakeHost{}, map[string]bool{})
 
 	if n := len(src.notesFor()); n != 0 {
 		t.Errorf("a closed task must be left alone, got %d notes: %v", n, src.notesFor())
@@ -458,7 +458,7 @@ func TestATaskThisProcessIsRunningIsNotPickedAgain(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	evaluate(runs, map[string]bool{})
+	evaluate(runs, fakeHost{}, map[string]bool{})
 	deadline := time.Now().Add(2 * time.Second)
 	for h.count() < 2 && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
@@ -468,7 +468,7 @@ func TestATaskThisProcessIsRunningIsNotPickedAgain(t *testing.T) {
 	}
 }
 
-// A paused fleet starts nothing: the tick does not even read the queue.
+// A paused fleet starts nothing: no run is claimed or opened.
 func TestAPausedFleetStartsNoRun(t *testing.T) {
 	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
 	if err := runner.SetPaused(true); err != nil {
@@ -480,7 +480,7 @@ func TestAPausedFleetStartsNoRun(t *testing.T) {
 	}, src)
 	runs := runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"})
 
-	evaluate(runs, map[string]bool{})
+	evaluate(runs, fakeHost{}, map[string]bool{})
 	time.Sleep(20 * time.Millisecond)
 	if runs.Running("TASK-1") || src.closed("TASK-1") {
 		t.Fatal("a paused fleet must not start a run")
@@ -542,12 +542,12 @@ func TestMaxRunsCapsTheFleetAcrossTicks(t *testing.T) {
 	defer close(h.release)
 	runs := runner.New(h, fleet.Settings{Dir: "/fleet"})
 
-	evaluate(runs, map[string]bool{})
+	evaluate(runs, fakeHost{}, map[string]bool{})
 	waitStarted(t, h, 2)
 	if h.count() != 2 {
 		t.Fatalf("first tick started %d runs, want 2", h.count())
 	}
-	evaluate(runs, map[string]bool{})
+	evaluate(runs, fakeHost{}, map[string]bool{})
 	waitStarted(t, h, 2)
 	if h.count() != 2 {
 		t.Fatalf("a tick with 2 runs in flight started more: %d", h.count())
@@ -573,7 +573,7 @@ func TestMaxRunsPerProjectLeavesTheOtherProjectAlone(t *testing.T) {
 	defer close(h.release)
 	runs := runner.New(h, fleet.Settings{Dir: "/fleet"})
 
-	evaluate(runs, map[string]bool{})
+	evaluate(runs, fakeHost{}, map[string]bool{})
 	waitStarted(t, h, 2)
 	app := 0
 	for _, id := range runs.InFlight() {
@@ -604,7 +604,7 @@ func TestATicketIsNeverCalledMisrouted(t *testing.T) {
 		}}, nil
 	}
 
-	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
+	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), fakeHost{}, map[string]bool{})
 
 	if notes := src.notesFor(); len(notes) != 0 {
 		t.Fatalf("a ticket is not routed, so it is never misrouted: %v", notes)
