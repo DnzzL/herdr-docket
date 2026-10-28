@@ -26,7 +26,8 @@ func beat(at time.Time) error {
 
 // Liveness is the one-line answer to "is the daemon working?" at now:
 // `daemon live · tick 3s ago`, `daemon down for 4 min` once the last tick is
-// older than three tick intervals, or `daemon never started`.
+// older than three tick intervals, `daemon never started`, or `daemon unknown ·
+// heartbeat unreadable` when the file holds no time.
 func Liveness(now time.Time) string {
 	raw, err := os.ReadFile(heartbeatPath())
 	if err != nil {
@@ -34,7 +35,7 @@ func Liveness(now time.Time) string {
 	}
 	sec, err := strconv.ParseInt(strings.TrimSpace(string(raw)), 10, 64)
 	if err != nil {
-		return "daemon never started"
+		return "daemon unknown · heartbeat unreadable"
 	}
 	age := now.Sub(time.Unix(sec, 0))
 	if age > 3*tickInterval {

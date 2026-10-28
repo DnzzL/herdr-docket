@@ -9,7 +9,7 @@
 # in Triage.
 #
 # --dry-run prints the ssh command instead of running it. It reads the queue
-# and text from IDEA_QUEUE and IDEA_TEXT instead of the dialogs, and BOX from
+# (empty: no -s) and text from IDEA_QUEUE and IDEA_TEXT instead of the dialogs, and BOX from
 # the env file or the environment (default: box), so it runs on any Linux.
 
 set -euo pipefail
@@ -42,29 +42,32 @@ json_text() {
 }
 
 if (( DRY_RUN )); then
-  queue="${IDEA_QUEUE:-default}"
+  queue="${IDEA_QUEUE:-}"
   text="${IDEA_TEXT:-}"
 else
   queues=$(ssh "$BOX" herdr-docket queues) || { notify "idea: ssh $BOX failed"; exit 1; }
-  if [[ "$queues" == "default" ]]; then
-    queue=default
-  else
+  queue=""
+  # One queue, or one unnamed source (no line at all): nothing to choose and
+  # no -s to pass.
+  if (( $(grep -c . <<<"$queues") > 1 )); then
     queue=$(termux-dialog radio -t "Queue" -v "$(paste -sd, - <<<"$queues")" | json_text)
+    [[ -n "$queue" ]] || exit 0
   fi
-  [[ -n "$queue" ]] || exit 0
-  text=$(termux-dialog text -t "Idea ($queue)" -m | json_text)
+  text=$(termux-dialog text -t "Idea${queue:+ ($queue)}" -m | json_text)
 fi
 
 [[ -n "${text//[[:space:]]/}" ]] || { (( DRY_RUN )) && echo "idea: empty text" >&2; exit 0; }
 
-# ssh joins its arguments into one line for the remote shell: quote each part.
+# ssh joins its arguments into one line for the remote shell: single-quote
+# each part (a ' inside becomes '\'').
+squote() { printf "'%s'" "${1//\'/\'\\\'\'}"; }
 remote="herdr-docket task create"
-# A single-source fleet names its queue "default" and rejects -s default.
-[[ "$queue" != "default" ]] && remote+=" -s $(printf '%q' "$queue")"
-remote+=" $(printf '%q' "$text")"
+[[ -n "$queue" ]] && remote+=" -s $(squote "$queue")"
+remote+=" $(squote "$text")"
 
 if (( DRY_RUN )); then
-  printf 'ssh %q %q\n' "$BOX" "$remote"
+  # Exactly what ssh hands the box's shell, as one would type it.
+  printf 'ssh %q %s\n' "$BOX" "$remote"
   exit 0
 fi
 

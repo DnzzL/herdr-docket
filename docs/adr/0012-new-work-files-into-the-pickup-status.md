@@ -30,9 +30,12 @@ Two moves, both inside the port's existing grammar:
    exists in a column it does not belong in. There is no readback and no
    second round trip.
 
-(Amended by TASK-88: with a triager, unassigned new work files into Triage —
-the CLI creates as above, then moves the card through `Phaser`, so a queue
-with a `default_agent` has a short window where the card sits in To Do.)
+(Amended by TASK-88: with a triager, unassigned new work files into Triage.
+`TodoStarter`/`CreateTodo` became `PhaseStarter`/`CreateIn(phase, …)`, so the
+card is created straight into Triage in the same one write — creating in To
+Do then moving it let a `default_agent` claim it in between, measured at 4–8%
+of creates. A source without the capability still creates through `Create`,
+and the CLI moves the card after and says so.)
 
 ## What was rejected, and why
 

@@ -1,6 +1,8 @@
 package daemon
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -48,5 +50,20 @@ func TestATickWritesTheHeartbeat(t *testing.T) {
 	evaluate(runner.New(fakeHost{}, fleet.Settings{Dir: "/fleet"}), map[string]bool{})
 	if got := Liveness(time.Now()); !strings.HasPrefix(got, "daemon live") {
 		t.Errorf("Liveness after a tick = %q, want daemon live …", got)
+	}
+}
+
+// A heartbeat file that does not hold a time is not a daemon that never
+// started: the file was written, so the line says it cannot read it.
+func TestLivenessUnreadableHeartbeatSaysSo(t *testing.T) {
+	ownStateDir(t)
+	if err := os.MkdirAll(filepath.Dir(heartbeatPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(heartbeatPath(), []byte("garbage\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := Liveness(time.Now()); got != "daemon unknown · heartbeat unreadable" {
+		t.Errorf("Liveness = %q, want daemon unknown · heartbeat unreadable", got)
 	}
 }

@@ -425,3 +425,25 @@ func TestTheVerifierIsToldThePRAndTheVerdictCommandOnly(t *testing.T) {
 		}
 	}
 }
+
+// The triager's role says a card labelled `grill` always gets a round: the
+// label has to reach it, so the card's head names its labels.
+func TestThePromptNamesTheCardsLabels(t *testing.T) {
+	v := work.Task{ID: "TASK-1", Title: "Voice notes", Labels: []string{"grill", "mobile"}}
+	p := Triage(fleet.Agent{Persona: "P"}, v, "dev", t.TempDir())
+	if !strings.Contains(p, "Labels: grill, mobile") {
+		t.Fatalf("the prompt does not name the card's labels:\n%s", p)
+	}
+	if strings.Contains(Triage(fleet.Agent{Persona: "P"}, work.Task{ID: "TASK-1"}, "dev", t.TempDir()), "Labels:") {
+		t.Fatal("a card with no labels must not get an empty Labels line")
+	}
+}
+
+// A triage run publishes the card it was given: the prompt says to edit
+// that card, not to create a second spec beside it.
+func TestATriageRunIsToldToEditTheCardItPublishes(t *testing.T) {
+	p := Triage(fleet.Agent{Persona: "P"}, work.Task{ID: "TASK-1"}, "dev", t.TempDir())
+	if !strings.Contains(p, "already exists") {
+		t.Fatalf("the triage prompt must say the card already exists:\n%s", p)
+	}
+}

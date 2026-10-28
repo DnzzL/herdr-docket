@@ -223,8 +223,9 @@ func (s *Source) List() ([]work.Task, error) {
 			Title:     n.Content.Title,
 			Assignee:  n.Agent.Name,
 			Open:      open,
-			Blocked:   open && (n.Status.Name == parkedOption || n.Status.Name == questionOption),
-			Triage:    open && n.Status.Name == triageOption,
+			Blocked:   open && s.vocab().Parked(n.Status.Name),
+			Triage:    open && s.vocab().InTriage(n.Status.Name),
+			Question:  open && s.vocab().InQuestion(n.Status.Name),
 			Phase:     s.phase(n.Status.Name, open),
 			Ordinal:   float64(i), // the board's order is the queue's order
 			CreatedAt: n.Content.CreatedAt,
@@ -321,9 +322,32 @@ func (s *Source) Get(id string) (work.Task, error) {
 // to discover it would be an issue nobody asked for. The issue and its place
 // on the board are one mutation, so the create cannot half-happen either.
 func (s *Source) Create(title, body, agent string) (string, error) {
+	return s.create("", title, body, agent)
+}
+
+// CreateIn is Create that also files the new item into phase's column, the
+// way Create already routes it: the column is checked before the issue is
+// written, and set on the item in the same pass as the agent — so the card
+// never stands on the board in a column it was not meant for.
+func (s *Source) CreateIn(phase work.Phase, title, body, agent string) (string, error) {
+	return s.create(phase, title, body, agent)
+}
+
+// create is Create and CreateIn: phase "" leaves the column to the board.
+func (s *Source) create(phase work.Phase, title, body, agent string) (string, error) {
 	t, err := s.createTarget()
 	if err != nil {
 		return "", err
+	}
+	var column *option
+	if phase != "" {
+		field := t.project.field(s.cfg.statusField())
+		if field == nil {
+			return "", fmt.Errorf("github: the board has no %q field", s.cfg.statusField())
+		}
+		if column = field.option(s.phaseWord(phase)); column == nil {
+			return "", fmt.Errorf("github: the board's %s field has no %q option — add it", s.cfg.statusField(), s.phaseWord(phase))
+		}
 	}
 	var routed *option
 	if agent != "" {
@@ -359,7 +383,7 @@ func (s *Source) Create(title, body, agent string) (string, error) {
 		return "", fmt.Errorf("github: creating %q answered no issue", title)
 	}
 	id := strconv.Itoa(issue.Number)
-	if routed == nil {
+	if routed == nil && column == nil {
 		return id, nil
 	}
 
@@ -369,9 +393,15 @@ func (s *Source) Create(title, body, agent string) (string, error) {
 		// Say which issue, so the work can be found and routed by hand.
 		return "", fmt.Errorf("github: created issue #%s but could not find it on %s: %w", id, s.boardName(), err)
 	}
-	field := t.project.field(s.cfg.agentField())
-	if err := s.setField(&t.project, item.ID, field, routed); err != nil {
-		return "", fmt.Errorf("github: created issue #%s but could not route it to %q: %w", id, agent, err)
+	if column != nil {
+		if err := s.setField(&t.project, item.ID, t.project.field(s.cfg.statusField()), column); err != nil {
+			return "", fmt.Errorf("github: created issue #%s but could not file it into %s: %w", id, phase, err)
+		}
+	}
+	if routed != nil {
+		if err := s.setField(&t.project, item.ID, t.project.field(s.cfg.agentField()), routed); err != nil {
+			return "", fmt.Errorf("github: created issue #%s but could not route it to %q: %w", id, agent, err)
+		}
 	}
 	return id, nil
 }
@@ -650,31 +680,34 @@ func (s *Source) phase(status string, open bool) string {
 		}
 		return ""
 	}
-	switch status {
-	case "", "Todo", "To Do":
+	if status == "" || status == "To Do" {
 		return string(work.PhaseTodo)
-	case s.cfg.inProgress():
-		return string(work.PhaseInProgress)
 	}
-	return status
+	return s.vocab().Phase(status)
+}
+
+// vocab is the board's column words in the fleet's terms — the one
+// phase↔word table, read both ways. GitHub's own defaults, In Progress as
+// configured, and the grill's columns. The board has no column words for the
+// endings: a closed issue's verdict is read off its thread.
+func (s *Source) vocab() work.Vocabulary {
+	return work.Vocabulary{
+		Todo:       "Todo",
+		InProgress: s.cfg.inProgress(),
+		Blocked:    parkedOption,
+		Triage:     triageOption,
+		Question:   questionOption,
+	}
 }
 
 // phaseWord is the column's word for a phase the fleet wants to show. Only the
-// phases the fleet writes ever reach it, so the To Do and Done spellings are
-// GitHub's defaults and nothing more.
+// phases the fleet writes ever reach it; one the table has no word for is
+// tried under its own name.
 func (s *Source) phaseWord(p work.Phase) string {
-	switch p {
-	case work.PhaseTodo:
-		return "Todo"
-	case work.PhaseInProgress:
-		return s.cfg.inProgress()
-	case work.PhaseTriage:
-		return triageOption
-	case work.PhaseQuestion:
-		return questionOption
-	default:
-		return string(p)
+	if w := s.vocab().Word(p); w != "" {
+		return w
 	}
+	return string(p)
 }
 
 // notes renders the thread. The author is part of the note: a conversation the

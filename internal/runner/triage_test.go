@@ -7,6 +7,7 @@ import (
 
 	"github.com/DnzzL/herdr-docket/internal/fleet"
 	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/host"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -51,7 +52,7 @@ func (tr *triage) run() error {
 // to Question, waiting on the owner.
 func ask(b *fakeBoard) {
 	it := b.items["TASK-1"]
-	it.Triage, it.Phase = false, string(work.PhaseQuestion)
+	it.Triage, it.Question, it.Phase = false, true, string(work.PhaseQuestion)
 	b.items["TASK-1"] = it
 }
 
@@ -116,5 +117,58 @@ func TestATriageRunThatLeavesTheCardInTriageFails(t *testing.T) {
 	}
 	if len(tr.host.notifies) != 1 {
 		t.Fatalf("a failed triage run must reach a human: %+v", tr.host.notifies)
+	}
+}
+
+// The triager edits the card through the tracker's own CLI, and the daemon
+// reads the queue from the repo itself: a worktree copy would take the edit
+// where nothing reads it. So a triage run works in the repo root whatever
+// the agent's workspace says.
+func TestATriageRunWorksInTheRepoRootEvenForAWorktreeAgent(t *testing.T) {
+	tr := newTriage(t, ask)
+	it := tr.board.items["TASK-1"]
+	if err := tr.runner.Run(tr.board, it, fleet.Agent{Name: "tri", Workdir: "/w", Workspace: "worktree", Kind: "claude",
+		TimeoutMinutes: 1, Persona: "P"}, history.TriggerPoll); err != nil {
+		t.Fatal(err)
+	}
+	if got := tr.host.spec.Workspace; got != host.WorkspaceRoot || tr.host.spec.Repo != "/w" {
+		t.Fatalf("triage run workspace = %q in %q, want root in /w", got, tr.host.spec.Repo)
+	}
+}
+
+// The owner may answer the round the triager just asked before the run has
+// settled: the card is back in Triage, but with an answer it did not have
+// when the run started — handed on twice, not left untouched.
+func TestATriageCardAnsweredDuringTheRunIsHandedOnNotFailed(t *testing.T) {
+	tr := newTriage(t, func(b *fakeBoard) {
+		it := b.items["TASK-1"]
+		it.Notes += "\n\n## Round 2\n1. Keep it how long?\n\n## Answer 2\n1. a month"
+		b.items["TASK-1"] = it // asked, then answered: in Triage again
+	})
+	if err := tr.run(); err != nil {
+		t.Fatalf("a card answered mid-run is not a failed run: %v", err)
+	}
+	if it := tr.board.items["TASK-1"]; !it.Open || it.Verdict != "" {
+		t.Fatalf("the answered card must stay in triage for the next run: %+v", it)
+	}
+}
+
+// Held answers for any process whether a run has the card in hand: the CLI
+// asks before it writes an answer under a live triage run.
+func TestHeldSaysWhetherARunHoldsTheTask(t *testing.T) {
+	t.Setenv("HERDR_PLUGIN_STATE_DIR", t.TempDir())
+	if Held("TASK-1") {
+		t.Fatal("no run yet, but Held says one holds TASK-1")
+	}
+	r := New(&fakeHost{}, fleet.Settings{})
+	if _, ok := r.acquire(taskKey("TASK-1")); !ok {
+		t.Fatal("could not take the task lock")
+	}
+	if !Held("TASK-1") || Held("TASK-2") {
+		t.Fatal("Held must name the task a run holds, and only it")
+	}
+	r.release(taskKey("TASK-1"))
+	if Held("TASK-1") {
+		t.Fatal("a released task is not held")
 	}
 }

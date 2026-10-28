@@ -20,6 +20,15 @@ backlog task create "<ticket title>" --parent <spec-id> --dep <ticket-ids> \
 `--dep` names the Tickets this one is blocked by (comma-separated); leave it
 out when there are none. Each acceptance criterion is one `--ac`.
 
+When the Spec's card already exists — a triage run publishing the card it
+grilled — edit that card instead of creating a second one: rewrite its body
+as the spec, set it To Do and name its agent, then create its Tickets as
+above:
+
+```sh
+backlog task edit <id> -d "<spec body>" -s "To Do" -a <agent>
+```
+
 ## When a skill says "fetch the relevant ticket"
 
 ```sh

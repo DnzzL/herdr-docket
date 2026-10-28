@@ -200,8 +200,8 @@ func TestTheTriageAndQuestionColumnsAreTheGrills(t *testing.T) {
 	if got := byID[strconv.Itoa(idea)]; !got.Open || !got.Triage || got.Blocked || got.Phase != "Triage" {
 		t.Errorf("idea = %+v, want open, in triage, not blocked", got)
 	}
-	if got := byID[strconv.Itoa(asked)]; !got.Blocked || got.Triage || got.Phase != "Question" {
-		t.Errorf("asked = %+v, want blocked on the owner, not in triage", got)
+	if got := byID[strconv.Itoa(asked)]; !got.Question || got.Blocked || got.Triage || got.Phase != "Question" {
+		t.Errorf("asked = %+v, want a question, not blocked, not in triage", got)
 	}
 }
 
@@ -589,6 +589,31 @@ func TestCreateWithoutARoutingKeyWritesNoRouting(t *testing.T) {
 	number, _ := strconv.Atoi(id)
 	if got := f.itemOf(number).agent; got != "" {
 		t.Errorf("an unrouted issue is on %q, want no routing key", got)
+	}
+}
+
+// An idea for the triager lands in the Triage column in the create's own
+// pass: the column is checked before the issue is written, and the item never
+// stands unfiled where the default agent would claim it.
+func TestCreateInFilesTheItemIntoThePhasesColumn(t *testing.T) {
+	f := newFakeBoard()
+	f.fields = []*fakeField{f.newField("Status", "Triage", "Question", "Todo", "Done")}
+	f.provisionAgent("dev")
+
+	id, err := f.source(t).CreateIn(work.PhaseTriage, "an idea", "", "dev")
+	if err != nil {
+		t.Fatalf("CreateIn: %v", err)
+	}
+	number, _ := strconv.Atoi(id)
+	if item := f.itemOf(number); item.status != "Triage" || item.agent != "dev" {
+		t.Fatalf("item = %+v, want in Triage, routed to dev", item)
+	}
+
+	f = newFakeBoard()
+	f.fields = []*fakeField{f.newField("Status", "Todo", "Done")}
+	f.provisionAgent("dev")
+	if _, err := f.source(t).CreateIn(work.PhaseTriage, "an idea", "", ""); err == nil || len(f.issues) != 0 {
+		t.Fatalf("a board with no Triage column must refuse before writing: err %v, %d issues", err, len(f.issues))
 	}
 }
 

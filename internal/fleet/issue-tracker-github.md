@@ -29,6 +29,17 @@ gh issue create -R {{repo}} --parent <spec-number> -t "<ticket title>" -b "Block
 The `Blocked by:` line names the Tickets this one waits on; leave it out when
 there are none. Each acceptance criterion is one checklist line.
 
+When the Spec's card already exists — a triage run publishing the card it
+grilled — edit that issue instead of creating a second one: rewrite its body
+as the spec, set its Status to Todo and name its agent, then create its
+Tickets as above:
+
+```sh
+gh issue edit <n> -R {{repo}} --body-file <spec-body-file>
+gh project item-edit {{project}} --owner {{owner}} --url <issue-url> --field Status --value Todo
+gh project item-edit {{project}} --owner {{owner}} --url <issue-url> --field Agent --value <agent>
+```
+
 ## When a skill says "fetch the relevant ticket"
 
 ```sh

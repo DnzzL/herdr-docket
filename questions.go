@@ -28,8 +28,9 @@ func questionsCmd() error {
 	return answerQuestions(src, daemon.Liveness(time.Now()), os.Stdin, os.Stdout)
 }
 
-// questionCards lists the cards waiting on the owner's answer. Phase alone
-// decides: a Question card is parked, not Open, on Backlog.md.
+// questionCards lists the cards waiting on the owner's answer: the Question
+// flag decides, whatever the queue says about Open. A card a live run still
+// holds is not the owner's turn yet, and `task answer` would refuse it.
 func questionCards(src work.Source) ([]work.Task, error) {
 	items, err := src.List()
 	if err != nil {
@@ -37,7 +38,7 @@ func questionCards(src work.Source) ([]work.Task, error) {
 	}
 	var cards []work.Task
 	for _, it := range items {
-		if it.Phase == string(work.PhaseQuestion) {
+		if it.Question && !runHeld(it.ID) {
 			cards = append(cards, it)
 		}
 	}
@@ -55,7 +56,7 @@ func answerQuestions(src work.Source, live string, in io.Reader, out io.Writer) 
 		return err
 	}
 	if len(cards) == 0 {
-		say(out, "no card waits on an answer")
+		say(out, "no card in Question")
 		return nil
 	}
 	r := bufio.NewReader(in)

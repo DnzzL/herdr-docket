@@ -32,8 +32,14 @@ a yes to it publishes.
 **Ask.** Post the round with `herdr-docket task note <id> "<the round>"`, then
 `herdr-docket task ask <id>`: the card waits in Question for the owner.
 
-**Publish.** Rewrite the card's body as the spec — Problem, Solution, Done
-when, Verify by, ASSUMPTIONS — and create its tickets, the way the repo's
-`docs/agents/issue-tracker.md` says. Set the card to To Do there and hand it
-to its author with `herdr-docket task assign <id> <author>`. A run that leaves
-the card in triage is a failed run.
+**Publish.** The card already exists: edit it, never create a second spec.
+Rewrite its body as the spec — Problem, Solution, Done when, Verify by,
+ASSUMPTIONS — set it to To Do with the tracker's own command and create its
+tickets, the way the repo's `docs/agents/issue-tracker.md` says for a card
+that already exists. Then hand it to its author with
+`herdr-docket task assign <id> <author>`. A run that leaves the card in
+triage is a failed run.
+
+**Where you work.** A triage run always works in the repo root, never a
+worktree, whatever your workspace setting: the card you edit with the
+tracker's CLI must be the one the fleet reads.

@@ -166,7 +166,7 @@ func (s *Source) Create(title, body, assignee string) (string, error) {
 	case 0:
 		return "", fmt.Errorf("no queues to create work in")
 	case 1:
-		id, _, err := s.CreateIn(s.names[0], title, body, assignee)
+		id, _, err := s.CreateIn(s.names[0], work.PhaseTodo, title, body, assignee)
 		return id, err
 	default:
 		return "", fmt.Errorf("this fleet has %d queues: name one with -s/--source", len(s.names))
@@ -176,20 +176,20 @@ func (s *Source) Create(title, body, assignee string) (string, error) {
 // CreateIn creates work in the named queue and returns its prefixed id.
 // Landing is the queue's own business, and the answer says honestly which it
 // was: started is true when the queue filed the task into its pickup status
-// itself (its TodoStarter was used), and false when the backend filed it by
+// itself (its PhaseStarter was used), and false when the backend filed it by
 // its own default — which the fleet then says when it reports the id, per
 // ADR-0012. Each queue answers in its own words; one queue's default
 // decides nothing about another queue's landing column.
-func (s *Source) CreateIn(name, title, body, assignee string) (string, bool, error) {
+func (s *Source) CreateIn(name string, phase work.Phase, title, body, assignee string) (string, bool, error) {
 	sub, ok := s.subs[name]
 	if !ok {
 		return "", false, fmt.Errorf("no configured source %q", name)
 	}
 	var id string
 	var started bool
-	if st, can := sub.(work.TodoStarter); can {
+	if st, can := sub.(work.PhaseStarter); can {
 		var err error
-		id, err = st.CreateTodo(title, body, assignee)
+		id, err = st.CreateIn(phase, title, body, assignee)
 		if err != nil {
 			return "", false, err
 		}

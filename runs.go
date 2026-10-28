@@ -198,8 +198,9 @@ func resumeCmd(out io.Writer) error {
 	return nil
 }
 
-// paneCmd is the overlay: the daemon line, what waits on the human, the runs
-// in flight and the last settled ones, redrawn every two seconds and cut to
+// paneCmd is the overlay: the daemon line, Your turn, the runs
+// in flight and the last settled ones, redrawn every two seconds (the queue
+// re-listed every 30) and cut to
 // the terminal's width so a phone never wraps it.
 // Keys: j/k or 1-9 select, x stops the selected run, p pauses or resumes the
 // fleet, q quits. Everything it does is runsCmd, stopRun and SetPaused; it
@@ -234,9 +235,10 @@ func paneCmd() error {
 	defer tick.Stop()
 
 	closer := host.New()
+	reader := &paneReader{list: listQueue}
 	sel, status := 0, ""
 	for {
-		d := readPane()
+		d := reader.read(time.Now())
 		live := inFlight(d.Runs)
 		if sel >= len(live) {
 			sel = max(len(live)-1, 0)
@@ -304,16 +306,38 @@ type paneData struct {
 // settledShown is how many settled runs the pane keeps under the live ones.
 const settledShown = 5
 
-// readPane reads one frame: the heartbeat, the queue (one List, nothing per
-// task) and the history file once.
-func readPane() paneData {
-	now := time.Now()
-	d := paneData{Daemon: daemon.Liveness(now), Paused: runner.Paused(), Timeouts: agentTimeouts(), Now: now}
-	if _, src, err := settingsAndSource(); err != nil {
-		d.QueueErr = err
-	} else {
-		d.Queue, d.QueueErr = src.List()
+// queueEvery is how often the pane re-lists the queue. A GitHub board's
+// List spends rate-limited API calls and the queue moves on a human's clock;
+// the runs are a local file, re-read on every frame.
+const queueEvery = 30 * time.Second
+
+// paneReader reads the pane's frames, keeping the last queue listing until
+// queueEvery has passed.
+type paneReader struct {
+	list   func() ([]work.Task, error)
+	listed time.Time
+	queue  []work.Task
+	err    error
+}
+
+// listQueue is the pane's queue: one List, nothing per task.
+func listQueue() ([]work.Task, error) {
+	_, src, err := settingsAndSource()
+	if err != nil {
+		return nil, err
 	}
+	return src.List()
+}
+
+// read reads one frame at now: the heartbeat, the history file once, and the
+// queue when its listing is older than queueEvery.
+func (p *paneReader) read(now time.Time) paneData {
+	if p.listed.IsZero() || now.Sub(p.listed) >= queueEvery {
+		p.queue, p.err = p.list()
+		p.listed = now
+	}
+	d := paneData{Daemon: daemon.Liveness(now), Paused: runner.Paused(), Timeouts: agentTimeouts(), Now: now,
+		Queue: p.queue, QueueErr: p.err}
 	d.Runs, _ = history.Runs("", 0)
 	return d
 }
@@ -321,7 +345,7 @@ func readPane() paneData {
 func inFlight(runs []history.Record) []history.Record {
 	var out []history.Record
 	for _, r := range runs {
-		if r.Status == history.StatusRunning || r.Status == history.StatusTimedOut {
+		if r.Status.InFlight() {
 			out = append(out, r)
 		}
 	}
@@ -369,7 +393,7 @@ func renderPane(d paneData, width int) []string {
 	var questions, blocked, held []string
 	for _, t := range d.Queue {
 		switch {
-		case t.Phase == string(work.PhaseQuestion):
+		case t.Question:
 			questions = append(questions, "  ? "+t.ID+" "+t.Title)
 		case !t.Blocked && t.Verdict != work.Blocked:
 		case merges[t.ID] != "":
@@ -385,7 +409,7 @@ func renderPane(d paneData, width int) []string {
 	if d.QueueErr != nil {
 		add("  queue: " + d.QueueErr.Error())
 	} else if len(turn) == 0 {
-		add("  nothing waits on you")
+		add("  nothing: no Question, Blocked card or held merge")
 	}
 
 	live := inFlight(d.Runs)
@@ -404,7 +428,7 @@ func renderPane(d paneData, width int) []string {
 
 	var settled []string
 	for _, r := range d.Runs {
-		if r.Status == history.StatusRunning || r.Status == history.StatusTimedOut || r.Status == history.StatusScheduled {
+		if r.Status.InFlight() || r.Status == history.StatusScheduled {
 			continue
 		}
 		settled = append(settled, fmt.Sprintf("  %s %s %s %s ago", r.Task, r.Agent, r.Status, shortDuration(d.Now.Sub(r.At))))
