@@ -157,9 +157,10 @@ hold every round asked and answered so far. End the run with exactly one of
 two moves — the last tool call of the run, **execute it, then summarise**:
 
 **Publish** — the idea is clear and the last round's "Build on these
-assumptions?" was answered yes: rewrite the card's body as the spec, create
-its tickets the way the repo's `+"`docs/agents/issue-tracker.md`"+` says, set the card
-to To Do there, and hand it to its author:
+assumptions?" was answered yes. The card already exists: edit its body into
+the spec, set it to To Do and create its tickets the way the repo's
+`+"`docs/agents/issue-tracker.md`"+` says for a card that already exists — never a
+second spec — and hand it to its author:
 
   herdr-docket task assign %s %s
 
@@ -195,6 +196,9 @@ func head(a fleet.Agent, v work.Task, brief string) string {
 	b.WriteString("\n\n")
 
 	fmt.Fprintf(&b, "# Your task: %s — %s\n\n", v.ID, v.Title)
+	if len(v.Labels) > 0 {
+		fmt.Fprintf(&b, "Labels: %s\n\n", strings.Join(v.Labels, ", "))
+	}
 	if v.Body != "" {
 		fmt.Fprintf(&b, "## Description\n\n%s\n\n", v.Body)
 	}
