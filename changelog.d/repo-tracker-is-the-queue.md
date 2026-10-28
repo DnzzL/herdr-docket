@@ -25,3 +25,7 @@
   `herdr-docket init <repo> --github <owner>/<project-number>` writes the
   GitHub tracker doc and a `kind: github` source whose `repo` is read from
   `origin`, with no Backlog.md project.
+- **`scripts/box-setup` sets up an always-on box**: a re-runnable wizard for
+  Tailscale, the Herdr server, `gh` and agent CLI logins, the plugin,
+  `init <repo>` per repo, one `intake` workspace per repo, and a `max_runs`
+  sized from RAM. `--dry-run` prints the commands without running them.
