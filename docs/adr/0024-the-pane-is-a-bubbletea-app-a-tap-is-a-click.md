@@ -39,6 +39,9 @@ the terminal's colours until something clashes. *bubbletea v2*: the newer API,
 but the owner's other plugins are on v1.3; one API to know.
 
 Amends [0008](0008-the-board-is-a-triage-surface.md)'s removal of the board TUI
-for the pane only.
+for the pane only. Amended by
+[0025](0025-the-pane-styles-text-in-the-terminals-own-ansi-colours.md): "the
+terminal's own colours" becomes a named three-role palette drawn from the
+sixteen ANSI colours.
 
 **Status:** accepted
