@@ -155,7 +155,7 @@ func TestSendOnACardALiveRunHoldsSaysSoAndStays(t *testing.T) {
 	}
 }
 
-func TestTappingAQuestionRowTwiceOnHomeOpensItsRound(t *testing.T) {
+func TestOneTapOnTheHighlightedQuestionRowOpensItsRound(t *testing.T) {
 	m, _ := roundPane(t, 45, 60)
 	m = send(m, tea.KeyMsg{Type: tea.KeyEsc})
 	m = drain(m, func() tea.Msg { return roundDoneMsg{} })
@@ -163,9 +163,8 @@ func TestTappingAQuestionRowTwiceOnHomeOpensItsRound(t *testing.T) {
 		t.Fatalf("Esc stayed on the Round:\n%s", m.View())
 	}
 	m = tap(t, m, "? TASK-2")
-	m = tap(t, m, "? TASK-2")
 	if !strings.Contains(m.View(), "TASK-2 Voice notes  round 2") {
-		t.Fatalf("two taps did not open the Round:\n%s", m.View())
+		t.Fatalf("one tap did not open the Round:\n%s", m.View())
 	}
 }
 

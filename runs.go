@@ -222,8 +222,8 @@ const paneEvery = 2 * time.Second
 // paneTick carries the frame's clock, so a test drives time by sending one.
 type paneTick time.Time
 
-// openRoundMsg asks for the Round screen of the question card ID: a click on
-// an already-selected `?` row, or Enter on it.
+// openRoundMsg asks for the Round screen of the question card ID: a tap on
+// the selected `?` row (the highlighted first row counts), or Enter on it.
 type openRoundMsg struct{ ID string }
 
 // paneModel is Home: the daemon line, Your turn, the runs in flight and the
@@ -238,7 +238,6 @@ type paneModel struct {
 	data          paneData
 	width, height int
 	sel           int
-	chosen        bool // sel was picked by a key or a click, not the default
 	top           int
 	status        string
 
@@ -312,10 +311,10 @@ func (m paneModel) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			if r.Line != m.top+msg.Y {
 				continue
 			}
-			if i == m.sel && m.chosen {
+			if i == m.sel {
 				return m.act(rows)
 			}
-			m.sel, m.chosen = i, true
+			m.sel = i
 		}
 	}
 	return m.clamped(), nil
@@ -329,13 +328,13 @@ func (m paneModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case k == "q" || k == "ctrl+c":
 		return m, tea.Quit
 	case k == "j" || k == "down":
-		m.sel, m.chosen = m.sel+1, true
+		m.sel++
 	case k == "k" || k == "up":
-		m.sel, m.chosen = m.sel-1, true
+		m.sel--
 	case k == "enter":
 		return m.act(rows)
 	case len(k) == 1 && k[0] >= '1' && k[0] <= '9' && runs+int(k[0]-'1') < len(rows):
-		m.sel, m.chosen = runs+int(k[0]-'1'), true
+		m.sel = runs + int(k[0]-'1')
 	case k == "x" && m.sel < len(rows) && rows[m.sel].Run != nil:
 		r := *rows[m.sel].Run
 		var b strings.Builder
@@ -636,6 +635,6 @@ func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 		add(d.Status)
 	}
 	add("")
-	add("j/k/tap select · ⏎/tap again open · x stop · p pause · q quit")
+	add("j/k/tap select · ⏎/tap selected open · x stop · p pause · q quit")
 	return lines, rows
 }

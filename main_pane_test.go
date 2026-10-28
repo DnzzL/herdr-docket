@@ -133,23 +133,28 @@ func TestHomeNeverWrapsAt45Columns(t *testing.T) {
 	}
 }
 
-// A tap is a click (ADR 0024): the first one on a question card selects it,
-// the second opens its Round.
-func TestClickingAQuestionTwiceOpensItsRound(t *testing.T) {
+// A tap is a click (ADR 0024): a tap selects a row, a tap on the selected
+// row acts. The highlighted first row counts as selected, so one tap on it
+// opens its Round.
+func TestOneTapOnTheHighlightedQuestionOpensItsRound(t *testing.T) {
 	m := paneAt(t, paneFixture(), 45, 40)
-	m, cmd := click(m, rowOf(t, m, "? TASK-1"))
-	if cmd != nil {
-		t.Fatalf("the first click only selects, got %v", cmd())
-	}
-	if !strings.Contains(m.View(), "> ? TASK-1") {
-		t.Fatalf("TASK-1 not selected:\n%s", m.View())
-	}
-	_, cmd = click(m, rowOf(t, m, "? TASK-1"))
+	_, cmd := click(m, rowOf(t, m, "? TASK-1"))
 	if cmd == nil {
-		t.Fatal("the second click opened nothing")
+		t.Fatalf("one tap on the highlighted row opened nothing:\n%s", m.View())
 	}
 	if got, ok := cmd().(openRoundMsg); !ok || got.ID != "TASK-1" {
 		t.Fatalf("want openRoundMsg{TASK-1}, got %#v", cmd())
+	}
+}
+
+func TestATapOnAnotherRowOnlySelectsIt(t *testing.T) {
+	m := paneAt(t, paneFixture(), 45, 40)
+	m, cmd := click(m, rowOf(t, m, "! TASK-2"))
+	if cmd != nil {
+		t.Fatalf("the first tap only selects, got %v", cmd())
+	}
+	if !strings.Contains(m.View(), "> ! TASK-2") {
+		t.Fatalf("TASK-2 not selected:\n%s", m.View())
 	}
 }
 
