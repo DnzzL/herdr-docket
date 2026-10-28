@@ -289,7 +289,13 @@ func (m roundModel) frame() (body []string, bodyHits []roundHit, foot []string, 
 
 	for qi, q := range m.round.Questions {
 		body = append(body, "")
-		add(fmt.Sprintf("%d. %s", q.N, q.Text), 0)
+		num := fmt.Sprintf("%d. ", q.N)
+		for i, l := range wrap(q.Text, w-len(num)) {
+			if i > 0 {
+				num = strings.Repeat(" ", len(num))
+			}
+			body = append(body, num+l)
+		}
 		editing := m.editing && m.at.q == qi
 		labels := make([]string, 0, len(q.Options)+1)
 		for _, o := range q.Options {

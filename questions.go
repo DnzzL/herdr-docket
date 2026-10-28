@@ -210,7 +210,7 @@ func say(out io.Writer, s string) {
 // lines indented like the first; a word longer than a line is cut.
 func wrap(s string, width int) []string {
 	indent := s[:len(s)-len(strings.TrimLeft(s, " "))]
-	words := strings.Fields(s)
+	words := glue(strings.Fields(s))
 	if len(words) == 0 {
 		return []string{""}
 	}
@@ -241,6 +241,20 @@ func wrap(s string, width int) []string {
 		}
 	}
 	return append(lines, cur)
+}
+
+// glue binds a lone : ? ! ; (French sets them apart with a space) to the
+// word before with a no-break space, so no line starts with one.
+func glue(words []string) []string {
+	var out []string
+	for _, w := range words {
+		if len(out) > 0 && strings.Trim(w, ":?!;»") == "" {
+			out[len(out)-1] += "\u00a0" + w
+			continue
+		}
+		out = append(out, w)
+	}
+	return out
 }
 
 // fitting wraps what taskAnswer reports so its line fits phoneWidth too.

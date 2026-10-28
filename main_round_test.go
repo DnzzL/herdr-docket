@@ -241,3 +241,30 @@ func TestAWideOptionFitsAndItsTapLands(t *testing.T) {
 		}
 	}
 }
+
+// A wrapped question reads as one block: its continuation lines sit under
+// its text, not under its number.
+func TestAWrappedQuestionContinuesUnderItsText(t *testing.T) {
+	m, _ := roundPane(t, 30, 60)
+	lines := strings.Split(m.View(), "\n")
+	_, y := at(t, m, "1. What happens")
+	if next := lines[y+1]; !strings.HasPrefix(next, "   ") || strings.TrimSpace(next) == "" || strings.Contains(next, "[") {
+		t.Fatalf("continuation %q not indented under the text:\n%s", next, m.View())
+	}
+}
+
+// French puts a space before : ? ! ; — a wrap must not leave one alone at
+// the start of a line.
+func TestFrenchPunctuationNeverStartsALine(t *testing.T) {
+	q := "Où garde-t-on le son une fois envoyé"
+	q += strings.Repeat("x", 42-len([]rune(q))) // "1. " + q fills 45 cells
+	notes := "## Round 1\n1. " + q + " ?\n   A. oui (reco)\n2. Et ensuite : on le garde ; ou pas !\n   A. oui (reco)\n"
+	for _, width := range []int{45, 30, 21} {
+		m, _ := roundPaneOn(t, notes, width, 60)
+		for _, line := range strings.Split(m.View(), "\n") {
+			if f := strings.Fields(line); len(f) > 0 && strings.ContainsAny(f[0], ":?!;") && len([]rune(f[0])) == 1 {
+				t.Errorf("at %d a line starts with %q:\n%s", width, f[0], m.View())
+			}
+		}
+	}
+}
