@@ -144,6 +144,7 @@ type fakeIssue struct {
 	createdAt string
 	comments  []gqlComment
 	labels    []string
+	parent    int // the issue this is a sub-issue of; zero for none
 }
 
 // The shapes the fake answers with. They carry the JSON tags the API uses, not
@@ -199,6 +200,9 @@ type gqlIssue struct {
 	Labels       *gqlNodes[gqlValue]   `json:"labels,omitempty"`
 	Comments     *gqlNodes[gqlComment] `json:"comments,omitempty"`
 	ProjectItems *gqlNodes[gqlItem]    `json:"projectItems,omitempty"`
+	// Parent is Issue.parent: null for a top-level issue, the parent issue
+	// otherwise. Not omitempty — GitHub answers a field that was asked for.
+	Parent *gqlIssue `json:"parent"`
 }
 
 type gqlComment struct {
@@ -512,6 +516,9 @@ func (f *fakeBoard) page(vars map[string]any) []gqlItem {
 		} else {
 			issue := f.issues[item.number]
 			node.Content = &gqlIssue{Number: issue.number, Title: issue.title, State: issue.state, CreatedAt: issue.createdAt}
+			if issue.parent != 0 {
+				node.Content.Parent = &gqlIssue{Number: issue.parent}
+			}
 		}
 		if item.agent != "" && f.field(agentField) != nil {
 			node.Agent = &gqlValue{Name: item.agent}

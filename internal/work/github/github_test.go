@@ -115,6 +115,38 @@ func TestListShowsAClosedTaskOnlyByItsColumn(t *testing.T) {
 	}
 }
 
+// A sub-issue is a ticket of the spec it hangs off: the queue's page carries
+// its parent's number, so pick can leave it alone without a call per item.
+func TestListCarriesASubIssuesParent(t *testing.T) {
+	f := newFakeBoard()
+	f.provisionAgent("dev")
+	spec := f.add("spec", "")
+	ticket := f.add("ticket", "")
+	f.issue(ticket).parent = spec
+
+	items, err := f.source(t).List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	byID := map[string]work.Task{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	if got := byID[strconv.Itoa(spec)].Parent; got != "" {
+		t.Errorf("the spec reads parent %q, want none", got)
+	}
+	if got, want := byID[strconv.Itoa(ticket)].Parent, strconv.Itoa(spec); got != want {
+		t.Errorf("the ticket reads parent %q, want %q", got, want)
+	}
+	// The fake answers parent whatever was asked; GitHub only if asked.
+	if q := f.requests()[0].query; !strings.Contains(q, "parent { number }") {
+		t.Errorf("the queue does not ask for the parent:\n%s", q)
+	}
+	if n := f.requestCount(); n != 1 {
+		t.Errorf("List took %d requests, want 1", n)
+	}
+}
+
 // The column describes and the issue's state decides: a task somebody moved
 // into Done without closing it is still work the fleet will run.
 //

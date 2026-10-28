@@ -282,3 +282,22 @@ func TestBlockedIsNotPicked(t *testing.T) {
 		t.Fatalf("blocked as the only work must leave the tick bare: %+v", res)
 	}
 }
+
+// A ticket is the implementer's plan for its spec, not a card: the spec is
+// what the fleet routes, and its tickets are never offered on their own —
+// however urgent, and even once the spec itself is no longer pickable.
+func TestATicketOfASpecIsNeverPicked(t *testing.T) {
+	spec := open("TASK-1", 1, "a")
+	t1, t2 := open("TASK-1.1", 3, "a"), open("TASK-1.2", 3, "a")
+	t1.Parent, t2.Parent = "TASK-1", "TASK-1"
+
+	res := Next([]work.Task{t1, spec, t2}, agents("a"), defaults(""))
+	if res.Task == nil || res.Task.ID != "TASK-1" {
+		t.Fatalf("got %+v, want the spec TASK-1", res.Task)
+	}
+
+	res = Next([]work.Task{t1, t2}, agents("a"), defaults(""))
+	if res.Task != nil {
+		t.Fatalf("a ticket was picked on its own: %+v", res.Task)
+	}
+}
