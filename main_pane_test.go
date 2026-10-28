@@ -83,7 +83,7 @@ func TestThePaneListsTheQueueEvery30Seconds(t *testing.T) {
 	p := &paneReader{list: func() ([]work.Task, error) { lists++; return nil, nil }}
 	t0 := time.Unix(1_700_000_000, 0)
 	for _, at := range []time.Duration{0, 2 * time.Second, 4 * time.Second, 29 * time.Second, 30 * time.Second, 32 * time.Second} {
-		p.read(t0.Add(at))
+		p.read(t0.Add(at), false)
 	}
 	if lists != 2 {
 		t.Fatalf("listed the queue %d times over 32 s of frames, want 2 (at 0 s and 30 s)", lists)
@@ -202,12 +202,12 @@ func TestTheOldKeysStillWork(t *testing.T) {
 	m := next.(paneModel)
 
 	m, _ = key(m, "j")
-	m, _ = key(m, "x")
+	m = drain(key(m, "x"))
 	if len(c.closed) != 1 || c.closed[0].WorkspaceID != "ws2" {
 		t.Fatalf("j then x closed %+v, want ws2", c.closed)
 	}
 	m, _ = key(m, "k")
-	m, _ = key(m, "x")
+	m = drain(key(m, "x"))
 	if len(c.closed) != 2 || c.closed[1].WorkspaceID != "ws1" {
 		t.Fatalf("k then x closed %+v, want ws1", c.closed)
 	}

@@ -4,10 +4,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/DnzzL/herdr-docket/internal/history"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -31,8 +33,8 @@ func roundPaneOn(t *testing.T, notes string, width, height int) (paneModel, *pha
 	m := paneModel{data: paneData{Queue: []work.Task{card}}, closer: &closer{},
 		source: func() (work.Source, error) { return src, nil }}
 	m = send(m, tea.WindowSizeMsg{Width: width, Height: height})
-	m = send(m, openRoundMsg{ID: "TASK-2"})
-	return m, src
+	next, cmd := m.Update(openRoundMsg{ID: "TASK-2"})
+	return drain(next.(paneModel), cmd), src
 }
 
 func send(m paneModel, msg tea.Msg) paneModel {
@@ -285,5 +287,65 @@ func TestTheWheelStepsTheSameOnHomeAndRound(t *testing.T) {
 	home := paneAt(t, paneFixture(), 45, 4)
 	if r, h := scrolled(round), scrolled(home); r != h || r < 1 {
 		t.Fatalf("a notch scrolls the Round %d lines, Home %d", r, h)
+	}
+}
+
+// The queue may be a GitHub board: Send, opening a card, the queue re-list
+// and a stop each run as a command, so the screen never freezes on them.
+// Update returns at once; the command's result updates the screen.
+func TestSlowWorkRunsOffTheUpdate(t *testing.T) {
+	// Send
+	m, src := roundPane(t, 45, 60)
+	x, y := at(t, m, "[ Send ]")
+	next, cmd := m.Update(tea.MouseMsg{X: x + 1, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	if len(src.comments) != 0 || cmd == nil {
+		t.Fatalf("Send ran in Update: comments %q, cmd %v", src.comments, cmd != nil)
+	}
+	m = drain(next.(paneModel), cmd)
+	if len(src.comments) != 1 {
+		t.Fatalf("the command did not send: %q", src.comments)
+	}
+	if strings.Contains(m.View(), "? TASK-2") {
+		t.Fatalf("the answered card is still in Your turn:\n%s", m.View())
+	}
+
+	// opening a card
+	gets := 0
+	m = paneAt(t, paneData{}, 45, 30)
+	m.source = func() (work.Source, error) { gets++; return src, nil }
+	next, cmd = m.Update(openRoundMsg{ID: "TASK-2"})
+	if gets != 0 || cmd == nil {
+		t.Fatalf("the card was fetched in Update")
+	}
+	if m = drain(next.(paneModel), cmd); !strings.Contains(m.View(), "round 2") {
+		t.Fatalf("the fetched card did not open:\n%s", m.View())
+	}
+
+	// the queue re-list
+	lists := 0
+	m = paneAt(t, paneData{}, 45, 30)
+	m.reader = &paneReader{list: func() ([]work.Task, error) {
+		lists++
+		return []work.Task{{ID: "TASK-7", Title: "listed", Question: true}}, nil
+	}}
+	next, cmd = m.Update(paneTick(time.Now()))
+	if lists != 0 || cmd == nil {
+		t.Fatalf("the queue was listed in Update")
+	}
+	if next, _ = next.(paneModel).Update(cmd()); !strings.Contains(next.View(), "? TASK-7") {
+		t.Fatalf("the listing did not reach the screen:\n%s", next.View())
+	}
+
+	// a stop
+	now := time.Now()
+	c := &closer{}
+	m = paneAt(t, paneData{Now: now, Runs: []history.Record{{RunID: "r1", Task: "TASK-1", Agent: "dev", Status: history.StatusRunning, At: now, WorkspaceID: "ws1"}}}, 80, 30)
+	m.closer = c
+	m, cmd = key(m, "x")
+	if len(c.closed) != 0 || cmd == nil {
+		t.Fatalf("x stopped the run in Update")
+	}
+	if m = drain(m, cmd); len(c.closed) != 1 || !strings.Contains(m.View(), "stopped TASK-1") {
+		t.Fatalf("the stop did not run: %+v\n%s", c.closed, m.View())
 	}
 }

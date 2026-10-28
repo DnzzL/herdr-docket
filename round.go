@@ -16,8 +16,15 @@ import (
 const inlineWidth = 60
 
 // roundDoneMsg leaves the Round for Home, with the line Home shows: the
-// confirmation of a sent answer, or nothing on Esc.
-type roundDoneMsg struct{ status string }
+// confirmation of a sent answer, or nothing on Esc. answered is the card a
+// sent answer moved out of Your turn.
+type roundDoneMsg struct{ answered, status string }
+
+// sentMsg is what Send's `task answer` said, once it returned.
+type sentMsg struct {
+	out string
+	err error
+}
 
 // control is a kind of button on the Round.
 type control int
@@ -48,6 +55,7 @@ type roundModel struct {
 	answers       []grill.Answer
 	at            focus
 	editing       bool // the focused question's text field takes the keys
+	sending       bool // Send's `task answer` has not returned yet
 	width, height int
 	top           int
 	status        string
@@ -112,6 +120,14 @@ func (m roundModel) Update(msg tea.Msg) (roundModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+	case sentMsg:
+		m.sending = false
+		if msg.err != nil {
+			m.status = msg.err.Error()
+			break
+		}
+		done := roundDoneMsg{answered: m.id, status: strings.TrimSpace(msg.out)}
+		cmd = func() tea.Msg { return done }
 	case tea.MouseMsg:
 		m, cmd = m.mouse(msg)
 	case tea.KeyMsg:
@@ -158,18 +174,22 @@ func (m roundModel) press() (roundModel, tea.Cmd) {
 	return m, nil
 }
 
+// submit sends the answers as a command: `task answer` reads and writes the
+// queue, which may be a GitHub board, and the screen must not freeze on it.
 func (m roundModel) submit() (roundModel, tea.Cmd) {
+	if m.sending {
+		return m, nil
+	}
 	if !m.complete() {
 		m.status = "answer every question first"
 		return m, nil
 	}
-	out, err := m.send(grill.Line(m.answers))
-	if err != nil {
-		m.status = err.Error()
-		return m, nil
+	m.sending, m.status = true, "sending…"
+	send, line := m.send, grill.Line(m.answers)
+	return m, func() tea.Msg {
+		out, err := send(line)
+		return sentMsg{out: out, err: err}
 	}
-	status := strings.TrimSpace(out)
-	return m, func() tea.Msg { return roundDoneMsg{status: status} }
 }
 
 func (m roundModel) key(msg tea.KeyMsg) (roundModel, tea.Cmd) {

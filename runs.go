@@ -225,6 +225,24 @@ const wheelStep = 2
 // paneTick carries the frame's clock, so a test drives time by sending one.
 type paneTick time.Time
 
+// paneDataMsg is a read of Home's data, done off the Update; relisted says
+// the queue was listed afresh.
+type paneDataMsg struct {
+	data     paneData
+	relisted bool
+}
+
+// cardMsg is a card fetched for its Round, done off the Update.
+type cardMsg struct {
+	id   string
+	card work.Task
+	src  work.Source
+	err  error
+}
+
+// statusMsg is the line Home shows once a command finished.
+type statusMsg string
+
 // openRoundMsg asks for the Round screen of the question card ID: a tap on
 // the selected `?` row (the highlighted first row counts), or Enter on it.
 type openRoundMsg struct{ ID string }
@@ -252,6 +270,11 @@ type paneModel struct {
 	// clicks, Home keeps its clock.
 	round *roundModel
 
+	// relist makes the next read list the queue whatever its age, and hidden
+	// keeps the cards an answer just moved off Your turn until it does.
+	relist bool
+	hidden map[string]bool
+
 	// lines and rows are Home as last laid out: what View draws and where a
 	// tap lands, from the same pass.
 	lines []string
@@ -271,10 +294,22 @@ func (m paneModel) Init() tea.Cmd {
 func (m paneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case paneTick:
-		if m.reader != nil {
-			m.data = m.reader.read(time.Time(msg))
+		// The next tick waits for this read, so reads never overlap.
+		if m.reader == nil {
+			return m, nil
+		}
+		r, now, relist := m.reader, time.Time(msg), m.relist
+		m.relist = false
+		return m, func() tea.Msg { return paneDataMsg{data: r.read(now, relist), relisted: relist} }
+	case paneDataMsg:
+		m.data = msg.data
+		if msg.relisted {
+			m.hidden = nil
 		}
 		return m.laidOut(false), tea.Tick(paneEvery, func(t time.Time) tea.Msg { return paneTick(t) })
+	case statusMsg:
+		m.status = string(msg)
+		return m.laidOut(false), nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		if m.round != nil {
@@ -283,11 +318,20 @@ func (m paneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.laidOut(false), nil
 	case openRoundMsg:
-		return m.openRound(msg.ID).laidOut(false), nil
+		m.status = "opening " + msg.ID + "…"
+		return m.laidOut(false), fetchCard(m.source, msg.ID)
+	case cardMsg:
+		return m.openRound(msg).laidOut(false), nil
 	case roundDoneMsg:
 		m.round, m.status = nil, msg.status
-		if msg.status != "" && m.reader != nil {
-			m.reader.listed = time.Time{} // the answered card leaves Your turn on the next frame
+		if msg.answered != "" {
+			// Optimistic: the card leaves Your turn now; the next read,
+			// a fresh listing, confirms.
+			hidden := map[string]bool{msg.answered: true}
+			for id := range m.hidden {
+				hidden[id] = true
+			}
+			m.hidden, m.relist = hidden, true
 		}
 		return m.laidOut(false), nil
 	}
@@ -346,12 +390,14 @@ func (m paneModel) key(msg tea.KeyMsg) (paneModel, tea.Cmd) {
 	case len(k) == 1 && k[0] >= '1' && k[0] <= '9' && runs+int(k[0]-'1') < len(rows):
 		m.sel = runs + int(k[0]-'1')
 	case k == "x" && m.sel < len(rows) && rows[m.sel].Run != nil:
-		r := *rows[m.sel].Run
-		var b strings.Builder
-		if err := stopRecord(m.closer, r, timeoutFor(m.data.Timeouts, r.Agent), &b); err != nil {
-			m.status = err.Error()
-		} else {
-			m.status = strings.TrimSpace(b.String())
+		r, c, timeout := *rows[m.sel].Run, m.closer, timeoutFor(m.data.Timeouts, rows[m.sel].Run.Agent)
+		m.status = "stopping " + r.Task + "…"
+		return m, func() tea.Msg {
+			var b strings.Builder
+			if err := stopRecord(c, r, timeout, &b); err != nil {
+				return statusMsg(err.Error())
+			}
+			return statusMsg(strings.TrimSpace(b.String()))
 		}
 	case k == "p":
 		paused := !runner.Paused()
@@ -392,6 +438,14 @@ func rowsFrom(rows []paneRow, kind rowKind) int {
 func (m paneModel) laidOut(follow bool) paneModel {
 	d := m.data
 	d.Status = m.status
+	if len(m.hidden) > 0 {
+		d.Queue = nil
+		for _, t := range m.data.Queue {
+			if !m.hidden[t.ID] {
+				d.Queue = append(d.Queue, t)
+			}
+		}
+	}
 	w := m.width
 	if w <= 0 {
 		w = 80
@@ -414,34 +468,40 @@ func (m paneModel) laidOut(follow bool) paneModel {
 	return m
 }
 
-// openRound reads the card and opens its newest Round; a card that cannot
-// be read, or holds no round, stays on Home with the reason.
-func (m paneModel) openRound(id string) paneModel {
-	if m.source == nil {
-		m.status = id + ": no queue to read the card from"
+// fetchCard reads card id off the Update: the queue may be a GitHub board.
+func fetchCard(source func() (work.Source, error), id string) tea.Cmd {
+	return func() tea.Msg {
+		if source == nil {
+			return cardMsg{id: id, err: fmt.Errorf("%s: no queue to read the card from", id)}
+		}
+		src, err := source()
+		if err != nil {
+			return cardMsg{id: id, err: err}
+		}
+		t, err := src.Get(id)
+		return cardMsg{id: id, card: t, src: src, err: err}
+	}
+}
+
+// openRound opens the fetched card's newest Round; a card that could not be
+// read, or holds no round, stays on Home with the reason.
+func (m paneModel) openRound(c cardMsg) paneModel {
+	if c.err != nil {
+		m.status = c.err.Error()
 		return m
 	}
-	src, err := m.source()
-	if err != nil {
-		m.status = err.Error()
-		return m
-	}
-	t, err := src.Get(id)
-	if err != nil {
-		m.status = err.Error()
-		return m
-	}
-	round, ok := grill.LatestRound(t.Notes)
+	round, ok := grill.LatestRound(c.card.Notes)
 	if !ok || len(round.Questions) == 0 {
-		m.status = id + ": no ## Round note to answer"
+		m.status = c.id + ": no ## Round note to answer"
 		return m
 	}
+	src, id := c.src, c.id
 	send := func(line string) (string, error) {
 		var b strings.Builder
 		err := taskAnswer(src, id, line, &b)
 		return b.String(), err
 	}
-	r := newRound(id, t.Title, round, send, m.width, m.height)
+	r := newRound(id, c.card.Title, round, send, m.width, m.height)
 	m.round, m.status = &r, ""
 	return m
 }
@@ -503,9 +563,9 @@ func listQueue() ([]work.Task, error) {
 }
 
 // read reads one frame at now: the heartbeat, the history file once, and the
-// queue when its listing is older than queueEvery.
-func (p *paneReader) read(now time.Time) paneData {
-	if p.listed.IsZero() || now.Sub(p.listed) >= queueEvery {
+// queue when its listing is older than queueEvery, or relist asks.
+func (p *paneReader) read(now time.Time, relist bool) paneData {
+	if relist || p.listed.IsZero() || now.Sub(p.listed) >= queueEvery {
 		p.queue, p.err = p.list()
 		p.listed = now
 	}
