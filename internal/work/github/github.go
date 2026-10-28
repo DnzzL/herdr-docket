@@ -38,6 +38,14 @@ const stateOpen = "OPEN"
 // issue state alone cannot say parked (TASK-53). GitHub's ProjectV2 default.
 const parkedOption = "Blocked"
 
+// triageOption and questionOption are the grill's columns (TASK-86): an idea
+// waiting for the queue's triager, and one waiting on the owner's answer —
+// parked, like Blocked, since only a human moves it on.
+const (
+	triageOption   = "Triage"
+	questionOption = "Question"
+)
+
 // Config is the github block of fleet.yaml. Each adapter owns the shape of its
 // own configuration, so this is the one place the board's coordinates are
 // named.
@@ -215,7 +223,8 @@ func (s *Source) List() ([]work.Task, error) {
 			Title:     n.Content.Title,
 			Assignee:  n.Agent.Name,
 			Open:      open,
-			Blocked:   open && n.Status.Name == parkedOption,
+			Blocked:   open && (n.Status.Name == parkedOption || n.Status.Name == questionOption),
+			Triage:    open && n.Status.Name == triageOption,
 			Phase:     s.phase(n.Status.Name, open),
 			Ordinal:   float64(i), // the board's order is the queue's order
 			CreatedAt: n.Content.CreatedAt,

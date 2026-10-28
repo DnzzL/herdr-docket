@@ -179,6 +179,7 @@ func (s *Source) asTask(t task) work.Task {
 		Assignee:  assignee(t.Assignees),
 		Open:      s.vocab.Open(t.Status),
 		Blocked:   s.vocab.Parked(t.Status),
+		Triage:    s.vocab.InTriage(t.Status),
 		Phase:     s.vocab.Phase(t.Status),
 		Verdict:   s.vocab.VerdictOf(t.Status),
 		Priority:  rank(t.Priority),

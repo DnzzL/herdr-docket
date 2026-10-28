@@ -54,6 +54,7 @@ And the block both of them take:
 | `dir` | The project repo whose Backlog.md is the queue: absolute, `~`, or relative to the fleet dir. Required for `backlogmd`: a block without it fails to load with "source.dir must name a project repo". |
 | `default_agent` | Who picks up *this* queue's unassigned tasks, overriding the fleet's. |
 | `verifier` | The agent that judges every PR an agent delivers before it can merge ([the pipeline](adr/0013-the-factory-is-an-author-a-verifier-and-a-gate-in-code.md)). Unset: no pipeline, a run ends on the agent's own verdict. |
+| `triager` | The agent that grills a card in the `triage` status: it gets the card whatever its assignee says. Unset: triage cards wait. A card in `question` is never picked — it waits on the owner's answer. |
 | `merge` | `auto` lets the gate merge a verified PR on its own. Anything else stops at a PASS for a human. |
 | `max_runs` | This queue's cap, under the fleet's: a repo whose test suite cannot run twice at once says `1`. Unset or `0`: no cap. A run's verifier and rework stages count as the one run. |
 | `worktree_base` | The git ref a worktree run of this queue branches from. Default: the queue repo's own default branch (`origin/HEAD`) at claim time — never whatever its main checkout happens to have checked out. A fork worked alongside its upstream might want the fork's own `main`. |
@@ -66,11 +67,11 @@ And the block both of them take:
 yourself — absolute, `~`, or relative to the fleet dir. Your project has its own status words, and there are two ways to
 meet:
 
-**Let the fleet own the vocabulary.** `init <repo>` adds its five statuses to
+**Let the fleet own the vocabulary.** `init <repo>` adds its seven statuses to
 your `backlog/config.yml` and there is nothing else to configure:
 
 ```yaml
-statuses: ["To Do", "In Progress", "Blocked", "Failed", "Done"]
+statuses: ["Triage", "Question", "To Do", "In Progress", "Blocked", "Failed", "Done"]
 ```
 
 **Or keep your own words** — usually the right call on a board humans already
@@ -87,6 +88,8 @@ sources:
       failed: ready-for-human     # your word for "a human now"
       blocked: needs-info
       # in_progress omitted: this project has no word for it
+      triage: needs-triage        # ideas the source's triager grills
+      question: needs-answer      # a grill round waiting on you
 ```
 
 Read `statuses:` as a whitelist: **a status not named there is not the fleet's
@@ -99,7 +102,9 @@ exactly how much of your board you are handing over.
 `todo`, `done`, `failed` and `blocked` are required — a queue the fleet can
 pick from but cannot close leaves every task open for the next tick to pick up
 again. `in_progress` is optional: it is display only, so a project with no word
-for it simply never shows one. Plain `herdr-docket init` never touches a
+for it simply never shows one. `triage` and `question` are optional too: without
+them a project has no grill, and its triage column stays none of the fleet's
+business. Plain `herdr-docket init` never touches a
 repo; `init <repo>` only adds missing statuses (the source's own words when it
 names them) and never removes one.
 

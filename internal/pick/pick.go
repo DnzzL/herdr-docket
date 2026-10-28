@@ -96,9 +96,16 @@ func Before(a, b work.Task) bool {
 //
 // A ticket of a spec (Parent set) routes to nobody: it is the implementer's
 // plan, not a card. The spec is routed; its tickets never are.
+//
+// A card in triage routes to its queue's triager whatever its assignee: the
+// assignee is the author it goes back to once the grill is done. No triager,
+// nobody — the idea waits rather than being built unclear.
 func AssigneeFor(it work.Task, defaults fleet.Defaults) string {
 	if it.Parent != "" {
 		return ""
+	}
+	if it.Triage {
+		return defaults.Triager(it.ID)
 	}
 	if it.Assignee != "" {
 		return it.Assignee

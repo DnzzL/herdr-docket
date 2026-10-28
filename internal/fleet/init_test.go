@@ -235,6 +235,21 @@ func repoWithBacklog(t *testing.T) (Settings, string) {
 	return loaded(t), repo
 }
 
+// init <repo> declares the grill's statuses too: the CLI refuses a status the
+// config does not list, so a repo without them could never hold an idea.
+func TestInitRepoAddsTheTriageAndQuestionStatuses(t *testing.T) {
+	s, repo := repoWithBacklog(t)
+	if err := InitRepo(s, repo, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	config := read(t, filepath.Join(repo, "backlog", "config.yml"))
+	for _, status := range []string{"Triage", "Question"} {
+		if !strings.Contains(config, `"`+status+`"`) {
+			t.Errorf("config.yml lacks %q:\n%s", status, config)
+		}
+	}
+}
+
 // loaded is fleet.yaml as the CLI reads it on each run.
 func loaded(t *testing.T) Settings {
 	t.Helper()

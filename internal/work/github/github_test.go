@@ -178,6 +178,33 @@ func TestAnOpenTaskParkedInTheBlockedColumnIsMarkedBlocked(t *testing.T) {
 	}
 }
 
+// The grill's two columns on a board: a card in Triage is the triager's, and
+// one in Question waits on the owner's answer, so pick leaves it alone.
+func TestTheTriageAndQuestionColumnsAreTheGrills(t *testing.T) {
+	f := newFakeBoard()
+	f.provisionAgent("dev")
+	f.fields = []*fakeField{f.newField("Status", "Triage", "Question", "Todo", "Done")}
+	idea := f.add("idea", "dev")
+	f.setStatus(idea, "Triage")
+	asked := f.add("asked", "dev")
+	f.setStatus(asked, "Question")
+
+	items, err := f.source(t).List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	byID := map[string]work.Task{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	if got := byID[strconv.Itoa(idea)]; !got.Open || !got.Triage || got.Blocked || got.Phase != "Triage" {
+		t.Errorf("idea = %+v, want open, in triage, not blocked", got)
+	}
+	if got := byID[strconv.Itoa(asked)]; !got.Blocked || got.Triage || got.Phase != "Question" {
+		t.Errorf("asked = %+v, want blocked on the owner, not in triage", got)
+	}
+}
+
 func TestAnOpenTaskInAFinishedColumnIsStillOpen(t *testing.T) {
 	f := newFakeBoard()
 	f.provisionAgent("dev")

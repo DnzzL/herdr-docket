@@ -88,3 +88,46 @@ func TestAVocabularyMustNameEveryEnding(t *testing.T) {
 		t.Errorf("orDefault = %+v, want the fleet's own words", got)
 	}
 }
+
+// Triage and question are the grill's two statuses. A triage card is open
+// work — the triager's — and a question card waits on the owner's answer, so
+// nothing picks it up.
+func TestTriageIsOpenWorkAndAQuestionWaitsOnAHuman(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		v                Vocabulary
+		triage, question string
+	}{
+		{"default words", Vocabulary{}, "Triage", "Question"},
+		{"own words", Vocabulary{Todo: "t", Done: "d", Failed: "f", Blocked: "b", Triage: "needs-triage", Question: "asked"}, "needs-triage", "asked"},
+	} {
+		s := NewWith("", &fakeClient{tasks: []task{
+			{ID: "T-1", Status: tc.triage},
+			{ID: "T-2", Status: tc.question},
+		}}, OrDefault(tc.v), nil)
+		items, err := s.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tri := items[0]; !tri.Open || !tri.Triage || tri.Blocked {
+			t.Errorf("%s: triage card = %+v, want open, in triage, not parked", tc.name, tri)
+		}
+		if q := items[1]; q.Open || q.Triage || !q.Blocked {
+			t.Errorf("%s: question card = %+v, want not open, parked on a human", tc.name, q)
+		}
+	}
+}
+
+// A project whose statuses block names no triage word has no triage: none of
+// its columns is read as one.
+func TestNoTriageWordMeansNoTriage(t *testing.T) {
+	s := NewWith("", &fakeClient{tasks: []task{{ID: "T-1", Status: "Triage"}}},
+		Vocabulary{Todo: "t", Done: "d", Failed: "f", Blocked: "b"}, nil)
+	items, err := s.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it := items[0]; it.Open || it.Triage {
+		t.Errorf("got %+v, want a status the project never mapped left alone", it)
+	}
+}

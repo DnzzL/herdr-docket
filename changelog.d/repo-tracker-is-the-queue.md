@@ -25,3 +25,8 @@
   `herdr-docket init <repo> --github <owner>/<project-number>` writes the
   GitHub tracker doc and a `kind: github` source whose `repo` is read from
   `origin`, with no Backlog.md project.
+- **Ideas are grilled on the card.** Two new statuses: a card in `Triage` goes
+  to the agent a source names as `triager:` whatever its assignee (no triager,
+  it waits), and a card in `Question` waits on your answer and is never picked.
+  Re-run `herdr-docket init <repo>` to add both to `backlog/config.yml`; a
+  project with its own `statuses:` names them as `triage:` and `question:`.
