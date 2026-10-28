@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
-	"os/exec"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/DnzzL/herdr-docket/internal/daemon"
 	"github.com/DnzzL/herdr-docket/internal/fleet"
@@ -198,95 +196,184 @@ func resumeCmd(out io.Writer) error {
 	return nil
 }
 
-// paneCmd is the overlay: the daemon line, Your turn, the runs
-// in flight and the last settled ones, redrawn every two seconds (the queue
-// re-listed every 30) and cut to
-// the terminal's width so a phone never wraps it.
-// Keys: j/k or 1-9 select, x stops the selected run, p pauses or resumes the
-// fleet, q quits. Everything it does is runsCmd, stopRun and SetPaused; it
-// only draws and forwards keys. Single keypresses come from stty, so the
-// pane needs no terminal library.
+// paneCmd is the overlay: the Home screen, a bubbletea app (ADR 0024) in the
+// alt screen with mouse cell motion, so a click or a Termux tap reaches it.
 func paneCmd() error {
-	saved, err := stty("-g")
-	if err != nil {
-		return fmt.Errorf("the pane needs a terminal: %w", err)
-	}
-	if _, err := stty("-icanon", "-echo", "min", "1"); err != nil {
-		return err
-	}
-	defer stty(strings.TrimSpace(saved))
-	fmt.Print("\033[?25l")
-	defer fmt.Print("\033[?25h\n")
+	m := paneModel{reader: &paneReader{list: listQueue}, closer: host.New()}
+	_, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+	return err
+}
 
-	keys := make(chan byte)
-	go func() {
-		buf := make([]byte, 1)
-		for {
-			if n, err := os.Stdin.Read(buf); err != nil || n == 0 {
-				close(keys)
-				return
+// paneEvery is how often the pane redraws; the queue is re-listed on its own,
+// slower clock (queueEvery).
+const paneEvery = 2 * time.Second
+
+// paneTick carries the frame's clock, so a test drives time by sending one.
+type paneTick time.Time
+
+// openRoundMsg asks for the Round screen of the question card ID: a click on
+// an already-selected `?` row, or Enter on it.
+type openRoundMsg struct{ ID string }
+
+// paneModel is Home: the daemon line, Your turn, the runs in flight and the
+// last settled ones. Everything it does is stopRecord, SetPaused and
+// openRoundMsg; it only draws, scrolls and forwards keys and clicks. Clicks
+// map to rows by hand from layoutPane's row list: no zone library.
+// Keys: j/k or 1-9 select, Enter opens, x stops the selected run, p pauses or
+// resumes the fleet, q quits.
+type paneModel struct {
+	reader        *paneReader
+	closer        sessionCloser
+	data          paneData
+	width, height int
+	sel           int
+	chosen        bool // sel was picked by a key or a click, not the default
+	top           int
+	status        string
+}
+
+func (m paneModel) Init() tea.Cmd {
+	return func() tea.Msg { return paneTick(time.Now()) }
+}
+
+func (m paneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case paneTick:
+		if m.reader != nil {
+			m.data = m.reader.read(time.Time(msg))
+		}
+		return m.clamped(), tea.Tick(paneEvery, func(t time.Time) tea.Msg { return paneTick(t) })
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+		return m.clamped(), nil
+	case tea.MouseMsg:
+		return m.mouse(msg)
+	case tea.KeyMsg:
+		return m.key(msg)
+	}
+	return m, nil
+}
+
+func (m paneModel) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	if msg.Action != tea.MouseActionPress {
+		return m, nil
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelDown:
+		m.top++
+	case tea.MouseButtonWheelUp:
+		m.top--
+	case tea.MouseButtonLeft:
+		_, rows := m.layout()
+		for i, r := range rows {
+			if r.Line != m.top+msg.Y {
+				continue
 			}
-			keys <- buf[0]
+			if i == m.sel && m.chosen {
+				return m.act(rows)
+			}
+			m.sel, m.chosen = i, true
 		}
-	}()
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	tick := time.NewTicker(2 * time.Second)
-	defer tick.Stop()
+	}
+	return m.clamped(), nil
+}
 
-	closer := host.New()
-	reader := &paneReader{list: listQueue}
-	sel, status := 0, ""
-	for {
-		d := reader.read(time.Now())
-		live := inFlight(d.Runs)
-		if sel >= len(live) {
-			sel = max(len(live)-1, 0)
-		}
-		d.Sel, d.Status = sel, status
+func (m paneModel) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	_, rows := m.layout()
+	runs := rowsFrom(rows, 'r')
+	k := msg.String()
+	switch {
+	case k == "q" || k == "ctrl+c":
+		return m, tea.Quit
+	case k == "j" || k == "down":
+		m.sel, m.chosen = m.sel+1, true
+	case k == "k" || k == "up":
+		m.sel, m.chosen = m.sel-1, true
+	case k == "enter":
+		return m.act(rows)
+	case len(k) == 1 && k[0] >= '1' && k[0] <= '9' && runs+int(k[0]-'1') < len(rows):
+		m.sel, m.chosen = runs+int(k[0]-'1'), true
+	case k == "x" && m.sel < len(rows) && rows[m.sel].Run != nil:
+		r := *rows[m.sel].Run
 		var b strings.Builder
-		b.WriteString("\033[H\033[2J")
-		for _, line := range renderPane(d, termWidth()) {
-			b.WriteString(line + "\r\n")
+		if err := stopRecord(m.closer, r, timeoutFor(m.data.Timeouts, r.Agent), &b); err != nil {
+			m.status = err.Error()
+		} else {
+			m.status = strings.TrimSpace(b.String())
 		}
-		fmt.Print(b.String())
-
-		select {
-		case <-sigs:
-			return nil
-		case <-tick.C:
-		case k, ok := <-keys:
-			if !ok {
-				return nil
-			}
-			switch {
-			case k == 'q':
-				return nil
-			case k == 'j' && sel < len(live)-1:
-				sel++
-			case k == 'k' && sel > 0:
-				sel--
-			case k >= '1' && k <= '9' && int(k-'1') < len(live):
-				sel = int(k - '1')
-			case k == 'x' && len(live) > 0:
-				var b strings.Builder
-				if err := stopRecord(closer, live[sel], timeoutFor(agentTimeouts(), live[sel].Agent), &b); err != nil {
-					status = err.Error()
-				} else {
-					status = strings.TrimSpace(b.String())
-				}
-			case k == 'p':
-				paused := !runner.Paused()
-				if err := runner.SetPaused(paused); err != nil {
-					status = err.Error()
-				} else if paused {
-					status = "paused — runs in flight finish"
-				} else {
-					status = "resumed"
-				}
-			}
+	case k == "p":
+		paused := !runner.Paused()
+		if err := runner.SetPaused(paused); err != nil {
+			m.status = err.Error()
+		} else if paused {
+			m.status = "paused — runs in flight finish"
+		} else {
+			m.status = "resumed"
 		}
 	}
+	m = m.clamped()
+	m.follow(rows)
+	return m, nil
+}
+
+// act is Enter on the selected row: a question opens its Round. A run has no
+// Enter action; stopping one stays on x, never on a tap.
+func (m paneModel) act(rows []paneRow) (tea.Model, tea.Cmd) {
+	if m.sel < len(rows) && rows[m.sel].Kind == '?' {
+		id := rows[m.sel].ID
+		return m, func() tea.Msg { return openRoundMsg{ID: id} }
+	}
+	return m, nil
+}
+
+// rowsFrom is the index of the first row of kind, len(rows) when none.
+func rowsFrom(rows []paneRow, kind rune) int {
+	for i, r := range rows {
+		if r.Kind == kind {
+			return i
+		}
+	}
+	return len(rows)
+}
+
+func (m paneModel) layout() ([]string, []paneRow) {
+	d := m.data
+	d.Sel, d.Status = m.sel, m.status
+	w := m.width
+	if w <= 0 {
+		w = 80
+	}
+	return renderPane(d, w)
+}
+
+// clamped keeps the selection on a row and the scroll inside the frame.
+func (m paneModel) clamped() paneModel {
+	lines, rows := m.layout()
+	m.sel = max(min(m.sel, len(rows)-1), 0)
+	m.top = max(min(m.top, len(lines)-m.height), 0)
+	return m
+}
+
+// follow scrolls the selected row into view after a key moved it.
+func (m *paneModel) follow(rows []paneRow) {
+	if m.height <= 0 || m.sel >= len(rows) {
+		return
+	}
+	line := rows[m.sel].Line
+	if line < m.top {
+		m.top = line
+	} else if line >= m.top+m.height {
+		m.top = line - m.height + 1
+	}
+}
+
+func (m paneModel) View() string {
+	lines, _ := m.layout()
+	if m.height > 0 && len(lines) > m.height {
+		top := max(min(m.top, len(lines)-m.height), 0)
+		lines = lines[top : top+m.height]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // paneData is everything one frame of the pane shows, read once per refresh.
@@ -374,12 +461,31 @@ func heldMerges(runs []history.Record) map[string]string {
 	return out
 }
 
+// paneRow is a line of the frame a click or a key can select: a Your turn
+// card ('?' question, '!' Blocked, '⇡' held merge) or a run in flight ('r').
+type paneRow struct {
+	Line int
+	Kind rune
+	ID   string
+	Run  *history.Record
+}
+
 // renderPane is one frame as lines, none wider than width: the daemon line,
 // Your turn (questions, Blocked cards, held merges), the runs in flight, then
-// the last settled runs.
-func renderPane(d paneData, width int) []string {
-	var lines []string
+// the last settled runs. rows are its selectable lines, in order; d.Sel
+// indexes them.
+func renderPane(d paneData, width int) (lines []string, rows []paneRow) {
 	add := func(s string) { lines = append(lines, text.Truncate(s, width)) }
+	mark := func() string {
+		if len(rows) == d.Sel {
+			return "> "
+		}
+		return "  "
+	}
+	row := func(kind rune, id string, run *history.Record, s string) {
+		rows = append(rows, paneRow{Line: len(lines), Kind: kind, ID: id, Run: run})
+		add(s)
+	}
 
 	state := "running"
 	if d.Paused {
@@ -390,21 +496,28 @@ func renderPane(d paneData, width int) []string {
 	add("")
 	add("Your turn")
 	merges := heldMerges(d.Runs)
-	var questions, blocked, held []string
+	var questions, blocked, held []work.Task
 	for _, t := range d.Queue {
 		switch {
 		case t.Question:
-			questions = append(questions, "  ? "+t.ID+" "+t.Title)
+			questions = append(questions, t)
 		case !t.Blocked && t.Verdict != work.Blocked:
 		case merges[t.ID] != "":
-			held = append(held, "  ⇡ "+t.ID+" "+merges[t.ID])
+			held = append(held, t)
 		default:
-			blocked = append(blocked, "  ! "+t.ID+" "+t.Title)
+			blocked = append(blocked, t)
 		}
 	}
 	turn := append(append(questions, blocked...), held...)
-	for _, l := range turn {
-		add(l)
+	for _, t := range turn {
+		switch {
+		case t.Question:
+			row('?', t.ID, nil, mark()+"? "+t.ID+" "+t.Title)
+		case merges[t.ID] != "":
+			row('⇡', t.ID, nil, mark()+"⇡ "+t.ID+" "+merges[t.ID])
+		default:
+			row('!', t.ID, nil, mark()+"! "+t.ID+" "+t.Title)
+		}
 	}
 	if d.QueueErr != nil {
 		add("  queue: " + d.QueueErr.Error())
@@ -416,11 +529,7 @@ func renderPane(d paneData, width int) []string {
 	add("")
 	add(fmt.Sprintf("In flight (%d)", len(live)))
 	for i, r := range live {
-		mark := "  "
-		if i == d.Sel {
-			mark = "> "
-		}
-		add(fmt.Sprintf("%s%d %s", mark, i+1, formatRun(r, timeoutFor(d.Timeouts, r.Agent), d.Now)))
+		row('r', r.Task, &live[i], fmt.Sprintf("%s%d %s", mark(), i+1, formatRun(r, timeoutFor(d.Timeouts, r.Agent), d.Now)))
 	}
 	if len(live) == 0 {
 		add("  no run in flight")
@@ -449,26 +558,6 @@ func renderPane(d paneData, width int) []string {
 		add(d.Status)
 	}
 	add("")
-	add("j/k select · x stop · p pause · q quit")
-	return lines
-}
-
-// termWidth is the pane's width in columns, from stty; 80 when it cannot say.
-func termWidth() int {
-	out, err := stty("size")
-	if err != nil {
-		return 80
-	}
-	var rows, cols int
-	if _, err := fmt.Sscan(out, &rows, &cols); err != nil || cols <= 0 {
-		return 80
-	}
-	return cols
-}
-
-func stty(args ...string) (string, error) {
-	cmd := exec.Command("stty", args...)
-	cmd.Stdin = os.Stdin
-	out, err := cmd.Output()
-	return string(out), err
+	add("j/k/tap select · ⏎/tap again open · x stop · p pause · q quit")
+	return lines, rows
 }

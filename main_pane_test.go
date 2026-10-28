@@ -6,7 +6,11 @@ import (
 	"time"
 	"unicode/utf8"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/DnzzL/herdr-docket/internal/history"
+	"github.com/DnzzL/herdr-docket/internal/runner"
 	"github.com/DnzzL/herdr-docket/internal/work"
 )
 
@@ -31,7 +35,8 @@ func paneFixture() paneData {
 }
 
 func TestPaneNeverWrapsOnANarrowTerminal(t *testing.T) {
-	for _, line := range renderPane(paneFixture(), 45) {
+	lines, _ := renderPane(paneFixture(), 45)
+	for _, line := range lines {
 		if n := utf8.RuneCountInString(line); n > 45 {
 			t.Errorf("%d columns: %q", n, line)
 		}
@@ -39,14 +44,15 @@ func TestPaneNeverWrapsOnANarrowTerminal(t *testing.T) {
 }
 
 func TestPaneOpensOnTheDaemonLine(t *testing.T) {
-	lines := renderPane(paneFixture(), 80)
+	lines, _ := renderPane(paneFixture(), 80)
 	if len(lines) == 0 || !strings.Contains(lines[0], "daemon down for 4 min") {
 		t.Fatalf("first line %q", lines)
 	}
 }
 
 func TestYourTurnListsQuestionsBlockedAndHeldMerges(t *testing.T) {
-	out := strings.Join(renderPane(paneFixture(), 80), "\n")
+	lines, _ := renderPane(paneFixture(), 80)
+	out := strings.Join(lines, "\n")
 	turn := strings.Index(out, "Your turn")
 	if turn < 0 {
 		t.Fatalf("no Your turn section:\n%s", out)
@@ -81,5 +87,141 @@ func TestThePaneListsTheQueueEvery30Seconds(t *testing.T) {
 	}
 	if lists != 2 {
 		t.Fatalf("listed the queue %d times over 32 s of frames, want 2 (at 0 s and 30 s)", lists)
+	}
+}
+
+// paneAt is the Home model on the fixture, sized to width x height the way
+// bubbletea sizes it: with a WindowSizeMsg.
+func paneAt(t *testing.T, d paneData, width, height int) paneModel {
+	t.Helper()
+	m, _ := paneModel{data: d, closer: &closer{}}.Update(tea.WindowSizeMsg{Width: width, Height: height})
+	return m.(paneModel)
+}
+
+// rowOf is the screen row the View draws the first line containing s on.
+func rowOf(t *testing.T, m paneModel, s string) int {
+	t.Helper()
+	for y, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, s) {
+			return y
+		}
+	}
+	t.Fatalf("%q not on screen:\n%s", s, m.View())
+	return -1
+}
+
+func click(m paneModel, y int) (paneModel, tea.Cmd) {
+	next, cmd := m.Update(tea.MouseMsg{X: 4, Y: y, Action: tea.MouseActionPress, Button: tea.MouseButtonLeft})
+	return next.(paneModel), cmd
+}
+
+func key(m paneModel, k string) (paneModel, tea.Cmd) {
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+	if k == "enter" {
+		msg = tea.KeyMsg{Type: tea.KeyEnter}
+	}
+	next, cmd := m.Update(msg)
+	return next.(paneModel), cmd
+}
+
+func TestHomeNeverWrapsAt45Columns(t *testing.T) {
+	m := paneAt(t, paneFixture(), 45, 40)
+	for _, line := range strings.Split(m.View(), "\n") {
+		if n := lipgloss.Width(line); n > 45 {
+			t.Errorf("%d columns: %q", n, line)
+		}
+	}
+}
+
+// A tap is a click (ADR 0024): the first one on a question card selects it,
+// the second opens its Round.
+func TestClickingAQuestionTwiceOpensItsRound(t *testing.T) {
+	m := paneAt(t, paneFixture(), 45, 40)
+	m, cmd := click(m, rowOf(t, m, "? TASK-1"))
+	if cmd != nil {
+		t.Fatalf("the first click only selects, got %v", cmd())
+	}
+	if !strings.Contains(m.View(), "> ? TASK-1") {
+		t.Fatalf("TASK-1 not selected:\n%s", m.View())
+	}
+	_, cmd = click(m, rowOf(t, m, "? TASK-1"))
+	if cmd == nil {
+		t.Fatal("the second click opened nothing")
+	}
+	if got, ok := cmd().(openRoundMsg); !ok || got.ID != "TASK-1" {
+		t.Fatalf("want openRoundMsg{TASK-1}, got %#v", cmd())
+	}
+}
+
+func TestEnterOnAQuestionOpensItsRound(t *testing.T) {
+	m := paneAt(t, paneFixture(), 80, 40)
+	m, _ = click(m, rowOf(t, m, "? TASK-1"))
+	_, cmd := key(m, "enter")
+	if cmd == nil {
+		t.Fatal("Enter opened nothing")
+	}
+	if got, ok := cmd().(openRoundMsg); !ok || got.ID != "TASK-1" {
+		t.Fatalf("want openRoundMsg{TASK-1}, got %#v", cmd())
+	}
+}
+
+func TestTheWheelScrollsAPaneTallerThanTheScreen(t *testing.T) {
+	m := paneAt(t, paneFixture(), 80, 5)
+	first := strings.Split(m.View(), "\n")[0]
+	next, _ := m.Update(tea.MouseMsg{Y: 2, Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
+	m = next.(paneModel)
+	lines := strings.Split(m.View(), "\n")
+	if len(lines) > 5 {
+		t.Fatalf("%d lines on a 5-row screen", len(lines))
+	}
+	if lines[0] == first {
+		t.Fatalf("wheel down did not scroll: still %q", first)
+	}
+	// A click lands on what is drawn where it lands, scrolled or not.
+	m, _ = click(m, rowOf(t, m, "? TASK-1"))
+	if !strings.Contains(m.View(), "> ? TASK-1") {
+		t.Fatalf("click after scroll missed TASK-1:\n%s", m.View())
+	}
+}
+
+// The keys the raw-ANSI pane had keep working: j/k and 1-9 select a run,
+// x stops it, p pauses and resumes the fleet, q quits.
+func TestTheOldKeysStillWork(t *testing.T) {
+	now := time.Now()
+	d := paneData{Now: now, Runs: []history.Record{
+		{RunID: "r1", Task: "TASK-1", Agent: "dev", Status: history.StatusRunning, At: now, WorkspaceID: "ws1"},
+		{RunID: "r2", Task: "TASK-2", Agent: "dev", Status: history.StatusRunning, At: now, WorkspaceID: "ws2"},
+	}}
+	c := &closer{}
+	next, _ := paneModel{data: d, closer: c}.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	m := next.(paneModel)
+
+	m, _ = key(m, "j")
+	m, _ = key(m, "x")
+	if len(c.closed) != 1 || c.closed[0].WorkspaceID != "ws2" {
+		t.Fatalf("j then x closed %+v, want ws2", c.closed)
+	}
+	m, _ = key(m, "k")
+	m, _ = key(m, "x")
+	if len(c.closed) != 2 || c.closed[1].WorkspaceID != "ws1" {
+		t.Fatalf("k then x closed %+v, want ws1", c.closed)
+	}
+	m, _ = key(m, "2")
+	if !strings.Contains(m.View(), "> 2 TASK-2") {
+		t.Fatalf("2 did not select the second run:\n%s", m.View())
+	}
+
+	m, _ = key(m, "p")
+	if !runner.Paused() {
+		t.Fatal("p did not pause the fleet")
+	}
+	m, _ = key(m, "p")
+	if runner.Paused() {
+		t.Fatal("p again did not resume the fleet")
+	}
+
+	_, cmd := key(m, "q")
+	if cmd == nil || cmd() != tea.Quit() {
+		t.Fatal("q did not quit")
 	}
 }

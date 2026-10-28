@@ -148,8 +148,9 @@ commits and PR, and for a verifier run `verified PASS p=…` — and
 that fails, blocks or is held back from merging raises a Herdr notification.
 
 The fleet's own runs in flight are `herdr-docket runs`, or the plugin's
-**Herdr-Docket: runs** overlay pane — `x` stops the selected run, `p` pauses
-the fleet. A stopped run ends cancelled and leaves its task Blocked.
+**Herdr-Docket: runs** overlay pane — select a row with `j`/`k` or a
+click (a tap in Termux), `x` stops the selected run, `p` pauses the fleet, the
+wheel scrolls. A stopped run ends cancelled and leaves its task Blocked.
 
 **Pausing the fleet** (`herdr-docket pause`) is the credit brake: the daemon
 starts no run and a pipeline holds its next stage — verifier, rework — until
